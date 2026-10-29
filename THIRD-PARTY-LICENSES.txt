@@ -1,7 +1,7 @@
 Third-party licenses
 ====================
 
-This program includes the following 629 third-party packages.
+This program includes the following 630 third-party packages.
 
 ------------------------------------------------------------------------------
 adler2 2.0.1
@@ -793,6 +793,33 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+------------------------------------------------------------------------------
+authway-native 0.1.1
+License: MIT
+Upstream: https://github.com/iyulab/Authway
+
+MIT License
+
+Copyright (c) 2026 iyulab
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ------------------------------------------------------------------------------
 base64 0.22.1
@@ -12567,62 +12594,42 @@ tauri-kit-credentials 0.30.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
 
-MIT License
-
-Copyright (c) 2026 iyulab
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 tauri-kit-diagnostics 0.30.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 tauri-kit-fs 0.30.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 tauri-kit-sidecar 0.30.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 tauri-kit-state 0.30.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 tauri-kit-watch 0.30.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 tauri-macros 2.7.3
@@ -16055,7 +16062,7 @@ THE SOFTWARE.
 License: MIT
 Upstream: https://github.com/iyulab/canopy
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 @shikijs/core 4.4.3
@@ -18122,7 +18129,7 @@ Flux.Abstractions 0.27.0
 License: MIT
 Upstream: https://github.com/iyulab/flux-abstractions
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 FluxCurator 0.18.1
@@ -18143,21 +18150,21 @@ FluxFeed 0.58.0
 License: MIT
 Upstream: https://github.com/iyulab/FluxFeed
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 FluxGuard 0.25.1
 License: MIT
 Upstream: https://github.com/iyulab/FluxGuard
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 FluxGuard.Remote 0.25.1
 License: MIT
 Upstream: https://github.com/iyulab/FluxGuard
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 FluxImprover 0.23.0
@@ -18354,21 +18361,21 @@ IronProw.Core 0.18.0
 License: MIT
 Upstream: https://github.com/iyulab/iron-prow
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 IronProw.IronHive 0.18.0
 License: MIT
 Upstream: https://github.com/iyulab/iron-prow
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 IronProw.LMSupply 0.18.0
 License: MIT
 Upstream: https://github.com/iyulab/iron-prow
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 LMSupply.Core 0.136.0
@@ -35919,14 +35926,14 @@ TauriKit.Sidecar.Loopback 0.30.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 TauriKit.Sidecar.Loopback.AspNetCore 0.30.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 ------------------------------------------------------------------------------
 Tiktoken.Core 3.1.5
@@ -35991,7 +35998,7 @@ Unpdf 0.48.0
 License: MIT
 Upstream: https://github.com/iyulab/unpdf
 
-Same license text as tauri-kit-credentials 0.30.0.
+Same license text as authway-native 0.1.1.
 
 Third-party notices
 ===================

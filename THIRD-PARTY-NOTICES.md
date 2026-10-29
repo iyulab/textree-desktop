@@ -40,7 +40,7 @@ libssh2 code is present in this distribution.
 
 ## Rust crates
 
-The 360 crates below are the normal-dependency closure of the binary, resolved for
+The 361 crates below are the normal-dependency closure of the binary, resolved for
 `x86_64-pc-windows-msvc`. Build-time and test-only dependencies are excluded because their code is not
 distributed.
 
@@ -55,6 +55,7 @@ distributed.
 | `arc-swap` | 1.9.2 | MIT OR Apache-2.0 | https://github.com/vorner/arc-swap |
 | `async-trait` | 0.1.92 | MIT OR Apache-2.0 | https://github.com/dtolnay/async-trait |
 | `atomic-waker` | 1.1.2 | Apache-2.0 OR MIT | https://github.com/smol-rs/atomic-waker |
+| `authway-native` | 0.1.1 | MIT | https://github.com/iyulab/Authway |
 | `base64` | 0.22.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | `base64` | 0.23.1 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
 | `bit-set` | 0.8.0 | Apache-2.0 OR MIT | https://github.com/contain-rs/bit-set |

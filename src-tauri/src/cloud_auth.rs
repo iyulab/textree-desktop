@@ -1,80 +1,60 @@
-//! In-app web-publish authentication (slice 2c): obtain a publish token via a browser OAuth
-//! round-trip (RFC 8252 loopback + RFC 7636 PKCE) instead of manual token paste. The desktop only
-//! ever receives the opaque publish token — never the cloud identity. The token is stored in
-//! the OS keychain (publish_secret), the same entry the uploader reads.
+//! In-app web-publish sign-in: the person signs in at the identity provider in their own browser
+//! (OAuth 2.0 for native apps, through `authway-native`), and the app trades the access token it
+//! gets for an opaque publish token at the publishing API. Only that publish token is kept — in the
+//! OS keychain, the entry the uploader reads. The provider's session is never stored: it lives in
+//! memory for the one exchange and is revoked right after, so the app holds no account or session.
 
 use crate::cloud_publish::api_base;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine as _;
-use sha2::{Digest, Sha256};
-use std::io::{BufRead, BufReader, Write};
-use std::net::{TcpListener, TcpStream};
-use std::time::{Duration, Instant};
+use authway_native::{Config, Error as SignInError, MemoryStore, NativeClient};
+use std::time::Duration;
 
-const DEFAULT_APP_BASE: &str = "https://app.textree.me";
+const DEFAULT_ISSUER: &str = "https://oauth.authway.in";
+// TODO: confirm the client id once the production client is registered, before the next release.
+const DEFAULT_CLIENT_ID: &str = "textree-desktop";
 /// How long the loopback server waits for the browser redirect before giving up (cancel/timeout).
-const LOOPBACK_TIMEOUT: Duration = Duration::from_secs(180);
-/// Bounds the code→token exchange request so a stalled server can't hang the flow.
+const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(180);
+/// Bounds the token exchange request so a stalled server can't hang the flow.
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(30);
 
 const SUCCESS_HTML: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Textree</title></head>\
 <body style=\"font-family:sans-serif;text-align:center;padding:3rem\"><h2>Connected to Textree</h2>\
 <p>You can close this tab and return to the app.</p></body></html>";
 
-/// The app (BFF) base — `TEXTREE_APP_BASE` override (dev/E2E builds only, `dev_env`) or the
+const FAILURE_HTML: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Textree</title></head>\
+<body style=\"font-family:sans-serif;text-align:center;padding:3rem\"><h2>Sign-in did not complete</h2>\
+<p>Return to Textree and try again.</p></body></html>";
+
+/// The identity provider — `TEXTREE_AUTH_ISSUER` override (dev/E2E builds only, `dev_env`) or the
 /// production default.
-pub fn app_base() -> String {
-    crate::dev_env::var("TEXTREE_APP_BASE").unwrap_or_else(|| DEFAULT_APP_BASE.to_string())
+pub fn issuer() -> String {
+    crate::dev_env::var("TEXTREE_AUTH_ISSUER").unwrap_or_else(|| DEFAULT_ISSUER.to_string())
 }
 
-/// 32 bytes of OS randomness, base64url-nopad (43 chars, all unreserved — RFC 7636 verifier set).
-fn random_token() -> Result<String, String> {
-    let mut buf = [0u8; 32];
-    getrandom::getrandom(&mut buf).map_err(|e| e.to_string())?;
-    Ok(URL_SAFE_NO_PAD.encode(buf))
+/// The app's registered client id — `TEXTREE_AUTH_CLIENT_ID` override (dev/E2E builds only) or the
+/// production default.
+pub fn client_id() -> String {
+    crate::dev_env::var("TEXTREE_AUTH_CLIENT_ID").unwrap_or_else(|| DEFAULT_CLIENT_ID.to_string())
 }
 
-pub fn gen_verifier() -> Result<String, String> {
-    random_token()
-}
-pub fn gen_state() -> Result<String, String> {
-    random_token()
-}
-
-/// PKCE S256 challenge for a verifier: base64url-nopad(SHA256(verifier)). RFC 7636 §4.6. Pure.
-pub fn challenge_for(verifier: &str) -> String {
-    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+fn client_for(issuer: &str, client_id: &str) -> NativeClient {
+    // `openid` only: the person is identified by the access token's subject, and no refresh token
+    // is asked for — nothing here outlives the one exchange.
+    let config = Config::new(issuer, client_id).scopes(["openid"]).pages(SUCCESS_HTML, FAILURE_HTML);
+    NativeClient::new(config, MemoryStore::default())
 }
 
-/// Builds the browser authorize URL. state/challenge are base64url (URL-safe), so no extra encoding.
-pub fn build_authorize_url(app_base: &str, port: u16, state: &str, challenge: &str) -> String {
-    format!(
-        "{}/connect/desktop?port={port}&state={state}&code_challenge={challenge}&code_challenge_method=S256",
-        app_base.trim_end_matches('/'),
-    )
-}
-
-/// Parses the loopback callback HTTP request line, returning (code, state). Pure.
-/// e.g. "GET /callback?code=abc&state=xyz HTTP/1.1".
-pub fn parse_callback_query(request_line: &str) -> Result<(String, String), String> {
-    let target = request_line
-        .split_whitespace()
-        .nth(1)
-        .ok_or_else(|| "malformed request".to_string())?;
-    let query = target.split_once('?').map(|(_, q)| q).unwrap_or("");
-    let (mut code, mut state) = (None, None);
-    for pair in query.split('&') {
-        if let Some((k, v)) = pair.split_once('=') {
-            match k {
-                "code" => code = Some(v.to_string()),
-                "state" => state = Some(v.to_string()),
-                _ => {}
-            }
+/// What the person is told when the sign-in did not complete. Pure — the provider's own error text
+/// (which can carry request details) is not passed on.
+pub fn sign_in_error(e: &SignInError) -> String {
+    match e {
+        SignInError::TimedOut => "sign-in timed out — try connecting again".to_string(),
+        SignInError::Cancelled => "sign-in was cancelled".to_string(),
+        SignInError::Denied { .. } => "sign-in was declined — try connecting again".to_string(),
+        SignInError::Http(_) | SignInError::Discovery(_) => {
+            "couldn't reach the sign-in service — check your connection and try again".to_string()
         }
-    }
-    match (code, state) {
-        (Some(c), Some(s)) if !c.is_empty() && !s.is_empty() => Ok((c, s)),
-        _ => Err("missing code or state in callback".to_string()),
+        SignInError::Loopback(_) => "couldn't start local sign-in — try again".to_string(),
+        _ => "couldn't complete sign-in — try connecting again".to_string(),
     }
 }
 
@@ -88,77 +68,25 @@ pub fn parse_exchange_response(body: &str) -> Result<String, String> {
     Ok(raw.token)
 }
 
-/// Maps a non-2xx exchange response to a user-facing message. Pure. The code/verifier never appear.
+/// Maps a non-2xx exchange response to a user-facing message. Pure. The access token never appears.
 pub fn map_exchange_error(status: u16, _body: &str) -> String {
     match status {
-        400 => "the sign-in expired or was invalid — try connecting again".to_string(),
+        401 => "the sign-in expired or was invalid — try connecting again".to_string(),
         _ => format!("couldn't complete sign-in (HTTP {status})"),
     }
 }
 
-fn write_response(stream: &mut TcpStream, status: &str, body: &str) {
-    let resp = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
-        body.len()
-    );
-    let _ = stream.write_all(resp.as_bytes());
-    let _ = stream.flush();
-}
-
-/// Runs the loopback server: waits (bounded) for the browser redirect, validates `state`, replies
-/// with a success page, and returns the authorization `code`. Consumes the listener.
-///
-/// Loop-tolerant (RFC 8252 practice): only a `/callback` request whose `state` matches ours
-/// releases the code. Any other connection — a stray/speculative browser request, a favicon fetch,
-/// a request that sends nothing, or a forged/non-matching `state` — gets a 404 and is ignored while
-/// we keep waiting for the real redirect. The deadline bounds the total wait.
-fn run_loopback(listener: TcpListener, expected_state: &str, timeout: Duration) -> Result<String, String> {
-    listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-    let deadline = Instant::now() + timeout;
-    loop {
-        match listener.accept() {
-            Ok((mut stream, _)) => {
-                // Switch to blocking + a read bound so a connection that sends nothing can't hang us.
-                stream.set_nonblocking(false).map_err(|e| e.to_string())?;
-                stream
-                    .set_read_timeout(Some(Duration::from_secs(10)))
-                    .map_err(|e| e.to_string())?;
-                let mut request_line = String::new();
-                let read_ok = {
-                    let mut reader = BufReader::new(&stream);
-                    reader.read_line(&mut request_line).is_ok()
-                };
-                match read_ok.then(|| parse_callback_query(&request_line)) {
-                    Some(Ok((code, state))) if state == expected_state => {
-                        write_response(&mut stream, "200 OK", SUCCESS_HTML);
-                        return Ok(code);
-                    }
-                    // Not our callback (stray request, unreadable, or a non-matching/forged state):
-                    // reply 404 and keep waiting for the real redirect until the deadline.
-                    _ => write_response(&mut stream, "404 Not Found", "Not found."),
-                }
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                if Instant::now() >= deadline {
-                    return Err("sign-in timed out — no response from the browser, try again".to_string());
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(e) => return Err(e.to_string()),
-        }
-    }
-}
-
-/// Exchanges the code + verifier for a publish token at the api (PKCE back-channel).
-fn exchange_code(api_base: &str, code: &str, verifier: &str) -> Result<String, String> {
-    let url = format!("{}/oauth/desktop/token", api_base.trim_end_matches('/'));
-    // Error statuses come back as responses (not errors) so their body can explain the failure.
+/// Trades the provider's access token for a publish token at the publishing API.
+fn exchange_token(api_base: &str, access_token: &str) -> Result<String, String> {
+    let url = format!("{}/tokens/desktop", api_base.trim_end_matches('/'));
+    // Error statuses come back as responses (not errors) so their status can explain the failure.
     match ureq::post(&url)
+        .header("Authorization", &format!("Bearer {access_token}"))
         .config()
         .timeout_global(Some(EXCHANGE_TIMEOUT))
         .http_status_as_error(false)
         .build()
-        .send_json(serde_json::json!({ "code": code, "codeVerifier": verifier }))
+        .send_empty()
     {
         Ok(mut resp) if resp.status().is_success() => {
             let body = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
@@ -169,27 +97,28 @@ fn exchange_code(api_base: &str, code: &str, verifier: &str) -> Result<String, S
             let body = resp.body_mut().read_to_string().unwrap_or_default();
             Err(map_exchange_error(status, &body))
         }
-        Err(e) => Err(format!("couldn't reach app.textree.me ({e}) — check your connection and try again")),
+        Err(e) => Err(format!("couldn't reach the publishing service ({e}) — check your connection and try again")),
     }
 }
 
-/// Full in-app connect flow: browser OAuth (loopback + PKCE) → publish token → OS keychain. The
-/// frontend calls this when no token is stored; on success the caller can proceed to publish.
+/// Full in-app connect flow: browser sign-in → access token → publish token → OS keychain. The
+/// frontend calls this when no token is stored; on success the caller can proceed to publish. A
+/// failed sign-in changes nothing — the stored token is replaced only once a new one is in hand.
 pub fn connect() -> Result<(), String> {
-    let verifier = gen_verifier()?;
-    let challenge = challenge_for(&verifier);
-    let state = gen_state()?;
+    let client = client_for(&issuer(), &client_id());
+    let pending = client.begin_sign_in().map_err(|e| sign_in_error(&e))?;
+    tauri_plugin_opener::open_url(pending.url(), None::<&str>).map_err(|e| format!("couldn't open the browser ({e})"))?;
+    pending.wait(SIGN_IN_TIMEOUT).map_err(|e| sign_in_error(&e))?;
 
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .map_err(|e| format!("couldn't start local sign-in ({e}) — try again"))?;
-    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-
-    let url = build_authorize_url(&app_base(), port, &state, &challenge);
-    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| format!("couldn't open the browser ({e})"))?;
-
-    let code = run_loopback(listener, &state, LOOPBACK_TIMEOUT)?;
-    let token = exchange_code(&api_base(), &code, &verifier)?;
-    crate::publish_secret::set_token(&token)
+    let access_token = client
+        .access_token()
+        .map_err(|e| sign_in_error(&e))?
+        .ok_or_else(|| "couldn't complete sign-in — try connecting again".to_string())?;
+    let token = exchange_token(&api_base(), &access_token);
+    // The provider's session is not kept: revoke it whether or not the exchange worked. Best
+    // effort — the access token is short-lived and was only ever held in memory.
+    let _ = client.sign_out();
+    crate::publish_secret::set_token(&token?)
 }
 
 /// Runs the in-app web-publish sign-in and stores the resulting token. Offloaded to a blocking
@@ -204,146 +133,90 @@ pub async fn connect_publish() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Read;
-    use std::net::Shutdown;
-
-    #[test]
-    fn challenge_for_matches_rfc7636_test_vector() {
-        // RFC 7636 Appendix B.
-        assert_eq!(
-            challenge_for("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
-            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
-        );
-    }
-
-    #[test]
-    fn gen_verifier_is_unique_urlsafe_43() {
-        let a = gen_verifier().unwrap();
-        let b = gen_verifier().unwrap();
-        assert_ne!(a, b);
-        assert_eq!(a.len(), 43); // 32 bytes base64url-nopad
-        assert!(a.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
-    }
-
-    #[test]
-    fn build_authorize_url_has_all_pkce_params() {
-        let url = build_authorize_url("https://app.test/", 54321, "st-8", "ch_9");
-        assert_eq!(
-            url,
-            "https://app.test/connect/desktop?port=54321&state=st-8&code_challenge=ch_9&code_challenge_method=S256"
-        );
-    }
-
-    #[test]
-    fn parse_callback_query_extracts_code_and_state() {
-        let (code, state) =
-            parse_callback_query("GET /callback?code=abc123&state=xyz-9 HTTP/1.1").unwrap();
-        assert_eq!(code, "abc123");
-        assert_eq!(state, "xyz-9");
-    }
-
-    #[test]
-    fn parse_callback_query_rejects_missing() {
-        assert!(parse_callback_query("GET /callback?code=abc HTTP/1.1").is_err());
-        assert!(parse_callback_query("GET /callback HTTP/1.1").is_err());
-        assert!(parse_callback_query("garbage").is_err());
-    }
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::{Shutdown, TcpListener};
 
     #[test]
     fn parse_exchange_response_extracts_token_and_rejects_garbage() {
         assert_eq!(parse_exchange_response(r#"{"token":"tk_abc"}"#).unwrap(), "tk_abc");
-        assert!(parse_exchange_response("not json").is_err());
+        assert!(parse_exchange_response("nope").is_err());
+        assert!(parse_exchange_response(r#"{"nottoken":1}"#).is_err());
     }
 
     #[test]
-    fn map_exchange_error_explains_400_and_other() {
-        assert!(map_exchange_error(400, "").to_lowercase().contains("try connecting again"));
-        assert!(map_exchange_error(503, "").contains("503"));
+    fn map_exchange_error_explains_401_and_other() {
+        assert!(map_exchange_error(401, "").contains("expired or was invalid"));
+        assert!(map_exchange_error(500, "x").contains("500"));
     }
 
     #[test]
-    fn run_loopback_returns_code_when_state_matches() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        std::thread::spawn(move || {
-            let mut s = TcpStream::connect(addr).unwrap();
-            s.write_all(b"GET /callback?code=thecode&state=goodstate HTTP/1.1\r\n\r\n").unwrap();
-        });
-        let code = run_loopback(listener, "goodstate", Duration::from_secs(5)).unwrap();
-        assert_eq!(code, "thecode");
+    fn sign_in_errors_read_as_sentences_without_the_providers_text() {
+        let denied = SignInError::Denied { error: "access_denied".into(), description: Some("secret detail".into()) };
+        let msg = sign_in_error(&denied);
+        assert!(msg.contains("declined"));
+        assert!(!msg.contains("secret detail") && !msg.contains("access_denied"));
+        assert!(sign_in_error(&SignInError::TimedOut).contains("timed out"));
+        assert!(sign_in_error(&SignInError::Cancelled).contains("cancelled"));
+        assert!(sign_in_error(&SignInError::Http("tcp reset".into())).contains("couldn't reach"));
     }
 
-    #[test]
-    fn run_loopback_skips_stray_and_wrong_state_then_accepts_callback() {
-        // A stray request and a forged-state request must be ignored (404), and the real callback
-        // that follows must still succeed — loop-tolerance + state binding in one.
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        std::thread::spawn(move || {
-            for req in [
-                "GET /favicon.ico HTTP/1.1\r\n\r\n",
-                "GET /callback?code=x&state=WRONG HTTP/1.1\r\n\r\n",
-                "GET /callback?code=thecode&state=goodstate HTTP/1.1\r\n\r\n",
-            ] {
-                if let Ok(mut s) = TcpStream::connect(addr) {
-                    let _ = s.write_all(req.as_bytes());
-                    // Drain the response so the server finishes this connection before the next.
-                    let mut buf = Vec::new();
-                    let _ = std::io::Read::read_to_end(&mut s, &mut buf);
-                }
-            }
-        });
-        let code = run_loopback(listener, "goodstate", Duration::from_secs(5)).unwrap();
-        assert_eq!(code, "thecode");
-    }
-
-    #[test]
-    fn run_loopback_times_out_without_connection() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let start = Instant::now();
-        let err = run_loopback(listener, "st", Duration::from_millis(200)).unwrap_err();
-        assert!(err.contains("timed out"));
-        assert!(start.elapsed() < Duration::from_secs(2));
-    }
-
-    #[test]
-    fn exchange_code_posts_and_returns_token() {
-        // Fake api server: read the whole request, respond 200 with a token body. The request body
-        // must be consumed before responding — closing a socket that still holds unread data is a
-        // reset, not an orderly shutdown, and the client would race it and see a broken connection
-        // instead of the response.
+    /// One-shot fake API: answers a single request and hands back what the client sent.
+    fn fake_api(status_line: &'static str, body: &'static str) -> (String, std::thread::JoinHandle<(String, String)>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let mut reader = BufReader::new(&stream);
-            let mut line = String::new();
+            let mut request_line = String::new();
+            reader.read_line(&mut request_line).unwrap();
+            let mut authorization = String::new();
             let mut content_length = 0usize;
             loop {
-                line.clear();
+                let mut line = String::new();
                 let n = reader.read_line(&mut line).unwrap();
                 if n == 0 || line == "\r\n" {
                     break;
                 }
-                if let Some(v) = line.strip_prefix("Content-Length:").or_else(|| line.strip_prefix("content-length:")) {
+                let lower = line.to_ascii_lowercase();
+                if let Some(v) = lower.strip_prefix("authorization:") {
+                    authorization = line[line.len() - v.len()..].trim().to_string();
+                }
+                if let Some(v) = lower.strip_prefix("content-length:") {
                     content_length = v.trim().parse().unwrap();
                 }
             }
-            let mut request_body = vec![0u8; content_length];
-            reader.read_exact(&mut request_body).unwrap();
-            let body = r#"{"token":"tk_exchanged"}"#;
+            // Consume any request body before answering — closing a socket that still holds unread
+            // data is a reset, and the client would see a broken connection instead of the response.
+            let mut sink = vec![0u8; content_length];
+            reader.read_exact(&mut sink).unwrap();
             let resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                "HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
             );
             stream.write_all(resp.as_bytes()).unwrap();
             stream.flush().unwrap();
-            // Half-close so the peer sees end-of-response as a FIN rather than a reset.
             stream.shutdown(Shutdown::Write).unwrap();
+            (request_line, authorization)
         });
-        let base = format!("http://{addr}");
-        let token = exchange_code(&base, "thecode", "theverifier").unwrap();
+        (format!("http://{addr}"), server)
+    }
+
+    #[test]
+    fn exchange_token_posts_the_access_token_as_a_bearer_and_returns_the_publish_token() {
+        let (base, server) = fake_api("200 OK", r#"{"token":"tk_exchanged"}"#);
+        let token = exchange_token(&base, "the-access-token").unwrap();
         assert_eq!(token, "tk_exchanged");
+        let (request_line, authorization) = server.join().unwrap();
+        assert!(request_line.starts_with("POST /tokens/desktop "), "{request_line}");
+        assert_eq!(authorization, "Bearer the-access-token");
+    }
+
+    #[test]
+    fn exchange_token_turns_a_refusal_into_a_message_without_the_token() {
+        let (base, server) = fake_api("401 Unauthorized", "");
+        let err = exchange_token(&base, "the-access-token").unwrap_err();
+        assert!(err.contains("expired or was invalid"), "{err}");
+        assert!(!err.contains("the-access-token"));
         server.join().unwrap();
     }
 }

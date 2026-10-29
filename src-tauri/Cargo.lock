@@ -271,6 +271,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "authway-native"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfb488414651507263d0f37af0391cc729c5a0fc6d492ec9bc40e76b7bdc6d67"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "ureq",
+ "url",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5052,6 +5067,7 @@ dependencies = [
 name = "textree"
 version = "0.9.0"
 dependencies = [
+ "authway-native",
  "base64 0.22.1",
  "getrandom 0.2.17",
  "git2",

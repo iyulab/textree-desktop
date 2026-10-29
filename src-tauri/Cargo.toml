@@ -65,6 +65,7 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 # `https` and no `ssh` — so no TLS or SSH native libraries enter the binary. The
 # `dependency_policy` test enforces that. See THIRD-PARTY-NOTICES.md.
 git2 = { version = "0.21", features = ["vendored-libgit2"] }
+authway-native = "0.1"
 
 [target."cfg(windows)".dependencies]
 tauri-plugin-updater = "2.10.1"

@@ -1,41 +1,51 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 /**
- * Stand-in for the publishing backend, so the in-app sign-in can be driven end to end without
- * reaching the real service.
+ * Stand-in for the identity provider and the publishing backend, so the in-app sign-in can be
+ * driven end to end without reaching the real services.
  *
- * The token exchange rejects by default and grants only when a test asks it to (`grantToken`), so
- * a test that means to cover the failure path cannot accidentally complete a sign-in. Completing
- * one is safe because a development build stores credentials under its own namespace and cannot
- * reach the installed app's entry (see `secret_store.rs`); `credential-probe.ts` checks that
- * separation still holds rather than trusting it.
+ * Both refuse by default and succeed only when a test asks (`grantSignIn`, `grantToken`), so a test
+ * that means to cover a failure path cannot accidentally complete a sign-in. Completing one is safe
+ * because a development build stores credentials under its own namespace and cannot reach the
+ * installed app's entry (see `secret_store.rs`); `credential-probe.ts` checks that separation still
+ * holds rather than trusting it.
  *
  * Ports are fixed because the app reads its base URLs from the environment at launch, before a
  * test process exists to negotiate them.
  */
 
-export const MOCK_APP_PORT = 8787;
+export const MOCK_AUTH_PORT = 8787;
 export const MOCK_API_PORT = 8788;
-export const MOCK_APP_BASE = `http://127.0.0.1:${MOCK_APP_PORT}`;
+export const MOCK_AUTH_BASE = `http://127.0.0.1:${MOCK_AUTH_PORT}`;
 export const MOCK_API_BASE = `http://127.0.0.1:${MOCK_API_PORT}`;
+export const MOCK_CLIENT_ID = "e2e-client";
 
-/** The query the desktop put on the authorize URL. */
+/** The query the desktop put on the authorization URL. */
 export interface AuthorizeParams {
-  /** Loopback port the desktop is listening on. */
+  clientId: string;
+  /** Loopback port the desktop is listening on (from its redirect URI). */
   port: string;
   state: string;
+  nonce: string;
   codeChallenge: string;
   codeChallengeMethod: string;
+  scope: string;
 }
 
 export interface CloudMock {
-  /** Waits for the desktop to open the authorize URL and returns its query. */
+  /** Waits for the desktop to open the authorization URL and returns its query. */
   waitForAuthorize(timeoutMs?: number): Promise<AuthorizeParams>;
-  /** Bodies the desktop POSTed to the token endpoint, oldest first. */
-  exchangeBodies(): unknown[];
-  /** Makes the next exchanges succeed with this token. Rejection is the default. */
+  /** Form bodies the desktop POSTed to the provider's token endpoint, oldest first. */
+  codeExchanges(): Record<string, string>[];
+  /** `Authorization` headers the desktop sent to the publishing API, oldest first. */
+  apiAuthorizations(): string[];
+  /** Tokens the desktop asked the provider to revoke, oldest first. */
+  revocations(): string[];
+  /** Makes the provider accept the next code exchanges. Rejection is the default. */
+  grantSignIn(): void;
+  /** Makes the publishing API issue this publish token. Refusal (401) is the default. */
   grantToken(token: string): void;
-  /** Forgets what was recorded and reverts to rejecting, so the next sign-in starts clean. */
+  /** Forgets what was recorded and reverts to refusing, so the next sign-in starts clean. */
   reset(): void;
   close(): Promise<void>;
 }
@@ -62,19 +72,47 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
+const b64url = (v: unknown) => Buffer.from(typeof v === "string" ? v : JSON.stringify(v)).toString("base64url");
+
+/** An ID token for this sign-in. The desktop reads its claims but does not check a signature. */
+function idToken(nonce: string): string {
+  const claims = { iss: MOCK_AUTH_BASE, aud: [MOCK_CLIENT_ID], sub: "e2e-user", exp: Math.floor(Date.now() / 1000) + 600, nonce };
+  return `${b64url({ alg: "RS256", typ: "JWT" })}.${b64url(claims)}.signature`;
+}
+
 export async function startCloudMock(): Promise<CloudMock> {
   let authorize: AuthorizeParams | null = null;
+  let signInGranted = false;
   let granted: string | null = null;
-  const exchanges: unknown[] = [];
+  const exchanges: Record<string, string>[] = [];
+  const authorizations: string[] = [];
+  const revoked: string[] = [];
 
-  const app = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const url = new URL(req.url ?? "/", MOCK_APP_BASE);
-    if (url.pathname === "/connect/desktop") {
+  const provider = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url ?? "/", MOCK_AUTH_BASE);
+    const json = (status: number, body: unknown) => {
+      res.writeHead(status, { "content-type": "application/json", connection: "close" });
+      res.end(JSON.stringify(body));
+    };
+    if (url.pathname === "/.well-known/openid-configuration") {
+      json(200, {
+        issuer: MOCK_AUTH_BASE,
+        authorization_endpoint: `${MOCK_AUTH_BASE}/authorize`,
+        token_endpoint: `${MOCK_AUTH_BASE}/token`,
+        revocation_endpoint: `${MOCK_AUTH_BASE}/revoke`,
+      });
+      return;
+    }
+    if (url.pathname === "/authorize") {
+      const redirect = new URL(url.searchParams.get("redirect_uri") ?? "http://127.0.0.1:0/");
       authorize = {
-        port: url.searchParams.get("port") ?? "",
+        clientId: url.searchParams.get("client_id") ?? "",
+        port: redirect.port,
         state: url.searchParams.get("state") ?? "",
+        nonce: url.searchParams.get("nonce") ?? "",
         codeChallenge: url.searchParams.get("code_challenge") ?? "",
         codeChallengeMethod: url.searchParams.get("code_challenge_method") ?? "",
+        scope: url.searchParams.get("scope") ?? "",
       };
       // Deliberately no redirect: the test delivers the callback itself, so the assertions do not
       // depend on how the machine's default browser handles a redirect to a loopback address.
@@ -82,31 +120,41 @@ export async function startCloudMock(): Promise<CloudMock> {
       res.end("<!doctype html><title>sign-in stub</title><p>Test stub — this tab can be closed.</p>");
       return;
     }
-    res.writeHead(404).end();
-  });
-
-  const api = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    const url = new URL(req.url ?? "/", MOCK_API_BASE);
-    if (req.method === "POST" && url.pathname === "/oauth/desktop/token") {
-      const raw = await readBody(req);
-      try {
-        exchanges.push(JSON.parse(raw));
-      } catch {
-        exchanges.push(raw);
-      }
-      if (granted !== null) {
-        res.writeHead(200, { "content-type": "application/json", connection: "close" });
-        res.end(JSON.stringify({ token: granted }));
+    if (req.method === "POST" && url.pathname === "/token") {
+      exchanges.push(Object.fromEntries(new URLSearchParams(await readBody(req))));
+      if (signInGranted && authorize) {
+        json(200, { access_token: "e2e-access-token", token_type: "Bearer", expires_in: 600, id_token: idToken(authorize.nonce) });
         return;
       }
-      res.writeHead(400, { "content-type": "application/json", connection: "close" });
-      res.end(JSON.stringify({ error: "invalid_grant" }));
+      json(400, { error: "invalid_grant" });
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/revoke") {
+      revoked.push(new URLSearchParams(await readBody(req)).get("token") ?? "");
+      json(200, {});
       return;
     }
     res.writeHead(404).end();
   });
 
-  await listen(app, MOCK_APP_PORT);
+  const api = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url ?? "/", MOCK_API_BASE);
+    if (req.method === "POST" && url.pathname === "/tokens/desktop") {
+      await readBody(req);
+      authorizations.push(String(req.headers.authorization ?? ""));
+      if (granted !== null) {
+        res.writeHead(200, { "content-type": "application/json", connection: "close" });
+        res.end(JSON.stringify({ token: granted }));
+        return;
+      }
+      res.writeHead(401, { connection: "close" });
+      res.end();
+      return;
+    }
+    res.writeHead(404).end();
+  });
+
+  await listen(provider, MOCK_AUTH_PORT);
   await listen(api, MOCK_API_PORT);
 
   return {
@@ -117,21 +165,30 @@ export async function startCloudMock(): Promise<CloudMock> {
         await new Promise((r) => setTimeout(r, 100));
       }
       throw new Error(
-        `The desktop never opened the authorize URL on ${MOCK_APP_BASE}. ` +
-          `Launch the app with TEXTREE_APP_BASE=${MOCK_APP_BASE} and TEXTREE_API_BASE=${MOCK_API_BASE}.`,
+        `The desktop never opened the authorization URL on ${MOCK_AUTH_BASE}. ` +
+          `Launch the app with TEXTREE_AUTH_ISSUER=${MOCK_AUTH_BASE} TEXTREE_AUTH_CLIENT_ID=${MOCK_CLIENT_ID} ` +
+          `TEXTREE_API_BASE=${MOCK_API_BASE}.`,
       );
     },
-    exchangeBodies: () => exchanges.slice(),
+    codeExchanges: () => exchanges.slice(),
+    apiAuthorizations: () => authorizations.slice(),
+    revocations: () => revoked.slice(),
+    grantSignIn() {
+      signInGranted = true;
+    },
     grantToken(token: string) {
       granted = token;
     },
     reset() {
       authorize = null;
+      signInGranted = false;
       granted = null;
       exchanges.length = 0;
+      authorizations.length = 0;
+      revoked.length = 0;
     },
     async close() {
-      await Promise.all([close(app), close(api)]);
+      await Promise.all([close(provider), close(api)]);
     },
   };
 }
