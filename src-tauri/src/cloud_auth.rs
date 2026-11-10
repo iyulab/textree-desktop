@@ -9,7 +9,8 @@ use authway_native::{Config, Error as SignInError, MemoryStore, NativeClient};
 use std::time::Duration;
 
 const DEFAULT_ISSUER: &str = "https://oauth.authway.in";
-// TODO: confirm the client id once the production client is registered, before the next release.
+// The production client registered for this app (public, PKCE); the issuer is the one its
+// discovery document names, trailing slash and all.
 const DEFAULT_CLIENT_ID: &str = "textree-desktop";
 /// How long the loopback server waits for the browser redirect before giving up (cancel/timeout).
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(180);
