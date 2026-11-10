@@ -27,10 +27,10 @@ tauri-plugin-dialog = "2.7.1"
 # Atomic note writes (temp + rename), so a crash mid-write cannot truncate a note.
 tempfile = "3"
 # Crash-safe writes of this app's own settings, outside the notes folder.
-tauri-kit-fs = "0.30"
-tauri-kit-state = "0.30"
+tauri-kit-fs = "0.32"
+tauri-kit-state = "0.32"
 # Changes other programs make to the notes folder, without the app's own writes.
-tauri-kit-watch = "0.30"
+tauri-kit-watch = "0.32"
 # Pasted image attachments: decodes the binary that crosses IPC as a base64 string.
 base64 = "0.22"
 # Full-text index over note bodies. An n-gram tokenizer gives partial matches in scripts
@@ -45,13 +45,13 @@ tauri-plugin-process = "2.3.1"
 ureq = { version = "3", features = ["json"] }
 # Secrets (BYO API key, publish token, remote credentials) in the OS credential store, never on
 # disk in plaintext. Test runs and development builds get entries of their own.
-tauri-kit-credentials = "0.30"
+tauri-kit-credentials = "0.32"
 # The local AI helper process: no console window, stopped together with everything it starts
 # (also when this app crashes), and a free loopback port for it to listen on.
-tauri-kit-sidecar = { version = "0.30", features = ["loopback-client"] }
+tauri-kit-sidecar = { version = "0.32", features = ["loopback-client"] }
 # Content-free failure reports: an allowlist-only report, queued in a file the person can read and
 # sent from it on this or a later launch — over rustls, so OpenSSL stays out of the graph.
-tauri-kit-diagnostics = { version = "0.30", features = ["appinsights-rustls"] }
+tauri-kit-diagnostics = { version = "0.32", features = ["appinsights-rustls"] }
 # Structured logging to the OS app log directory (app_log_dir). The `log` facade
 # (log::info!/warn!/error!) is used at call sites; the plugin wires the backend.
 log = "0.4"

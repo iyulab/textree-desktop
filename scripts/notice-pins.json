@@ -5,9 +5,9 @@
       "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
     }
   ],
-  "CsvHelper@33.1.0": [
+  "CsvHelper@34.0.0": [
     {
-      "source": "https://raw.githubusercontent.com/JoshClose/CsvHelper/5dad8b8b1d8b074f8353cfd482e939db788a8927/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/JoshClose/CsvHelper/a314ac89d1b528b13fbd15778372e4675aa5398f/LICENSE.txt",
       "sha256": "58d0d21c221a085b56fc3a5bdcc62a612149413df288d98d536ccbb221f249ac"
     }
   ],
@@ -37,39 +37,39 @@
       "sha256": "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d"
     }
   ],
-  "Microsoft.Data.Sqlite.Core@10.0.13": [
+  "Microsoft.Data.Sqlite.Core@11.0.0": [
     {
-      "source": "https://raw.githubusercontent.com/dotnet/dotnet/4099f83977f4d29604a9aeb971fb0a7bc1d5f699/LICENSE.TXT",
+      "source": "https://raw.githubusercontent.com/dotnet/dotnet/297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f/LICENSE.TXT",
       "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
     }
   ],
-  "Microsoft.EntityFrameworkCore.Abstractions@10.0.13": [
+  "Microsoft.EntityFrameworkCore.Abstractions@10.0.14": [
     {
-      "source": "https://raw.githubusercontent.com/dotnet/dotnet/4099f83977f4d29604a9aeb971fb0a7bc1d5f699/LICENSE.TXT",
+      "source": "https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT",
       "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
     }
   ],
-  "Microsoft.EntityFrameworkCore.Relational@10.0.13": [
+  "Microsoft.EntityFrameworkCore.Relational@10.0.14": [
     {
-      "source": "https://raw.githubusercontent.com/dotnet/dotnet/4099f83977f4d29604a9aeb971fb0a7bc1d5f699/LICENSE.TXT",
+      "source": "https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT",
       "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
     }
   ],
-  "Microsoft.EntityFrameworkCore.Sqlite.Core@10.0.13": [
+  "Microsoft.EntityFrameworkCore.Sqlite.Core@10.0.14": [
     {
-      "source": "https://raw.githubusercontent.com/dotnet/dotnet/4099f83977f4d29604a9aeb971fb0a7bc1d5f699/LICENSE.TXT",
+      "source": "https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT",
       "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
     }
   ],
-  "Microsoft.EntityFrameworkCore@10.0.13": [
+  "Microsoft.EntityFrameworkCore@10.0.14": [
     {
-      "source": "https://raw.githubusercontent.com/dotnet/dotnet/4099f83977f4d29604a9aeb971fb0a7bc1d5f699/LICENSE.TXT",
+      "source": "https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT",
       "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
     }
   ],
-  "Microsoft.Extensions.DependencyModel@10.0.13": [
+  "Microsoft.Extensions.DependencyModel@10.0.14": [
     {
-      "source": "https://raw.githubusercontent.com/dotnet/dotnet/4099f83977f4d29604a9aeb971fb0a7bc1d5f699/LICENSE.TXT",
+      "source": "https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT",
       "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
     }
   ],
@@ -239,9 +239,9 @@
       "sha256": "601b80e87b30b47c7b5389d3077fda67a37e7cb6b200405e4524217989c1fe92"
     }
   ],
-  "Markdig@1.4.2": [
+  "Markdig@1.6.0": [
     {
-      "source": "https://raw.githubusercontent.com/xoofx/markdig/6a410393ba74c5da30e21202a3a4ea463216829d/license.txt",
+      "source": "https://raw.githubusercontent.com/xoofx/markdig/8b4ffd59be3c5d7e80b5c097ec384e7c583ceb0f/license.txt",
       "sha256": "7423242b4ae72bccdf19a06cd3c20790df8519a164a08f37b31cb4a40034d827"
     }
   ],
@@ -251,9 +251,9 @@
       "sha256": "47f0ad8ba753eae5de6178291cd8f38bbb42d2368b177f8e11714ad17c701275"
     }
   ],
-  "System.ClientModel@1.16.0": [
+  "System.ClientModel@1.17.0": [
     {
-      "source": "https://raw.githubusercontent.com/Azure/azure-sdk-for-net/dcd5b3aadd7fe3ebc73a22408cb514bd18ec3e6f/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/Azure/azure-sdk-for-net/589eb9e6a05aec55b5fed98d9465e28b1e85739d/LICENSE.txt",
       "sha256": "9b45236978bb5cd5de992021769e1eeaa79f0116d3b02cf8ba065a1ed603d5fa"
     }
   ],
@@ -263,9 +263,9 @@
       "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
     }
   ],
-  "System.Numerics.Tensors@10.0.13": [
+  "System.Numerics.Tensors@10.0.14": [
     {
-      "source": "https://raw.githubusercontent.com/dotnet/dotnet/4099f83977f4d29604a9aeb971fb0a7bc1d5f699/LICENSE.TXT",
+      "source": "https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT",
       "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
     }
   ]
