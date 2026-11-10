@@ -562,6 +562,18 @@ pub async fn set_aside_sidecar(root_id: String, rel: String) -> Result<String, S
     off_main(move || commands::set_aside_sidecar(root, rel)).await
 }
 
+/// The sidebar's notes folders: read from the person's home folder, which may be a network drive.
+#[tauri::command]
+pub async fn workspace_list() -> Result<commands::WorkspaceOut, String> {
+    off_main(commands::workspace_list).await
+}
+
+/// Keeps an opened folder in the list (see [`commands::workspace_add`]).
+#[tauri::command]
+pub async fn workspace_add(path: String) -> Result<commands::WorkspaceOut, String> {
+    off_main(move || commands::workspace_add(path)).await
+}
+
 /// The first folder is made and seeded in Documents, which may be redirected to a synced drive.
 #[tauri::command]
 pub async fn ensure_default_vault(app: AppHandle) -> Result<DefaultVault, String> {

@@ -25,6 +25,31 @@ export async function registerRoot(path: string): Promise<RootId> {
   return invoke<RootId>("register_root", { path });
 }
 
+/** One notes folder of the sidebar, as kept on this device. */
+export interface WorkspaceRoot {
+  id: RootId;
+  path: string;
+  label?: string;
+}
+
+/** The sidebar's notes folders. `readOnly`: a newer release wrote the list, and changes are not kept. */
+export interface Workspace {
+  roots: WorkspaceRoot[];
+  readOnly: boolean;
+  /** Where an unreadable list was moved this launch. */
+  setAside: string | null;
+}
+
+/** The sidebar's notes folders as kept on this device. Each id is already registered. */
+export async function workspaceList(): Promise<Workspace> {
+  return invoke<Workspace>("workspace_list");
+}
+
+/** Keeps the notes folder at `path` in the list, once — every folder the window opens. */
+export async function workspaceAdd(path: string): Promise<Workspace> {
+  return invoke<Workspace>("workspace_add", { path });
+}
+
 export async function openVault(rootId: RootId): Promise<TreeNode[]> {
   return invoke<TreeNode[]>("open_vault", { rootId });
 }
