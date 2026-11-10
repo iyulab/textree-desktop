@@ -57,17 +57,21 @@ fn raw_connection() -> Option<String> {
         .clone()
 }
 
-/// The raw connection string to forward to the .NET host on spawn, so a single embedded string
-/// activates both egress paths. `None` ⇒ host telemetry also stays off.
-pub fn host_connection() -> Option<String> {
-    raw_connection()
+/// The variable the AI helper is told its reports folder in — this process's own `reports`
+/// folder, so the helper's failures are one more segment of the same stream, verified against the
+/// same registry and sent from here. The helper never picks a folder, and never sends.
+pub const HOST_REPORTS_VAR: &str = "TEXTREE_REPORTS_DIR";
+
+/// Where this process keeps its reports, under the app's log folder.
+pub fn reports_dir(log_dir: &Path) -> std::path::PathBuf {
+    log_dir.join("reports")
 }
 
 /// Starts recording failures into `log_dir`, and — when telemetry is on — sends in the background
 /// what earlier launches recorded and could not send, and this launch's `app.launch`. Never blocks
 /// and never fails: telemetry that cannot work stays quiet.
 pub fn start(log_dir: &Path) {
-    let dir = log_dir.join("reports");
+    let dir = reports_dir(log_dir);
     // An earlier release kept one `reports.jsonl`; what it had not sent still goes, once.
     let _ = adopt(
         &dir,
@@ -196,6 +200,25 @@ mod tests {
         assert!(
             lines.contains("\"VaultOpenFailed\"") && lines.contains("\"os_error_code\":\"5\""),
             "{lines}"
+        );
+    }
+
+    /// A report the AI helper writes (its own test writes the same line — `FailureReportsTests`)
+    /// verifies against this registry, so it is sent with the shell's own.
+    #[test]
+    fn a_report_of_the_ai_helper_verifies_against_the_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("host.jsonl");
+        std::fs::copy("src/telemetry/host-report.golden.jsonl", &file).unwrap();
+        let pending =
+            tauri_kit_diagnostics::pending_reports(&REGISTRY, &file, &dir.path().join("host.sent"))
+                .unwrap();
+        let reports: Vec<_> = pending.into_iter().flat_map(|p| p.items).collect();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].layer, "textree-host");
+        assert_eq!(
+            reports[0].details.get("event").map(String::as_str),
+            Some("model.download.failed")
         );
     }
 

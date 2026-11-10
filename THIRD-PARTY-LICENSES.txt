@@ -1,7 +1,7 @@
 Third-party licenses
 ====================
 
-This program includes the following 630 third-party packages.
+This program includes the following 631 third-party packages.
 
 ------------------------------------------------------------------------------
 adler2 2.0.1
@@ -35944,6 +35944,13 @@ License text from: https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3
 Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
 
 Same license text as Microsoft.Extensions.DependencyModel 10.0.14.
+
+------------------------------------------------------------------------------
+TauriKit.Diagnostics 0.32.0
+License: MIT
+Upstream: https://github.com/iyulab/tauri-kit
+
+Same license text as tauri-kit-credentials 0.32.0.
 
 ------------------------------------------------------------------------------
 TauriKit.Sidecar.Loopback 0.32.0

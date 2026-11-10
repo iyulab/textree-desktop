@@ -312,13 +312,12 @@ pub fn spawn_host(
         return;
     }
     let mut cmd = Command::new(&exe);
-    // Forward the single embedded connection string (if telemetry is compiled in and
-    // configured) so the host's own telemetry activates from the same source of truth.
-    // Compile-time embedding means this is not already in the process env — it must be
-    // passed explicitly. Absent => no env set => host telemetry stays off (unchanged).
-    if let Some(conn) = crate::telemetry::host_connection() {
-        cmd.env(crate::telemetry::ENV_VAR, conn);
-    }
+    // The helper writes its failures into this process's reports folder; this process verifies
+    // and sends them. The helper is never given a connection string.
+    cmd.env(
+        crate::telemetry::HOST_REPORTS_VAR,
+        crate::telemetry::reports_dir(&log_dir),
+    );
     for (k, v) in &extra_env {
         cmd.env(k, v);
     }

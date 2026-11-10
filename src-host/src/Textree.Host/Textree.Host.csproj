@@ -18,7 +18,12 @@
     <PackageReference Include="IronProw.IronHive" />
     <PackageReference Include="TauriKit.Sidecar.Loopback" />
     <PackageReference Include="TauriKit.Sidecar.Loopback.AspNetCore" />
+    <PackageReference Include="TauriKit.Diagnostics" />
     <PackageReference Include="sqlite-vec" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The registry the shell verifies the host's reports with: one file, compiled into both. -->
+    <EmbeddedResource Include="../../../src-tauri/src/telemetry/registry.json" LogicalName="textree-registry.json" />
   </ItemGroup>
 </Project>

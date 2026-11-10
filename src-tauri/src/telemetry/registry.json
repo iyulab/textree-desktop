@@ -2,6 +2,23 @@
   "reports": {
     "textree-desktop": {
       "os_error_code": { "kind": "count", "max": 1000 }
+    },
+    "textree-host": {
+      "event": {
+        "kind": "choice",
+        "values": [
+          "model.download.failed",
+          "model.load.failed",
+          "embedder.init.failed",
+          "index.failed",
+          "reindex.failed",
+          "generation.prepare.failed"
+        ]
+      },
+      "phase": { "kind": "choice", "values": ["Idle", "Downloading", "Loading", "Ready", "Error"] },
+      "model_slot": { "kind": "choice", "values": ["embedder", "generator"] },
+      "cpu_count": { "kind": "count", "bucket": [0, 2, 4, 8, 16, 32, 64] },
+      "ram_gb": { "kind": "count", "bucket": [0, 8, 16, 32, 64] }
     }
   }
 }

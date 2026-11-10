@@ -18,6 +18,7 @@
     <PackageVersion Include="IronProw.IronHive" Version="0.19.0" />
     <PackageVersion Include="TauriKit.Sidecar.Loopback" Version="0.32.0" />
     <PackageVersion Include="TauriKit.Sidecar.Loopback.AspNetCore" Version="0.32.0" />
+    <PackageVersion Include="TauriKit.Diagnostics" Version="0.32.0" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="11.0.0" />
   </ItemGroup>

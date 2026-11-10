@@ -632,7 +632,7 @@ The helper that indexes notes and runs local models is a self-contained .NET pro
 runtime ships inside it, as the runtime packs listed below, whose own third-party notices are
 reproduced in THIRD-PARTY-LICENSES.txt with the rest.
 
-The 73 NuGet packages below put code into the helper (runtime or native assets).
+The 74 NuGet packages below put code into the helper (runtime or native assets).
 
 | Component | Version | License | Upstream |
 | --- | --- | --- | --- |
@@ -701,6 +701,7 @@ The 73 NuGet packages below put code into the helper (runtime or native assets).
 | `System.Management` | 7.0.2 | MIT | https://github.com/dotnet/runtime |
 | `System.Memory.Data` | 10.0.10 | MIT | https://github.com/dotnet/dotnet |
 | `System.Numerics.Tensors` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
+| `TauriKit.Diagnostics` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `TauriKit.Sidecar.Loopback` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `TauriKit.Sidecar.Loopback.AspNetCore` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `Tiktoken.Core` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |
