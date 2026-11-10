@@ -82,7 +82,12 @@ mod tests {
     }
 
     fn kept(rel: &str, text: &str, at: u64) -> Kept {
-        Kept { rel: rel.into(), text: text.into(), base: "before".into(), at }
+        Kept {
+            rel: rel.into(),
+            text: text.into(),
+            base: "before".into(),
+            at,
+        }
     }
 
     #[test]
@@ -92,7 +97,10 @@ mod tests {
         let second = keep(&dir, &kept("b.md", "b", 20), plain_write).unwrap();
         let first = keep(&dir, &kept("a.md", "a", 10), plain_write).unwrap();
         let same_moment = keep(&dir, &kept("a.md", "a again", 10), plain_write).unwrap();
-        assert_ne!(first, same_moment, "two edits kept in the same moment are both kept");
+        assert_ne!(
+            first, same_moment,
+            "two edits kept in the same moment are both kept"
+        );
 
         let listed: Vec<String> = list(&dir).into_iter().map(|(_, k)| k.text).collect();
         assert_eq!(listed, ["a", "a again", "b"]);

@@ -55,7 +55,9 @@ fn agent() -> &'static ureq::Agent {
 #[derive(Debug)]
 struct Idle;
 
-impl ureq::unversioned::transport::Connector<Box<dyn ureq::unversioned::transport::Transport>> for Idle {
+impl ureq::unversioned::transport::Connector<Box<dyn ureq::unversioned::transport::Transport>>
+    for Idle
+{
     type Out = IdleTransport;
 
     fn connect(
@@ -71,10 +73,15 @@ impl ureq::unversioned::transport::Connector<Box<dyn ureq::unversioned::transpor
 struct IdleTransport(Box<dyn ureq::unversioned::transport::Transport>);
 
 /// The phase's own deadline, or [`IDLE`] from now when that comes first.
-fn within_idle(timeout: ureq::unversioned::transport::NextTimeout) -> ureq::unversioned::transport::NextTimeout {
+fn within_idle(
+    timeout: ureq::unversioned::transport::NextTimeout,
+) -> ureq::unversioned::transport::NextTimeout {
     let idle = ureq::unversioned::transport::time::Duration::from(IDLE);
     if timeout.after > idle {
-        ureq::unversioned::transport::NextTimeout { after: idle, reason: timeout.reason }
+        ureq::unversioned::transport::NextTimeout {
+            after: idle,
+            reason: timeout.reason,
+        }
     } else {
         timeout
     }
@@ -93,7 +100,10 @@ impl ureq::unversioned::transport::Transport for IdleTransport {
         self.0.transmit_output(amount, within_idle(timeout))
     }
 
-    fn await_input(&mut self, timeout: ureq::unversioned::transport::NextTimeout) -> Result<bool, ureq::Error> {
+    fn await_input(
+        &mut self,
+        timeout: ureq::unversioned::transport::NextTimeout,
+    ) -> Result<bool, ureq::Error> {
         self.0.await_input(within_idle(timeout))
     }
 
@@ -258,7 +268,8 @@ impl HttpStream {
             }
             Some(body) => {
                 let url = format!("{}/{service}", self.base);
-                let mut req = agent().post(&url)
+                let mut req = agent()
+                    .post(&url)
                     .header("Content-Type", format!("application/x-{service}-request"))
                     .header("Accept", format!("application/x-{service}-result"));
                 if let Some(auth) = &authorization {
@@ -315,7 +326,9 @@ impl HttpStream {
                 "this address does not serve a git repository over smart HTTP",
             ));
         }
-        Ok(Box::new(Answer(Box::new(response.into_body().into_reader()))))
+        Ok(Box::new(Answer(Box::new(
+            response.into_body().into_reader(),
+        ))))
     }
 }
 
@@ -549,26 +562,53 @@ mod tests {
 
     #[test]
     fn a_server_that_stops_sending_partway_is_given_up_on() {
-        let port = answering(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nxx", b"", None);
+        let port = answering(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nxx",
+            b"",
+            None,
+        );
         let started = std::time::Instant::now();
-        let response = agent().get(&format!("http://127.0.0.1:{port}/")).call().unwrap();
+        let response = agent()
+            .get(&format!("http://127.0.0.1:{port}/"))
+            .call()
+            .unwrap();
         let mut body = Vec::new();
         let read = response.into_body().into_reader().read_to_end(&mut body);
-        assert!(read.is_err(), "the body never completes, so reading it must fail");
+        assert!(
+            read.is_err(),
+            "the body never completes, so reading it must fail"
+        );
         let waited = started.elapsed();
-        assert!(waited >= IDLE && waited < IDLE + Duration::from_secs(10), "gave up after {waited:?}");
+        assert!(
+            waited >= IDLE && waited < IDLE + Duration::from_secs(10),
+            "gave up after {waited:?}"
+        );
     }
 
     #[test]
     fn a_body_that_keeps_arriving_is_not_cut_however_long_it_takes() {
         // Ten bytes two seconds apart: twenty seconds in all, four times the silence allowed.
-        let port = answering(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n", b"0123456789", Some(Duration::from_secs(2)));
+        let port = answering(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n",
+            b"0123456789",
+            Some(Duration::from_secs(2)),
+        );
         let started = std::time::Instant::now();
-        let response = agent().get(&format!("http://127.0.0.1:{port}/")).call().unwrap();
+        let response = agent()
+            .get(&format!("http://127.0.0.1:{port}/"))
+            .call()
+            .unwrap();
         let mut body = String::new();
-        response.into_body().into_reader().read_to_string(&mut body).unwrap();
+        response
+            .into_body()
+            .into_reader()
+            .read_to_string(&mut body)
+            .unwrap();
         assert_eq!(body, "0123456789");
-        assert!(started.elapsed() > IDLE * 3, "the test must outlast the silence allowed");
+        assert!(
+            started.elapsed() > IDLE * 3,
+            "the test must outlast the silence allowed"
+        );
     }
 
     #[test]
@@ -581,11 +621,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (repo, _) = recorded(dir.path(), b"x");
         install();
-        let mut remote = repo.remote_anonymous(&format!("http://127.0.0.1:{port}/repo.git")).unwrap();
+        let mut remote = repo
+            .remote_anonymous(&format!("http://127.0.0.1:{port}/repo.git"))
+            .unwrap();
         let started = std::time::Instant::now();
         let err = with_credentials(None, || remote.fetch(&[NOTES], None, None)).unwrap_err();
-        assert!(started.elapsed() < IDLE + Duration::from_secs(10), "took {:?}", started.elapsed());
-        assert!(err.message().contains("could not reach the remote"), "{}", err.message());
+        assert!(
+            started.elapsed() < IDLE + Duration::from_secs(10),
+            "took {:?}",
+            started.elapsed()
+        );
+        assert!(
+            err.message().contains("could not reach the remote"),
+            "{}",
+            err.message()
+        );
     }
 
     fn bare(root: &Path) {

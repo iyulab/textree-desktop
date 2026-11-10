@@ -101,7 +101,12 @@ mod tests {
         }
         remove(tmp.path(), "ab").unwrap();
         assert!(!tmp.path().join("ab").exists());
-        assert_eq!(read(&file(tmp.path(), "cd", "a.md").unwrap()).unwrap().as_deref(), Some("typed"));
+        assert_eq!(
+            read(&file(tmp.path(), "cd", "a.md").unwrap())
+                .unwrap()
+                .as_deref(),
+            Some("typed")
+        );
         remove(tmp.path(), "ab").unwrap(); // already gone is fine
     }
 }

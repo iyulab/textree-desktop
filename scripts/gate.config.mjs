@@ -38,6 +38,7 @@ export default {
     { name: "pins", cmd: "npm run pins:check" },
     { name: "notices", cmd: "npm run notices:check" }, // reads the host's restored graph
     { name: "host-test", cmd: `dotnet test ${HOST_SOLUTION} --no-restore`, local: true },
+    { name: "fmt", cmd: `cargo fmt --manifest-path ${CARGO_MANIFEST} --check` },
     { name: "cargo-test", cmd: `cargo test --manifest-path ${CARGO_MANIFEST}` },
     { name: "clippy", cmd: `cargo clippy --manifest-path ${CARGO_MANIFEST} --all-targets -- -D warnings`, local: true },
     ship({ name: "e2e", cmd: "npm run e2e:run" }),

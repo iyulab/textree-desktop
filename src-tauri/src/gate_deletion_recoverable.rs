@@ -14,9 +14,7 @@
 #![cfg(test)]
 
 use crate::commands::delete_node;
-use crate::git_engine::{
-    commit_identities, commit_paths, WhenUnchanged, NOTES_REF, SNAPSHOT_REF,
-};
+use crate::git_engine::{commit_identities, commit_paths, WhenUnchanged, NOTES_REF, SNAPSHOT_REF};
 use git2::Repository;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -49,7 +47,11 @@ const SHAPES: &[Shape] = &[
     },
     Shape {
         name: "a whole folder of notes",
-        files: &[("sub/a.md", "# a"), ("sub/b.md", "# b"), ("sub/deep/c.md", "# c")],
+        files: &[
+            ("sub/a.md", "# a"),
+            ("sub/b.md", "# b"),
+            ("sub/deep/c.md", "# c"),
+        ],
         recorded: &[],
         edited_after: &[],
         delete: "sub",
@@ -208,8 +210,8 @@ fn deleting_the_same_contents_twice_records_two_moments() {
     // history can see it. Asking when the note was last kept has to answer with the second
     // deletion, not the first — otherwise the note is dated to a moment it was still in the
     // folder, and a restore hands back whatever was recorded in between.
-    let kept_at = crate::git_engine::last_written(&repo, SNAPSHOT_REF, &["a.md".to_string()])
-        .unwrap();
+    let kept_at =
+        crate::git_engine::last_written(&repo, SNAPSHOT_REF, &["a.md".to_string()]).unwrap();
     let mut walk = repo.revwalk().unwrap();
     walk.push_ref(SNAPSHOT_REF).unwrap();
     let newest = repo

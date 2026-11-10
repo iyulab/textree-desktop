@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::io::BufRead;
-use std::process::Command;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
 use std::path::Path;
+use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 use tauri_kit_sidecar::loopback::{Client, Loopback, LoopbackOptions};
 
@@ -121,7 +121,11 @@ pub struct HostHandle {
 
 impl HostHandle {
     pub fn status(&self) -> HostStatus {
-        self.status.lock().unwrap_or_else(|e| e.into_inner()).0.clone()
+        self.status
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .0
+            .clone()
     }
     fn set_status(&self, s: HostStatus) {
         self.status.lock().unwrap_or_else(|e| e.into_inner()).0 = s;
@@ -129,7 +133,9 @@ impl HostHandle {
     /// The host's exit status, if the process has exited. Does not wait.
     fn child_exit(&self) -> Option<std::process::ExitStatus> {
         let mut guard = self.child.lock().unwrap_or_else(|e| e.into_inner());
-        guard.as_mut().and_then(|child| child.try_status().ok().flatten())
+        guard
+            .as_mut()
+            .and_then(|child| child.try_status().ok().flatten())
     }
     /// Atomically claim the right to spawn the host: transition to `Starting` only if no spawn is
     /// already in flight (`Starting`) or up (`Ready`), all under a single lock so the check-and-set
@@ -147,19 +153,26 @@ impl HostHandle {
         true
     }
     pub fn endpoint(&self) -> Option<Client> {
-        self.endpoint.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.endpoint
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
     pub fn set_current_vault(&self, vault: String) {
         *self.current_vault.lock().unwrap_or_else(|e| e.into_inner()) = Some(vault);
     }
     pub fn current_vault(&self) -> Option<String> {
-        self.current_vault.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.current_vault
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
     /// Whether `vault` is the folder open now, however its path is spelled.
     pub fn is_current_vault(&self, vault: &str) -> bool {
         use crate::search::vault_identity;
-        self.current_vault()
-            .is_some_and(|open| vault_identity(Path::new(&open)) == vault_identity(Path::new(vault)))
+        self.current_vault().is_some_and(|open| {
+            vault_identity(Path::new(&open)) == vault_identity(Path::new(vault))
+        })
     }
     /// Bump the ask-stream generation and return the new value.
     /// Used by `ask` for single-flight cancellation (independent of health-poll `generation`).
@@ -173,41 +186,74 @@ impl HostHandle {
     /// Returns the last-known value of the host's generatorReady flag.
     /// Updated on each successful /health poll; does not gate the Ready transition.
     pub fn generator_ready(&self) -> bool {
-        *self.generator_ready.lock().unwrap_or_else(|e| e.into_inner())
+        *self
+            .generator_ready
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
     fn set_generator_ready(&self, v: bool) {
-        *self.generator_ready.lock().unwrap_or_else(|e| e.into_inner()) = v;
+        *self
+            .generator_ready
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = v;
     }
     /// Returns the last-known generator load error (None = healthy / still preparing).
     pub fn generator_error(&self) -> Option<String> {
-        self.generator_error.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.generator_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
     fn set_generator_error(&self, v: Option<String>) {
-        *self.generator_error.lock().unwrap_or_else(|e| e.into_inner()) = v;
+        *self
+            .generator_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = v;
     }
     /// Returns the last-known embedder load error (None = healthy / still preparing).
     pub fn embedder_error(&self) -> Option<String> {
-        self.embedder_error.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.embedder_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
     fn set_embedder_error(&self, v: Option<String>) {
-        *self.embedder_error.lock().unwrap_or_else(|e| e.into_inner()) = v;
+        *self
+            .embedder_error
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = v;
     }
     /// Returns the last-known embedder download progress (None = not downloading/loading).
     pub fn embedder_download(&self) -> Option<DownloadSnapshot> {
-        self.embedder_download.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.embedder_download
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
     fn set_embedder_download(&self, v: Option<DownloadSnapshot>) {
-        *self.embedder_download.lock().unwrap_or_else(|e| e.into_inner()) = v;
+        *self
+            .embedder_download
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = v;
     }
     /// Returns the last-known generator download progress (None = not downloading/loading).
     pub fn generator_download(&self) -> Option<DownloadSnapshot> {
-        self.generator_download.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.generator_download
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
     fn set_generator_download(&self, v: Option<DownloadSnapshot>) {
-        *self.generator_download.lock().unwrap_or_else(|e| e.into_inner()) = v;
+        *self
+            .generator_download
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = v;
     }
     pub fn active_provider(&self) -> String {
-        self.active_provider.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.active_provider
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
@@ -277,7 +323,10 @@ pub fn spawn_host(
         cmd.env(k, v);
     }
     let options = host_options(&log_dir);
-    *handle.active_provider.lock().unwrap_or_else(|e| e.into_inner()) = active_provider;
+    *handle
+        .active_provider
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = active_provider;
     // Status was already claimed as Starting by try_begin_spawn at the top.
     let my_gen = handle.generation.fetch_add(1, Ordering::SeqCst) + 1;
     let h = handle.clone();
@@ -355,7 +404,11 @@ fn poll_action(
 /// download progress — which begins after embedder_ready — updates live); back off to 10s only
 /// in steady state (host ready and nothing downloading) to keep the host log quiet.
 fn poll_interval(ready: bool, any_download_active: bool) -> Duration {
-    if ready && !any_download_active { READY_POLL_INTERVAL } else { POLL_INTERVAL }
+    if ready && !any_download_active {
+        READY_POLL_INTERVAL
+    } else {
+        POLL_INTERVAL
+    }
 }
 
 fn poll_health(handle: Arc<HostHandle>, host: Client, my_gen: u64) {
@@ -465,7 +518,11 @@ pub fn shutdown_host(handle: &HostHandle) {
 /// Resolves the bundled host exe from a Tauri resource directory: `<resource>/host/textree-host(.exe)`.
 /// Returns the absolute path, or `None` if it is missing (e.g. an unbundled dev build).
 pub fn host_exe_from_resource_dir(resource: &Path) -> Option<String> {
-    let name = if cfg!(windows) { "textree-host.exe" } else { "textree-host" };
+    let name = if cfg!(windows) {
+        "textree-host.exe"
+    } else {
+        "textree-host"
+    };
     let exe = resource.join("host").join(name);
     if exe.exists() {
         Some(exe.to_string_lossy().into_owned())
@@ -504,7 +561,9 @@ struct SearchResponseDto {
 }
 
 pub fn parse_search_response(body: &str) -> Option<Vec<SemanticHit>> {
-    serde_json::from_str::<SearchResponseDto>(body).ok().map(|r| r.results)
+    serde_json::from_str::<SearchResponseDto>(body)
+        .ok()
+        .map(|r| r.results)
 }
 
 /// Payload returned by the `host_status` IPC command.
@@ -543,7 +602,10 @@ pub fn host_status(host: State<'_, Arc<HostHandle>>) -> HostStatusPayload {
 /// header at all, producing a false 401 against a server that requires auth even though Save
 /// would work fine. `lookup` is injected so the fallback branch is unit-testable without a
 /// real network call.
-fn resolve_test_key(api_key: Option<String>, lookup: impl FnOnce() -> Option<String>) -> Option<String> {
+fn resolve_test_key(
+    api_key: Option<String>,
+    lookup: impl FnOnce() -> Option<String>,
+) -> Option<String> {
     api_key.filter(|k| !k.is_empty()).or_else(lookup)
 }
 
@@ -589,8 +651,9 @@ pub async fn test_byo_connection(
     base_url: String,
     api_key: Option<String>,
 ) -> Result<ByoConnection, String> {
-    let exe = resolve_host(&app)
-        .ok_or_else(|| "The AI helper isn't installed, so the connection can't be checked.".to_string())?;
+    let exe = resolve_host(&app).ok_or_else(|| {
+        "The AI helper isn't installed, so the connection can't be checked.".to_string()
+    })?;
     crate::commands::off_main(move || {
         let key = resolve_test_key(api_key, crate::byo_secret::get_api_key);
         probe_byo_connection(&exe, &preset, &base_url, key.as_deref())
@@ -614,13 +677,21 @@ pub fn probe_byo_connection(
     if let Some(key) = api_key.filter(|k| !k.is_empty()) {
         cmd.env("TEXTREE_BYO_API_KEY", key);
     }
-    let mut child = Sidecar::spawn(cmd, Output::Lines { stdout: None, stderr: Sink::Discard })
-        .map_err(|e| format!("The AI helper could not be started: {e}"))?;
+    let mut child = Sidecar::spawn(
+        cmd,
+        Output::Lines {
+            stdout: None,
+            stderr: Sink::Discard,
+        },
+    )
+    .map_err(|e| format!("The AI helper could not be started: {e}"))?;
     let line = child.wait_line(PROBE_DEADLINE, |l| l.trim_start().starts_with('{'));
     let _ = child.shutdown(Duration::ZERO);
     match line.map_err(|e| e.to_string())? {
         LineReadiness::Line(l) => read_probe_outcome(&l),
-        LineReadiness::Exited(_) => Err("The AI helper stopped before it could check the connection.".to_string()),
+        LineReadiness::Exited(_) => {
+            Err("The AI helper stopped before it could check the connection.".to_string())
+        }
         LineReadiness::TimedOut => Err("The server didn't answer in time.".to_string()),
     }
 }
@@ -630,7 +701,9 @@ fn read_probe_outcome(line: &str) -> Result<ByoConnection, String> {
     let o: ProbeOutcome = serde_json::from_str(line)
         .map_err(|_| "The AI helper gave an answer this version doesn't understand.".to_string())?;
     if o.ok {
-        return Ok(ByoConnection { model_count: o.model_count });
+        return Ok(ByoConnection {
+            model_count: o.model_count,
+        });
     }
     Err(match (o.status, o.failure.as_deref()) {
         (Some(401) | Some(403), _) | (None, Some("unauthorized")) => "The server didn't accept the API key.".to_string(),
@@ -670,7 +743,9 @@ pub fn cancel_ask(host: State<'_, Arc<HostHandle>>) {
 /// Graceful: no-op when the host is not up or not Ready.
 #[tauri::command]
 pub async fn prepare_generation(host: State<'_, Arc<HostHandle>>) -> Result<(), String> {
-    let Some(endpoint) = host.endpoint() else { return Ok(()) };
+    let Some(endpoint) = host.endpoint() else {
+        return Ok(());
+    };
     if !matches!(host.status(), HostStatus::Ready) {
         return Ok(());
     }
@@ -679,7 +754,9 @@ pub async fn prepare_generation(host: State<'_, Arc<HostHandle>>) -> Result<(), 
     // READY_POLL_INTERVAL), bouncing the frontend retry loop straight back to 'error'.
     host.set_generator_error(None);
     tauri::async_runtime::spawn_blocking(move || {
-        let _ = endpoint.within(Duration::from_secs(10)).post("/prepare-generation");
+        let _ = endpoint
+            .within(Duration::from_secs(10))
+            .post("/prepare-generation");
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -704,10 +781,20 @@ pub fn prepare_ai_model(
         return Ok(()); // no host available → graceful degradation
     };
     let log_dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
-    let api_key = if preset.is_some() { crate::byo_secret::get_api_key() } else { None };
+    let api_key = if preset.is_some() {
+        crate::byo_secret::get_api_key()
+    } else {
+        None
+    };
     let active_provider = preset.clone().unwrap_or_else(|| "local".to_string());
     let extra_env = resolve_byo_env(preset, base_url, model, api_key);
-    spawn_host(host.inner().clone(), exe, log_dir, extra_env, active_provider);
+    spawn_host(
+        host.inner().clone(),
+        exe,
+        log_dir,
+        extra_env,
+        active_provider,
+    );
     Ok(())
 }
 
@@ -729,10 +816,20 @@ pub fn restart_ai_host(
         return Ok(());
     };
     let log_dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
-    let api_key = if preset.is_some() { crate::byo_secret::get_api_key() } else { None };
+    let api_key = if preset.is_some() {
+        crate::byo_secret::get_api_key()
+    } else {
+        None
+    };
     let active_provider = preset.clone().unwrap_or_else(|| "local".to_string());
     let extra_env = resolve_byo_env(preset, base_url, model, api_key);
-    spawn_host(host.inner().clone(), exe, log_dir, extra_env, active_provider);
+    spawn_host(
+        host.inner().clone(),
+        exe,
+        log_dir,
+        extra_env,
+        active_provider,
+    );
     Ok(())
 }
 
@@ -776,8 +873,13 @@ pub async fn semantic_search(
             "scopePath": scope,
             "limit": limit,
         });
-        match endpoint.within(Duration::from_secs(10)).post_json("/search", &payload.to_string()) {
-            Ok(resp) if resp.is_success() => Ok(parse_search_response(&resp.body).unwrap_or_default()),
+        match endpoint
+            .within(Duration::from_secs(10))
+            .post_json("/search", &payload.to_string())
+        {
+            Ok(resp) if resp.is_success() => {
+                Ok(parse_search_response(&resp.body).unwrap_or_default())
+            }
             Ok(resp) => Err(format!("http status: {}", resp.status)),
             Err(e) => Err(e.to_string()),
         }
@@ -880,7 +982,10 @@ pub fn parse_chat_line(line: &str) -> Option<ChatLine> {
     let choice = chunk.choices.into_iter().next()?;
     let parsed = ChatLine {
         text: choice.delta.map(|d| d.content).filter(|t| !t.is_empty()),
-        end: choice.finish_reason.as_deref().and_then(AnswerEnd::from_reason),
+        end: choice
+            .finish_reason
+            .as_deref()
+            .and_then(AnswerEnd::from_reason),
     };
     (parsed != ChatLine::default()).then_some(parsed)
 }
@@ -957,7 +1062,9 @@ pub async fn ask(
                 return Ok(None);
             }
             let line = line.map_err(|e| e.to_string())?;
-            let Some(parsed) = parse_chat_line(&line) else { continue };
+            let Some(parsed) = parse_chat_line(&line) else {
+                continue;
+            };
             if let Some(text) = parsed.text {
                 let _ = on_event_inner.send(AskEvent::Token { text });
             }
@@ -973,7 +1080,9 @@ pub async fn ask(
             // Guard against sending Citations/Done on a superseded channel (cancelled ask).
             // If another ask has since started, our channel is stale — skip the epilogue.
             if host.ask_generation() == my_gen {
-                let _ = on_event.send(AskEvent::Citations { hits: citation_hits });
+                let _ = on_event.send(AskEvent::Citations {
+                    hits: citation_hits,
+                });
                 let _ = on_event.send(AskEvent::Done { reason });
             }
         }
@@ -1000,23 +1109,31 @@ pub fn index_note(handle: &HostHandle, vault: &str, path: &str) {
         log::debug!("[host] {path} is a note of a folder that is not open; not indexed");
         return;
     }
-    let Some(host) = handle.endpoint() else { return };
+    let Some(host) = handle.endpoint() else {
+        return;
+    };
     if !matches!(handle.status(), HostStatus::Ready) {
         return;
     }
     let payload = serde_json::json!({ "vaultPath": vault, "path": path });
-    let _ = host.within(Duration::from_secs(10)).post_json("/index", &payload.to_string());
+    let _ = host
+        .within(Duration::from_secs(10))
+        .post_json("/index", &payload.to_string());
 }
 
 /// Fire-and-forget full vault reindex. Silent on any error (degrade, don't block).
 /// Runs without asking because it only reads: nothing a person wrote is altered.
 pub fn reindex_vault(handle: &HostHandle, vault: &str) {
-    let Some(host) = handle.endpoint() else { return };
+    let Some(host) = handle.endpoint() else {
+        return;
+    };
     if !matches!(handle.status(), HostStatus::Ready) {
         return;
     }
     let payload = serde_json::json!({ "vaultPath": vault });
-    let _ = host.within(Duration::from_secs(10)).post_json("/reindex", &payload.to_string());
+    let _ = host
+        .within(Duration::from_secs(10))
+        .post_json("/reindex", &payload.to_string());
 }
 
 // ---------------------------------------------------------------------------
@@ -1089,7 +1206,11 @@ mod tests {
         let tmp = std::env::temp_dir().join(format!("textree-host-resolve-{}", std::process::id()));
         let host_dir = tmp.join("host");
         std::fs::create_dir_all(&host_dir).unwrap();
-        let name = if cfg!(windows) { "textree-host.exe" } else { "textree-host" };
+        let name = if cfg!(windows) {
+            "textree-host.exe"
+        } else {
+            "textree-host"
+        };
         let exe = host_dir.join(name);
         std::fs::write(&exe, b"stub").unwrap();
 
@@ -1113,7 +1234,13 @@ mod tests {
         handle.set_status(HostStatus::Ready); // pretend the host is already running
         let tmp = std::env::temp_dir().join("textree-host-guard");
         // A bogus exe would fail to spawn and flip status to Unavailable WITHOUT the guard.
-        spawn_host(handle.clone(), "this-exe-does-not-exist".into(), tmp, Vec::new(), "local".to_string());
+        spawn_host(
+            handle.clone(),
+            "this-exe-does-not-exist".into(),
+            tmp,
+            Vec::new(),
+            "local".to_string(),
+        );
         assert!(
             matches!(handle.status(), HostStatus::Ready),
             "guard must prevent re-spawn when already Starting/Ready"
@@ -1123,7 +1250,10 @@ mod tests {
     #[test]
     fn try_begin_spawn_claims_then_rejects_second_caller() {
         let handle = HostHandle::default(); // status = Unavailable
-        assert!(handle.try_begin_spawn(), "first claim from a non-running host must win");
+        assert!(
+            handle.try_begin_spawn(),
+            "first claim from a non-running host must win"
+        );
         assert!(
             !handle.try_begin_spawn(),
             "second claim must lose — a spawn is already in flight (Starting)"
@@ -1154,7 +1284,10 @@ mod tests {
             .into_iter()
             .map(|j| j.join().unwrap() as usize)
             .sum();
-        assert_eq!(winners, 1, "exactly one concurrent caller may claim the spawn");
+        assert_eq!(
+            winners, 1,
+            "exactly one concurrent caller may claim the spawn"
+        );
     }
 
     #[test]
@@ -1174,7 +1307,10 @@ mod tests {
         assert!(!handle.is_current_vault(&a_str), "no vault is open yet");
 
         handle.set_current_vault(b_str.to_string());
-        assert!(!handle.is_current_vault(&a_str), "a note of the folder open before is not indexed");
+        assert!(
+            !handle.is_current_vault(&a_str),
+            "a note of the folder open before is not indexed"
+        );
         assert!(handle.is_current_vault(&b_str));
         // The same folder spelled another way is still the same folder.
         let detour = b.path().join("sub").join("..");
@@ -1238,23 +1374,36 @@ mod tests {
         };
         poller.join().unwrap();
         assert!(matches!(handle.status(), HostStatus::Unavailable));
-        assert!(started.elapsed() < Duration::from_secs(10), "waited {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "waited {:?}",
+            started.elapsed()
+        );
     }
 
     #[test]
     fn poll_action_becomes_ready_on_embedder_ready() {
-        assert_eq!(poll_action(false, true, false, false), PollAction::BecomeReady);
+        assert_eq!(
+            poll_action(false, true, false, false),
+            PollAction::BecomeReady
+        );
     }
 
     #[test]
     fn poll_action_embedder_ready_beats_ceiling() {
         // Embedder up right at the ceiling still transitions to Ready (not GiveUp).
-        assert_eq!(poll_action(false, true, false, true), PollAction::BecomeReady);
+        assert_eq!(
+            poll_action(false, true, false, true),
+            PollAction::BecomeReady
+        );
     }
 
     #[test]
     fn poll_action_keeps_polling_while_starting_within_ceiling() {
-        assert_eq!(poll_action(false, false, false, false), PollAction::KeepPolling);
+        assert_eq!(
+            poll_action(false, false, false, false),
+            PollAction::KeepPolling
+        );
     }
 
     #[test]
@@ -1268,9 +1417,18 @@ mod tests {
         // embedder blips or the startup ceiling — never GiveUp (that would mark a healthy host
         // dead). This is the invariant that fixes the frozen-generatorReady bug: the loop must
         // keep observing /health after embedder_ready so the lazily-loaded generator is seen.
-        assert_eq!(poll_action(false, true, true, true), PollAction::KeepPolling);
-        assert_eq!(poll_action(false, false, true, true), PollAction::KeepPolling);
-        assert_eq!(poll_action(false, false, true, false), PollAction::KeepPolling);
+        assert_eq!(
+            poll_action(false, true, true, true),
+            PollAction::KeepPolling
+        );
+        assert_eq!(
+            poll_action(false, false, true, true),
+            PollAction::KeepPolling
+        );
+        assert_eq!(
+            poll_action(false, false, true, false),
+            PollAction::KeepPolling
+        );
     }
 
     #[test]
@@ -1346,7 +1504,13 @@ mod tests {
     fn parse_chat_line_extracts_delta_content() {
         // Valid delta with text.
         let line = r#"data: {"choices":[{"delta":{"content":"Hel"}}]}"#;
-        assert_eq!(parse_chat_line(line), Some(ChatLine { text: Some("Hel".into()), end: None }));
+        assert_eq!(
+            parse_chat_line(line),
+            Some(ChatLine {
+                text: Some("Hel".into()),
+                end: None
+            })
+        );
         // Stream terminator — must return None.
         assert_eq!(parse_chat_line("data: [DONE]"), None);
         // Blank line (SSE separator) — must return None.
@@ -1359,23 +1523,50 @@ mod tests {
     #[test]
     fn parse_chat_line_reads_why_the_answer_ended() {
         let length = r#"data: {"choices":[{"delta":{},"finish_reason":"length"}]}"#;
-        assert_eq!(parse_chat_line(length), Some(ChatLine { text: None, end: Some(AnswerEnd::Length) }));
+        assert_eq!(
+            parse_chat_line(length),
+            Some(ChatLine {
+                text: None,
+                end: Some(AnswerEnd::Length)
+            })
+        );
         let repeating = r#"data: {"choices":[{"delta":{},"finish_reason":"degeneration"}]}"#;
-        assert_eq!(parse_chat_line(repeating).and_then(|l| l.end), Some(AnswerEnd::Degeneration));
+        assert_eq!(
+            parse_chat_line(repeating).and_then(|l| l.end),
+            Some(AnswerEnd::Degeneration)
+        );
         // An answer that finished, or a reason nobody explains to the person, says nothing.
-        assert_eq!(parse_chat_line(r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#), None);
-        assert_eq!(parse_chat_line(r#"data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#), None);
+        assert_eq!(
+            parse_chat_line(r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#),
+            None
+        );
+        assert_eq!(
+            parse_chat_line(r#"data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#),
+            None
+        );
         // Some servers put the reason on the last text chunk, or send no delta at all.
         let both = r#"data: {"choices":[{"delta":{"content":"end"},"finish_reason":"length"}]}"#;
-        assert_eq!(parse_chat_line(both), Some(ChatLine { text: Some("end".into()), end: Some(AnswerEnd::Length) }));
+        assert_eq!(
+            parse_chat_line(both),
+            Some(ChatLine {
+                text: Some("end".into()),
+                end: Some(AnswerEnd::Length)
+            })
+        );
         let no_delta = r#"data: {"choices":[{"finish_reason":"length"}]}"#;
-        assert_eq!(parse_chat_line(no_delta).and_then(|l| l.end), Some(AnswerEnd::Length));
+        assert_eq!(
+            parse_chat_line(no_delta).and_then(|l| l.end),
+            Some(AnswerEnd::Length)
+        );
     }
 
     #[test]
     fn done_carries_the_reason_only_when_there_is_one() {
         assert_eq!(
-            serde_json::to_value(AskEvent::Done { reason: Some(AnswerEnd::Length) }).unwrap(),
+            serde_json::to_value(AskEvent::Done {
+                reason: Some(AnswerEnd::Length)
+            })
+            .unwrap(),
             serde_json::json!({ "kind": "done", "reason": "length" })
         );
         assert_eq!(
@@ -1398,9 +1589,24 @@ mod tests {
             Some("llama3".to_string()),
             None,
         );
-        assert_eq!(env.iter().find(|(k, _)| k == "TEXTREE_BYO_PRESET").map(|(_, v)| v.as_str()), Some("ollama"));
-        assert_eq!(env.iter().find(|(k, _)| k == "TEXTREE_BYO_BASE_URL").map(|(_, v)| v.as_str()), Some("http://localhost:11434"));
-        assert_eq!(env.iter().find(|(k, _)| k == "TEXTREE_BYO_MODEL").map(|(_, v)| v.as_str()), Some("llama3"));
+        assert_eq!(
+            env.iter()
+                .find(|(k, _)| k == "TEXTREE_BYO_PRESET")
+                .map(|(_, v)| v.as_str()),
+            Some("ollama")
+        );
+        assert_eq!(
+            env.iter()
+                .find(|(k, _)| k == "TEXTREE_BYO_BASE_URL")
+                .map(|(_, v)| v.as_str()),
+            Some("http://localhost:11434")
+        );
+        assert_eq!(
+            env.iter()
+                .find(|(k, _)| k == "TEXTREE_BYO_MODEL")
+                .map(|(_, v)| v.as_str()),
+            Some("llama3")
+        );
         assert!(env.iter().all(|(k, _)| k != "TEXTREE_BYO_API_KEY")); // no key passed in this call
     }
 
@@ -1412,7 +1618,12 @@ mod tests {
             None,
             Some("secret".to_string()),
         );
-        assert_eq!(env.iter().find(|(k, _)| k == "TEXTREE_BYO_API_KEY").map(|(_, v)| v.as_str()), Some("secret"));
+        assert_eq!(
+            env.iter()
+                .find(|(k, _)| k == "TEXTREE_BYO_API_KEY")
+                .map(|(_, v)| v.as_str()),
+            Some("secret")
+        );
     }
 
     #[test]
@@ -1439,7 +1650,9 @@ mod tests {
         // Settings (byo_secret::set_api_key) must be picked up when the Test Connection input
         // is blank (None), the same way it would be for a freshly reopened Settings panel.
         // Shares byo_secret's TEST_LOCK so this doesn't race its own keychain tests.
-        let _guard = crate::byo_secret::tests::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::byo_secret::tests::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let _ = crate::byo_secret::clear_api_key(); // clean slate in case a prior run aborted
         crate::byo_secret::set_api_key("stored-secret-xyz").expect("set should succeed");
 
@@ -1457,17 +1670,25 @@ mod tests {
 
     #[test]
     fn a_refused_key_says_so_in_plain_words() {
-        let r = read_probe_outcome(r#"{"ok":false,"modelCount":0,"status":401,"error":"Unauthorized"}"#);
+        let r = read_probe_outcome(
+            r#"{"ok":false,"modelCount":0,"status":401,"error":"Unauthorized"}"#,
+        );
         assert_eq!(r, Err("The server didn't accept the API key.".to_string()));
-        let r = read_probe_outcome(r#"{"ok":false,"modelCount":0,"status":404,"error":"Not Found"}"#);
+        let r =
+            read_probe_outcome(r#"{"ok":false,"modelCount":0,"status":404,"error":"Not Found"}"#);
         assert!(r.unwrap_err().contains("check the server URL"));
     }
 
     #[test]
     fn other_refusals_carry_the_servers_reason_and_silence_says_unreachable() {
         let r = read_probe_outcome(r#"{"ok":false,"modelCount":0,"status":500,"error":"boom"}"#);
-        assert_eq!(r, Err("The server refused the request (500): boom".to_string()));
-        let r = read_probe_outcome(r#"{"ok":false,"modelCount":0,"status":null,"error":"Retry failed after 4 tries."}"#);
+        assert_eq!(
+            r,
+            Err("The server refused the request (500): boom".to_string())
+        );
+        let r = read_probe_outcome(
+            r#"{"ok":false,"modelCount":0,"status":null,"error":"Retry failed after 4 tries."}"#,
+        );
         assert!(r.unwrap_err().starts_with("The server couldn't be reached"));
         let r = read_probe_outcome(r#"{"ok":false,"modelCount":0}"#);
         assert!(r.unwrap_err().starts_with("The server couldn't be reached"));
@@ -1476,18 +1697,37 @@ mod tests {
     #[test]
     fn a_connection_failure_is_worded_by_its_kind_not_the_systems_text() {
         let line = |kind: &str| {
-            format!(r#"{{"ok":false,"modelCount":0,"status":null,"error":"(localized)","failure":"{kind}"}}"#)
+            format!(
+                r#"{{"ok":false,"modelCount":0,"status":null,"error":"(localized)","failure":"{kind}"}}"#
+            )
         };
-        assert!(read_probe_outcome(&line("refused")).unwrap_err().starts_with("Nothing is listening"));
-        assert!(read_probe_outcome(&line("hostNotFound")).unwrap_err().starts_with("No server goes by that name"));
-        assert!(read_probe_outcome(&line("timeout")).unwrap_err().starts_with("The server didn't answer in time"));
-        assert!(read_probe_outcome(&line("invalid")).unwrap_err().starts_with("That isn't a server address"));
-        assert!(read_probe_outcome(&line("transport")).unwrap_err().starts_with("The connection to the server broke off"));
-        assert_eq!(read_probe_outcome(&line("unauthorized")), Err("The server didn't accept the API key.".to_string()));
+        assert!(read_probe_outcome(&line("refused"))
+            .unwrap_err()
+            .starts_with("Nothing is listening"));
+        assert!(read_probe_outcome(&line("hostNotFound"))
+            .unwrap_err()
+            .starts_with("No server goes by that name"));
+        assert!(read_probe_outcome(&line("timeout"))
+            .unwrap_err()
+            .starts_with("The server didn't answer in time"));
+        assert!(read_probe_outcome(&line("invalid"))
+            .unwrap_err()
+            .starts_with("That isn't a server address"));
+        assert!(read_probe_outcome(&line("transport"))
+            .unwrap_err()
+            .starts_with("The connection to the server broke off"));
+        assert_eq!(
+            read_probe_outcome(&line("unauthorized")),
+            Err("The server didn't accept the API key.".to_string())
+        );
         for kind in ["unreachable", "somethingNew"] {
-            assert!(read_probe_outcome(&line(kind)).unwrap_err().starts_with("The server couldn't be reached"));
+            assert!(read_probe_outcome(&line(kind))
+                .unwrap_err()
+                .starts_with("The server couldn't be reached"));
         }
-        assert!(!read_probe_outcome(&line("refused")).unwrap_err().contains("localized"));
+        assert!(!read_probe_outcome(&line("refused"))
+            .unwrap_err()
+            .contains("localized"));
     }
 
     #[test]

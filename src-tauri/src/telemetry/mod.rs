@@ -10,13 +10,15 @@
 //!   even though the process it ended cannot send it.
 //! - **`app.launch`** — one usage event per start, which is not a failure and so not a report.
 
-pub mod event;
 pub mod envelope;
+pub mod event;
 
 use event::{EnvFacts, LaunchEvent};
 use std::path::Path;
 use std::sync::{LazyLock, OnceLock};
-use tauri_kit_diagnostics::{adopt, tidy, FrameRule, Layer, Registry, Report, Reporter, Segment, Sink, MAX_STREAM_BYTES};
+use tauri_kit_diagnostics::{
+    adopt, tidy, FrameRule, Layer, Registry, Report, Reporter, Segment, Sink, MAX_STREAM_BYTES,
+};
 
 /// The only switch for outbound telemetry. Absent/blank ⇒ disabled (dev, test, forks, and
 /// official builds whose CI has not injected the string yet).
@@ -26,11 +28,13 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// What a report may carry besides its kind and our own source frames — declared, compiled in.
 static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
-    Registry::from_json(include_str!("registry.json")).expect("telemetry/registry.json is a registry")
+    Registry::from_json(include_str!("registry.json"))
+        .expect("telemetry/registry.json is a registry")
 });
 
 /// This process, as reports name it — the role the AI helper's own telemetry sits beside.
-static SHELL: LazyLock<Layer> = LazyLock::new(|| REGISTRY.layer("textree-desktop", FrameRule::rust_source()));
+static SHELL: LazyLock<Layer> =
+    LazyLock::new(|| REGISTRY.layer("textree-desktop", FrameRule::rust_source()));
 
 /// Set once the log folder is known (`start`); a failure before that is not recorded.
 static REPORTER: OnceLock<Reporter> = OnceLock::new();
@@ -65,7 +69,11 @@ pub fn host_connection() -> Option<String> {
 pub fn start(log_dir: &Path) {
     let dir = log_dir.join("reports");
     // An earlier release kept one `reports.jsonl`; what it had not sent still goes, once.
-    let _ = adopt(&dir, &log_dir.join("reports.jsonl"), &log_dir.join("reports.sent"));
+    let _ = adopt(
+        &dir,
+        &log_dir.join("reports.jsonl"),
+        &log_dir.join("reports.sent"),
+    );
     // Before this launch writes or sends anything: the folder is evidence, not an archive.
     let _ = tidy(&dir, MAX_STREAM_BYTES);
     if let Ok(segment) = Segment::open(&dir) {
@@ -77,7 +85,10 @@ pub fn start(log_dir: &Path) {
         return;
     };
     // Transparency: what is sent is named in the app's own log, rather than leaving unannounced.
-    log::info!("[telemetry] sending app.launch and the failures recorded in {}", dir.display());
+    log::info!(
+        "[telemetry] sending app.launch and the failures recorded in {}",
+        dir.display()
+    );
     let _ = std::thread::Builder::new().spawn(move || {
         let agent = Sink::agent();
         let body = envelope::launch_envelope(
@@ -86,7 +97,9 @@ pub fn start(log_dir: &Path) {
             &EnvFacts::current(),
             &envelope::format_rfc3339_utc(now_secs()),
         );
-        let _ = agent.post(&sink.track_url).send_json(serde_json::json!([body]));
+        let _ = agent
+            .post(&sink.track_url)
+            .send_json(serde_json::json!([body]));
         let _ = sink.send_pending(&agent, &REGISTRY, &dir);
     });
 }
@@ -108,7 +121,12 @@ pub fn panic_report(location: &str) -> Report {
 /// The default notes folder could not be made: the OS error number only, never the message.
 pub fn vault_open_failed_report(os_error_code: Option<i32>) -> Report {
     match os_error_code {
-        Some(code) => SHELL.report("VaultOpenFailed", "", VERSION, &[("os_error_code", &code.to_string())]),
+        Some(code) => SHELL.report(
+            "VaultOpenFailed",
+            "",
+            VERSION,
+            &[("os_error_code", &code.to_string())],
+        ),
         None => SHELL.report("VaultOpenFailed", "", VERSION, &[]),
     }
 }
@@ -141,7 +159,10 @@ mod tests {
         );
         assert!(r.frames.is_empty(), "{:?}", r.frames);
         let json = serde_json::to_string(&r).unwrap();
-        assert!(!json.contains("someone") && !json.contains("registry"), "{json}");
+        assert!(
+            !json.contains("someone") && !json.contains("registry"),
+            "{json}"
+        );
     }
 
     #[test]
@@ -149,7 +170,10 @@ mod tests {
         let r = vault_open_failed_report(Some(3));
         assert_eq!(r.kind, "VaultOpenFailed");
         assert!(r.frames.is_empty());
-        assert_eq!(r.details.get("os_error_code").map(String::as_str), Some("3"));
+        assert_eq!(
+            r.details.get("os_error_code").map(String::as_str),
+            Some("3")
+        );
         assert!(vault_open_failed_report(None).details.is_empty());
     }
 
@@ -169,7 +193,10 @@ mod tests {
             .expect("this launch's segment");
         let lines = std::fs::read_to_string(segment).unwrap();
         assert_eq!(lines.lines().count(), 1, "{lines}");
-        assert!(lines.contains("\"VaultOpenFailed\"") && lines.contains("\"os_error_code\":\"5\""), "{lines}");
+        assert!(
+            lines.contains("\"VaultOpenFailed\"") && lines.contains("\"os_error_code\":\"5\""),
+            "{lines}"
+        );
     }
 
     /// Sends this launch's event and a recorded failure to a real Application Insights resource:
@@ -181,10 +208,20 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let reports = dir.path().join("reports");
         let segment = Segment::open(&reports).unwrap();
-        Reporter::new(segment.file()).record(panic_report("src/lib.rs:1:1")).unwrap();
+        Reporter::new(segment.file())
+            .record(panic_report("src/lib.rs:1:1"))
+            .unwrap();
         let agent = Sink::agent();
-        let body = envelope::launch_envelope(&LaunchEvent, &sink.instrumentation_key, &EnvFacts::current(), &envelope::format_rfc3339_utc(now_secs()));
-        let answer = agent.post(&sink.track_url).send_json(serde_json::json!([body])).unwrap();
+        let body = envelope::launch_envelope(
+            &LaunchEvent,
+            &sink.instrumentation_key,
+            &EnvFacts::current(),
+            &envelope::format_rfc3339_utc(now_secs()),
+        );
+        let answer = agent
+            .post(&sink.track_url)
+            .send_json(serde_json::json!([body]))
+            .unwrap();
         assert_eq!(answer.status(), 200);
         assert_eq!(sink.send_pending(&agent, &REGISTRY, &reports).unwrap(), 1);
     }

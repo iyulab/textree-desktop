@@ -25,7 +25,10 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// The part of a source file a shipped build compiles: everything before its test module.
 fn shipped_part(source: &str) -> &str {
-    match source.find("#[cfg(test)]\nmod ").or_else(|| source.find("#[cfg(test)]\r\nmod ")) {
+    match source
+        .find("#[cfg(test)]\nmod ")
+        .or_else(|| source.find("#[cfg(test)]\r\nmod "))
+    {
         Some(at) => &source[..at],
         None => source,
     }
@@ -67,7 +70,10 @@ fn a() { let _ = std::env::var(\"TEXTREE_HOST_EXE\"); let _ = std::env::var(ENV_
 #[cfg(test)]
 mod tests { fn b() { let _ = std::env::var(\"TEXTREE_API_BASE\"); } }
 ";
-    assert_eq!(direct_reads(shipped_part(source)), vec!["TEXTREE_HOST_EXE", "ENV_VAR"]);
+    assert_eq!(
+        direct_reads(shipped_part(source)),
+        vec!["TEXTREE_HOST_EXE", "ENV_VAR"]
+    );
 }
 
 #[test]
@@ -75,7 +81,11 @@ fn no_shipped_code_reads_a_textree_variable_without_dev_env() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();
     rust_files(&src, &mut files);
-    assert!(!files.is_empty(), "no sources found under {}", src.display());
+    assert!(
+        !files.is_empty(),
+        "no sources found under {}",
+        src.display()
+    );
 
     let mut offenders = Vec::new();
     for file in files {
@@ -84,8 +94,13 @@ fn no_shipped_code_reads_a_textree_variable_without_dev_env() {
         }
         let source = fs::read_to_string(&file).unwrap();
         for name in direct_reads(shipped_part(&source)) {
-            if !READ_UNDER_OWN_CFG.contains(&name.as_str()) && !NOT_AN_OVERRIDE.contains(&name.as_str()) {
-                offenders.push(format!("{}: {name}", file.strip_prefix(&src).unwrap().display()));
+            if !READ_UNDER_OWN_CFG.contains(&name.as_str())
+                && !NOT_AN_OVERRIDE.contains(&name.as_str())
+            {
+                offenders.push(format!(
+                    "{}: {name}",
+                    file.strip_prefix(&src).unwrap().display()
+                ));
             }
         }
     }

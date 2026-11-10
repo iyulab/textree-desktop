@@ -16,11 +16,11 @@
 //! changed, and such a change waits for it.
 
 use crate::commands::{
-    self, off_main, DefaultVault, DeletedNote, MoveOut, NoteAlternative, NoteVersion,
-    RestoredNote, SidecarState,
+    self, off_main, DefaultVault, DeletedNote, MoveOut, NoteAlternative, NoteVersion, RestoredNote,
+    SidecarState,
 };
-use crate::search::IndexHandle;
 use crate::note_locks::NoteLocks;
+use crate::search::IndexHandle;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
@@ -29,23 +29,36 @@ use tauri::{AppHandle, State};
 /// that stopped answering must hold up this request only.
 async fn resolved(root: &str, rel: &str) -> Result<String, String> {
     let (root, rel) = (root.to_string(), rel.to_string());
-    off_main(move || crate::vault_paths::resolve(&root, &rel).map(|p| p.to_string_lossy().into_owned())).await
+    off_main(move || {
+        crate::vault_paths::resolve(&root, &rel).map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
 }
 
 /// Like [`resolved`], for a folder something is made in or moved to; `""` is the vault itself.
 async fn folder_resolved(root: &str, rel: &str) -> Result<String, String> {
     let (root, rel) = (root.to_string(), rel.to_string());
-    off_main(move || crate::vault_paths::folder(&root, &rel).map(|p| p.to_string_lossy().into_owned())).await
+    off_main(move || {
+        crate::vault_paths::folder(&root, &rel).map(|p| p.to_string_lossy().into_owned())
+    })
+    .await
 }
 
 /// Opening a folder reads all of it; one that does not answer must not hold the window, or keep
 /// the person from opening another instead (the later opening wins — see
 /// [`commands::open_vault`]).
 #[tauri::command]
-pub async fn open_vault(root_id: String, app: AppHandle) -> Result<Vec<commands::TreeItem>, String> {
+pub async fn open_vault(
+    root_id: String,
+    app: AppHandle,
+) -> Result<Vec<commands::TreeItem>, String> {
     let ticket = commands::begin_open();
     let root = crate::workspace::path_of(&root_id)?;
-    off_main(move || commands::open_vault(root.clone(), root_id, app, ticket).and_then(|tree| commands::tree_out(&root, tree))).await
+    off_main(move || {
+        commands::open_vault(root.clone(), root_id, app, ticket)
+            .and_then(|tree| commands::tree_out(&root, tree))
+    })
+    .await
 }
 
 /// Makes the folder at `path` known and answers with the id every later command names it by. It
@@ -87,7 +100,10 @@ async fn creating<T: Send + 'static>(
 
 /// The folder `path` is in — where creating something beside it adds to.
 fn folder_of(path: &str) -> PathBuf {
-    Path::new(path).parent().map(Path::to_path_buf).unwrap_or_default()
+    Path::new(path)
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -99,7 +115,11 @@ pub async fn rename_node(
 ) -> Result<String, String> {
     let root = crate::workspace::path_of(&root_id)?;
     let path = resolved(&root, &rel).await?;
-    changing(&locks, vec![path.clone()], move || commands::rename_node(root.clone(), path, name).and_then(|p| crate::vault_paths::rel_out(&root, &p))).await
+    changing(&locks, vec![path.clone()], move || {
+        commands::rename_node(root.clone(), path, name)
+            .and_then(|p| crate::vault_paths::rel_out(&root, &p))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -112,7 +132,8 @@ pub async fn rename_note_unique(
     let root = crate::workspace::path_of(&root_id)?;
     let path = resolved(&root, &rel).await?;
     changing(&locks, vec![path.clone()], move || {
-        commands::rename_note_unique(root.clone(), path, name).and_then(|p| crate::vault_paths::rel_out(&root, &p))
+        commands::rename_note_unique(root.clone(), path, name)
+            .and_then(|p| crate::vault_paths::rel_out(&root, &p))
     })
     .await
 }
@@ -127,7 +148,11 @@ pub async fn move_node(
     let root = crate::workspace::path_of(&root_id)?;
     let path = resolved(&root, &rel).await?;
     let dest = folder_resolved(&root, &dest).await?;
-    changing(&locks, vec![path.clone()], move || commands::move_node(root.clone(), path, dest).and_then(|p| crate::vault_paths::rel_out(&root, &p))).await
+    changing(&locks, vec![path.clone()], move || {
+        commands::move_node(root.clone(), path, dest)
+            .and_then(|p| crate::vault_paths::rel_out(&root, &p))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -138,7 +163,10 @@ pub async fn delete_node(
 ) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
     let path = resolved(&root, &rel).await?;
-    changing(&locks, vec![path.clone()], move || commands::delete_node(root, path)).await
+    changing(&locks, vec![path.clone()], move || {
+        commands::delete_node(root, path)
+    })
+    .await
 }
 
 /// Promoting replaces the note with a folder of the same name holding it.
@@ -150,7 +178,11 @@ pub async fn promote_node(
 ) -> Result<String, String> {
     let root = crate::workspace::path_of(&root_id)?;
     let path = resolved(&root, &rel).await?;
-    changing(&locks, vec![path.clone()], move || commands::promote_node(root.clone(), path).and_then(|p| crate::vault_paths::rel_out(&root, &p))).await
+    changing(&locks, vec![path.clone()], move || {
+        commands::promote_node(root.clone(), path)
+            .and_then(|p| crate::vault_paths::rel_out(&root, &p))
+    })
+    .await
 }
 
 /// Adopting moves `path` under `leaf`, promoting `leaf` first — both are read from.
@@ -165,7 +197,11 @@ pub async fn adopt_node(
     let path = resolved(&root, &rel).await?;
     let leaf = resolved(&root, &leaf).await?;
     let places = vec![path.clone(), leaf.clone()];
-    changing(&locks, places, move || commands::adopt_node(root.clone(), path, leaf).and_then(|p| crate::vault_paths::rel_out(&root, &p))).await
+    changing(&locks, places, move || {
+        commands::adopt_node(root.clone(), path, leaf)
+            .and_then(|p| crate::vault_paths::rel_out(&root, &p))
+    })
+    .await
 }
 
 /// The open alternatives of the notes in a folder. Reads history only.
@@ -197,7 +233,11 @@ pub async fn alternative_draft(root_id: String, id: String) -> Result<Option<Str
 }
 
 #[tauri::command]
-pub async fn write_alternative_draft(root_id: String, id: String, text: String) -> Result<(), String> {
+pub async fn write_alternative_draft(
+    root_id: String,
+    id: String,
+    text: String,
+) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
     off_main(move || commands::write_alternative_draft(root, id, text)).await
 }
@@ -224,7 +264,10 @@ pub async fn use_alternative(
 ) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
     let path = resolved(&root, &rel).await?;
-    changing(&locks, vec![path.clone()], move || commands::use_alternative(root, path, id)).await
+    changing(&locks, vec![path.clone()], move || {
+        commands::use_alternative(root, path, id)
+    })
+    .await
 }
 
 /// Setting an alternative aside moves a reference only; the note stays as it is.
@@ -244,7 +287,10 @@ pub async fn restore_version(
 ) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
     let path = resolved(&root, &rel).await?;
-    changing(&locks, vec![path.clone()], move || commands::restore_version(root, path, id)).await
+    changing(&locks, vec![path.clone()], move || {
+        commands::restore_version(root, path, id)
+    })
+    .await
 }
 
 // The rest create what was not there — in the turn of the folder they add to ([`creating`]).
@@ -269,7 +315,11 @@ pub async fn create_note(
 ) -> Result<String, String> {
     let root = crate::workspace::path_of(&root_id)?;
     let parent = folder_resolved(&root, &parent).await?;
-    creating(&locks, PathBuf::from(&parent), move || commands::create_note(root.clone(), parent, name).and_then(|p| crate::vault_paths::rel_out(&root, &p))).await
+    creating(&locks, PathBuf::from(&parent), move || {
+        commands::create_note(root.clone(), parent, name)
+            .and_then(|p| crate::vault_paths::rel_out(&root, &p))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -280,8 +330,11 @@ pub async fn create_untitled_note(
 ) -> Result<String, String> {
     let root = crate::workspace::path_of(&root_id)?;
     let parent = folder_resolved(&root, &parent).await?;
-    creating(&locks, PathBuf::from(&parent), move || commands::create_untitled_note(root.clone(), parent).and_then(|p| crate::vault_paths::rel_out(&root, &p)))
-        .await
+    creating(&locks, PathBuf::from(&parent), move || {
+        commands::create_untitled_note(root.clone(), parent)
+            .and_then(|p| crate::vault_paths::rel_out(&root, &p))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -295,7 +348,8 @@ pub async fn create_note_with_content(
     let root = crate::workspace::path_of(&root_id)?;
     let parent = folder_resolved(&root, &parent).await?;
     creating(&locks, PathBuf::from(&parent), move || {
-        commands::create_note_with_content(root.clone(), parent, name, content).and_then(|p| crate::vault_paths::rel_out(&root, &p))
+        commands::create_note_with_content(root.clone(), parent, name, content)
+            .and_then(|p| crate::vault_paths::rel_out(&root, &p))
     })
     .await
 }
@@ -309,7 +363,11 @@ pub async fn create_folder(
 ) -> Result<String, String> {
     let root = crate::workspace::path_of(&root_id)?;
     let parent = folder_resolved(&root, &parent).await?;
-    creating(&locks, PathBuf::from(&parent), move || commands::create_folder(root.clone(), parent, name).and_then(|p| crate::vault_paths::rel_out(&root, &p))).await
+    creating(&locks, PathBuf::from(&parent), move || {
+        commands::create_folder(root.clone(), parent, name)
+            .and_then(|p| crate::vault_paths::rel_out(&root, &p))
+    })
+    .await
 }
 
 /// An attachment goes into an `assets` folder beside its note — the turn is that folder's, which
@@ -325,7 +383,10 @@ pub async fn save_attachment(
     let root = crate::workspace::path_of(&root_id)?;
     let note = resolved(&root, &note).await?;
     let folder = folder_of(&note).join("assets");
-    creating(&locks, folder, move || commands::save_attachment(root, note, data, ext)).await
+    creating(&locks, folder, move || {
+        commands::save_attachment(root, note, data, ext)
+    })
+    .await
 }
 
 /// Recording reads the notes and changes none of them: a save running meanwhile is recorded as it
@@ -340,7 +401,9 @@ pub async fn commit_notes(
     off_main(move || {
         let paths = rels
             .iter()
-            .map(|rel| crate::vault_paths::resolve(&root, rel).map(|p| p.to_string_lossy().into_owned()))
+            .map(|rel| {
+                crate::vault_paths::resolve(&root, rel).map(|p| p.to_string_lossy().into_owned())
+            })
             .collect::<Result<Vec<_>, _>>()?;
         commands::commit_notes(root, paths, message)
     })
@@ -374,7 +437,10 @@ pub async fn deleted_notes(root_id: String) -> Result<Vec<DeletedNote>, String> 
 }
 
 #[tauri::command]
-pub async fn rebuild_index(root_id: String, index: State<'_, Arc<IndexHandle>>) -> Result<(), String> {
+pub async fn rebuild_index(
+    root_id: String,
+    index: State<'_, Arc<IndexHandle>>,
+) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
     let index = index.inner().clone();
     off_main(move || commands::rebuild_index(root, &index)).await
@@ -416,14 +482,21 @@ pub async fn set_publish_choice(
 }
 
 #[tauri::command]
-pub async fn remote_connection(root_id: String) -> Result<Option<crate::remote::Connection>, String> {
+pub async fn remote_connection(
+    root_id: String,
+) -> Result<Option<crate::remote::Connection>, String> {
     let root = crate::workspace::path_of(&root_id)?;
     off_main(move || commands::remote_connection(root)).await
 }
 
 /// Reaching the remote is network: it must not hold the window.
 #[tauri::command]
-pub async fn connect_remote(root_id: String, url: String, username: String, secret: String) -> Result<(), String> {
+pub async fn connect_remote(
+    root_id: String,
+    url: String,
+    username: String,
+    secret: String,
+) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
     off_main(move || commands::connect_remote(root, url, username, secret)).await
 }
@@ -442,7 +515,10 @@ pub async fn disconnect_remote(root_id: String) -> Result<(), String> {
 
 /// Takes the turns of the notes it writes itself (see [`crate::remote::apply`]).
 #[tauri::command]
-pub async fn sync_remote(root_id: String, locks: State<'_, Arc<NoteLocks>>) -> Result<crate::remote::Exchange, String> {
+pub async fn sync_remote(
+    root_id: String,
+    locks: State<'_, Arc<NoteLocks>>,
+) -> Result<crate::remote::Exchange, String> {
     let root = crate::workspace::path_of(&root_id)?;
     let locks = locks.inner().clone();
     off_main(move || commands::sync_remote(root, &locks)).await

@@ -61,7 +61,10 @@ fn assemble_capped(prepared: &VaultRepo, root: &Path, cap: u64) -> Result<Assemb
         &publish_scope::read(repo, publish_scope::PUBLIC_REF).map_err(err)?,
         &vault_prefix,
     );
-    let mut out = Assembly { nothing_chosen: choices.iter().all(|c| !c.include), ..Assembly::default() };
+    let mut out = Assembly {
+        nothing_chosen: choices.iter().all(|c| !c.include),
+        ..Assembly::default()
+    };
     if out.nothing_chosen {
         return Ok(out);
     }
@@ -71,7 +74,9 @@ fn assemble_capped(prepared: &VaultRepo, root: &Path, cap: u64) -> Result<Assemb
         if vault_prefix.is_empty() {
             Some(in_repo.to_string())
         } else {
-            in_repo.strip_prefix(&format!("{vault_prefix}/")).map(str::to_string)
+            in_repo
+                .strip_prefix(&format!("{vault_prefix}/"))
+                .map(str::to_string)
         }
     };
     // Recorded, and still in the folder: a note or file the person deleted does not go out, even
@@ -89,7 +94,9 @@ fn assemble_capped(prepared: &VaultRepo, root: &Path, cap: u64) -> Result<Assemb
         .collect();
     let by_name: BTreeMap<String, Vec<String>> =
         recorded.iter().fold(BTreeMap::new(), |mut m, p| {
-            m.entry(file_name(p).to_ascii_lowercase()).or_default().push(p.clone());
+            m.entry(file_name(p).to_ascii_lowercase())
+                .or_default()
+                .push(p.clone());
             m
         });
     let read = |rel: &str| -> Result<Option<Vec<u8>>, String> {
@@ -98,8 +105,10 @@ fn assemble_capped(prepared: &VaultRepo, root: &Path, cap: u64) -> Result<Assemb
     };
     // Recorded paths by lowercase spelling: links match ASCII case-insensitively, and what goes
     // out keeps the recorded spelling.
-    let canon: BTreeMap<String, &String> =
-        recorded.iter().map(|p| (p.to_ascii_lowercase(), p)).collect();
+    let canon: BTreeMap<String, &String> = recorded
+        .iter()
+        .map(|p| (p.to_ascii_lowercase(), p))
+        .collect();
     // A resolved path that names a folder (`.`, `sub/`) is neither a file nor a note: it is a
     // directory on disk or a prefix of recorded paths.
     let is_folder = |rel: &str| {
@@ -110,8 +119,10 @@ fn assemble_capped(prepared: &VaultRepo, root: &Path, cap: u64) -> Result<Assemb
         path.is_dir() || canon.keys().any(|p| p.starts_with(&prefix))
     };
 
-    let chosen_notes: Vec<&String> =
-        recorded.iter().filter(|p| is_note_path(p) && publish_scope::is_included(p, &choices)).collect();
+    let chosen_notes: Vec<&String> = recorded
+        .iter()
+        .filter(|p| is_note_path(p) && publish_scope::is_included(p, &choices))
+        .collect();
     let mut assets = BTreeSet::new();
     let mut missing = BTreeSet::new();
     let mut linked_notes = BTreeSet::new();
@@ -141,8 +152,9 @@ fn assemble_capped(prepared: &VaultRepo, root: &Path, cap: u64) -> Result<Assemb
                         let p = p.to_ascii_lowercase();
                         !key.contains('/') || p == key || p.ends_with(&format!("/{key}"))
                     };
-                    let found: Vec<&String> =
-                        by_name.get(file_name(&key)).map_or(Vec::new(), |c| c.iter().filter(fits).collect());
+                    let found: Vec<&String> = by_name
+                        .get(file_name(&key))
+                        .map_or(Vec::new(), |c| c.iter().filter(fits).collect());
                     (found.len() == 1).then(|| found[0].clone())
                 }
             };
@@ -270,8 +282,12 @@ mod tests {
     fn choose(root: &Path, rel: &str, include: bool) {
         let prepared = crate::git_engine::prepare(root).unwrap();
         let in_repo = crate::git_engine::slashed(&prepared.path_in_repo(Path::new(rel)));
-        crate::publish_scope::set(prepared.repo(), in_repo.trim_end_matches('/'), Some(include))
-            .unwrap();
+        crate::publish_scope::set(
+            prepared.repo(),
+            in_repo.trim_end_matches('/'),
+            Some(include),
+        )
+        .unwrap();
     }
 
     fn assembled(root: &Path) -> Assembly {
@@ -351,7 +367,10 @@ mod tests {
         record(tmp.path(), "diary.md", b"# Diary");
         choose(tmp.path(), "blog", true);
         let a = assembled(tmp.path());
-        assert_eq!(paths(&a), vec!["blog/post.md", "img/chart.png", "photos/photo.jpg"]);
+        assert_eq!(
+            paths(&a),
+            vec!["blog/post.md", "img/chart.png", "photos/photo.jpg"]
+        );
         assert_eq!(a.missing, vec!["blog/gone.png"]);
         assert_eq!(a.unpublished_links, vec!["diary.md"]);
     }
@@ -365,11 +384,26 @@ mod tests {
             choose(tmp.path(), "a.md", true);
             paths(&assembled(tmp.path())).contains(&recorded)
         };
-        assert!(!shipped("private/photo.jpg", "public/photo.jpg"), "another folder");
-        assert!(!shipped("notpublic/photo.jpg", "public/photo.jpg"), "a folder that only ends the same");
-        assert!(shipped("public/photo.jpg", "Public/Photo.jpg"), "the folder named");
-        assert!(shipped("x/public/photo.jpg", "public/photo.jpg"), "the folder named, deeper down");
-        assert!(shipped("deep/photo.jpg", "photo.jpg"), "no folder part: the only one of that name");
+        assert!(
+            !shipped("private/photo.jpg", "public/photo.jpg"),
+            "another folder"
+        );
+        assert!(
+            !shipped("notpublic/photo.jpg", "public/photo.jpg"),
+            "a folder that only ends the same"
+        );
+        assert!(
+            shipped("public/photo.jpg", "Public/Photo.jpg"),
+            "the folder named"
+        );
+        assert!(
+            shipped("x/public/photo.jpg", "public/photo.jpg"),
+            "the folder named, deeper down"
+        );
+        assert!(
+            shipped("deep/photo.jpg", "photo.jpg"),
+            "no folder part: the only one of that name"
+        );
     }
 
     #[test]
@@ -378,7 +412,11 @@ mod tests {
         record(tmp.path(), "old.png", b"0123456789"); // recorded before there was a limit
         std::fs::write(tmp.path().join("big.png"), b"0123456789").unwrap(); // never recorded
         std::fs::write(tmp.path().join("small.png"), b"01").unwrap(); // never recorded
-        record(tmp.path(), "a.md", b"![](old.png) ![](big.png) ![](small.png) [d](diary.md)");
+        record(
+            tmp.path(),
+            "a.md",
+            b"![](old.png) ![](big.png) ![](small.png) [d](diary.md)",
+        );
         record(tmp.path(), "diary.md", b"# Diary");
         choose(tmp.path(), "a.md", true);
         let prepared = crate::git_engine::prepare(tmp.path()).unwrap();
@@ -457,7 +495,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         record(tmp.path(), "private/photo.png", b"png");
         record(tmp.path(), "shared/img.png", b"png");
-        record(tmp.path(), "a.md", b"![](private/photo.png) ![](shared/img.png)");
+        record(
+            tmp.path(),
+            "a.md",
+            b"![](private/photo.png) ![](shared/img.png)",
+        );
         choose(tmp.path(), "a.md", true);
         choose(tmp.path(), "private", false);
         let a = assembled(tmp.path());
@@ -480,7 +522,11 @@ mod tests {
         let mut walk = repo.revwalk().unwrap();
         walk.push(published).unwrap();
         let ours: Vec<git2::Oid> = walk.map(Result::unwrap).collect();
-        assert_eq!(ours.len(), 2, "first publish has no parent, the second only the first");
+        assert_eq!(
+            ours.len(),
+            2,
+            "first publish has no parent, the second only the first"
+        );
         let mut notes_walk = repo.revwalk().unwrap();
         notes_walk.push(notes).unwrap();
         for id in notes_walk.map(Result::unwrap) {
@@ -498,8 +544,14 @@ mod tests {
         choose(tmp.path(), "blog", true);
         let out = tempfile::tempdir().unwrap();
         write_out(&assembled(tmp.path()), out.path()).unwrap();
-        assert_eq!(std::fs::read(out.path().join("blog/post.md")).unwrap(), b"![c](img.png)");
-        assert_eq!(std::fs::read(out.path().join("blog/img.png")).unwrap(), b"png");
+        assert_eq!(
+            std::fs::read(out.path().join("blog/post.md")).unwrap(),
+            b"![c](img.png)"
+        );
+        assert_eq!(
+            std::fs::read(out.path().join("blog/img.png")).unwrap(),
+            b"png"
+        );
         assert!(!out.path().join("private.md").exists());
     }
 
@@ -507,10 +559,29 @@ mod tests {
     fn writing_out_skips_a_path_that_is_not_made_of_plain_names() {
         let tmp = tempfile::tempdir().unwrap();
         let out = tmp.path().join("inner").join("site");
-        let crafted = ["../evil.md", "a/../../evil2.md", "C:/x.md", "a\\..\\..\\evil3.md", "", "/abs.md", "a//b.md", "./a.md"];
-        let mut files: Vec<(String, Vec<u8>)> = crafted.iter().map(|p| (p.to_string(), b"x".to_vec())).collect();
+        let crafted = [
+            "../evil.md",
+            "a/../../evil2.md",
+            "C:/x.md",
+            "a\\..\\..\\evil3.md",
+            "",
+            "/abs.md",
+            "a//b.md",
+            "./a.md",
+        ];
+        let mut files: Vec<(String, Vec<u8>)> = crafted
+            .iter()
+            .map(|p| (p.to_string(), b"x".to_vec()))
+            .collect();
         files.push(("ok/fine.md".into(), b"fine".to_vec()));
-        write_out(&Assembly { files, ..Assembly::default() }, &out).unwrap();
+        write_out(
+            &Assembly {
+                files,
+                ..Assembly::default()
+            },
+            &out,
+        )
+        .unwrap();
         assert_eq!(std::fs::read(out.join("ok/fine.md")).unwrap(), b"fine");
         let mut written = Vec::new();
         let mut stack = vec![tmp.path().to_path_buf()];

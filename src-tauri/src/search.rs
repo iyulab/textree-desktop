@@ -90,7 +90,9 @@ fn rel_posix(root: &Path, path: &Path) -> Option<String> {
 
 /// Uses the `.md` file name (without extension) as the title.
 fn title_of(path: &Path) -> String {
-    path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()
+    path.file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
 /// Upsert one document: delete the doc with the same path and add anew (replace = idempotent).
@@ -122,7 +124,9 @@ pub fn build_all(writer: &mut IndexWriter, f: &Fields, root: &Path) -> tantivy::
 }
 
 fn index_dir_recursive(writer: &IndexWriter, f: &Fields, root: &Path, dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.filter_map(|r| r.ok()) {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
@@ -133,7 +137,8 @@ fn index_dir_recursive(writer: &IndexWriter, f: &Fields, root: &Path, dir: &Path
         if ft.is_dir() {
             index_dir_recursive(writer, f, root, &path);
         } else if name.to_ascii_lowercase().ends_with(".md") {
-            if let (Some(rel), Ok(body)) = (rel_posix(root, &path), std::fs::read_to_string(&path)) {
+            if let (Some(rel), Ok(body)) = (rel_posix(root, &path), std::fs::read_to_string(&path))
+            {
                 let _ = upsert(writer, f, &rel, &title_of(&path), &body);
             }
         }
@@ -142,7 +147,12 @@ fn index_dir_recursive(writer: &IndexWriter, f: &Fields, root: &Path, dir: &Path
 
 /// Multi-field query over body·title. Attaches a body snippet·highlight ranges to each hit.
 /// Empty/whitespace query yields empty results.
-pub fn search(index: &Index, f: &Fields, query: &str, limit: usize) -> tantivy::Result<Vec<SearchHit>> {
+pub fn search(
+    index: &Index,
+    f: &Fields,
+    query: &str,
+    limit: usize,
+) -> tantivy::Result<Vec<SearchHit>> {
     if query.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -165,7 +175,12 @@ pub fn search(index: &Index, f: &Fields, query: &str, limit: usize) -> tantivy::
         let snip = snippet_gen.snippet_from_doc(&doc);
         let fragment = snip.fragment().to_string();
         let ranges = byte_ranges_to_char(&fragment, snip.highlighted());
-        hits.push(SearchHit { path, title, snippet: fragment, ranges });
+        hits.push(SearchHit {
+            path,
+            title,
+            snippet: fragment,
+            ranges,
+        });
     }
     Ok(hits)
 }
@@ -185,8 +200,10 @@ fn first_text(doc: &TantivyDocument, field: Field) -> String {
 fn byte_ranges_to_char(s: &str, ranges: &[std::ops::Range<usize>]) -> Vec<(usize, usize)> {
     // Count via char_indices without slicing, so it never panics on mid-codepoint offsets.
     let byte_to_char = |b: usize| s.char_indices().take_while(|(i, _)| *i < b).count();
-    let mut spans: Vec<(usize, usize)> =
-        ranges.iter().map(|r| (byte_to_char(r.start), byte_to_char(r.end))).collect();
+    let mut spans: Vec<(usize, usize)> = ranges
+        .iter()
+        .map(|r| (byte_to_char(r.start), byte_to_char(r.end)))
+        .collect();
     // ngram matches are overlapping·unsorted → sort, then merge adjacent/overlapping ranges to guarantee disjoint.
     spans.sort_unstable();
     let mut merged: Vec<(usize, usize)> = Vec::with_capacity(spans.len());
@@ -220,7 +237,12 @@ impl IndexState {
         let index = Index::open_or_create(mmap, schema)?;
         register_tokenizer(&index);
         let writer = index.writer(WRITER_HEAP)?;
-        Ok(Self { index, writer, fields, vault: vault_identity(vault_root) })
+        Ok(Self {
+            index,
+            writer,
+            fields,
+            vault: vault_identity(vault_root),
+        })
     }
 
     /// Whether this is the index of the vault at `vault_root`.
@@ -256,7 +278,10 @@ impl IndexState {
     /// Skipped when the change is in another vault (see [`IndexState::serves`]).
     pub fn apply_change(&mut self, vault_root: &Path, abs_path: &Path, removed: bool) {
         if !self.serves(vault_root) {
-            log::debug!("index: change in {} is for another vault; skipped", abs_path.display());
+            log::debug!(
+                "index: change in {} is for another vault; skipped",
+                abs_path.display()
+            );
             return;
         }
         if let Some(rel) = rel_posix(vault_root, abs_path) {
@@ -274,9 +299,17 @@ impl IndexState {
     /// Skipped when the note is in another vault (see [`IndexState::serves`]): the index is a
     /// derived cache, and that vault's own index, like for any change made while it is not open,
     /// takes the note in when it is rebuilt.
-    pub fn index_note(&mut self, vault_root: &Path, abs_path: &Path, body: &str) -> tantivy::Result<()> {
+    pub fn index_note(
+        &mut self,
+        vault_root: &Path,
+        abs_path: &Path,
+        body: &str,
+    ) -> tantivy::Result<()> {
         if !self.serves(vault_root) {
-            log::debug!("index: {} is a note of another vault; skipped", abs_path.display());
+            log::debug!(
+                "index: {} is a note of another vault; skipped",
+                abs_path.display()
+            );
             return Ok(());
         }
         if let Some(rel) = rel_posix(vault_root, abs_path) {
@@ -320,7 +353,14 @@ mod tests {
     fn upsert_then_delete_roundtrips() {
         let (index, f) = open_mem();
         let mut w: IndexWriter = index.writer(WRITER_HEAP).unwrap();
-        upsert(&w, &f, "journal/2026.md", "2026", "attached full-text search today").unwrap();
+        upsert(
+            &w,
+            &f,
+            "journal/2026.md",
+            "2026",
+            "attached full-text search today",
+        )
+        .unwrap();
         w.commit().unwrap();
         assert_eq!(num_docs(&index), 1);
 
@@ -349,7 +389,11 @@ mod tests {
         let mut w = index.writer(WRITER_HEAP).unwrap();
         build_all(&mut w, &f, root).unwrap();
         w.commit().unwrap(); // build_all delegates commit to the caller — commit to make visible.
-        assert_eq!(num_docs(&index), 2, ".md under a dot directory is excluded, still 2 docs");
+        assert_eq!(
+            num_docs(&index),
+            2,
+            ".md under a dot directory is excluded, still 2 docs"
+        );
 
         // Whether the relative path is stored with POSIX separators — checked indirectly via delete.
         delete(&w, &f, "journal/2026.md");
@@ -368,17 +412,26 @@ mod tests {
         let hits = search(&index, &f, "検索", 10).unwrap();
         assert_eq!(hits.len(), 1, "the query matches only a.md");
         assert_eq!(hits[0].path, "a.md");
-        assert!(hits[0].snippet.contains("検索"), "snippet contains the matched term");
+        assert!(
+            hits[0].snippet.contains("検索"),
+            "snippet contains the matched term"
+        );
         let ranges = &hits[0].ranges;
         assert!(!ranges.is_empty(), "highlight ranges exist");
         // Consumers (front highlight) rely on sorted·non-overlapping ranges — if the ngram
         // overlapping output is not merged, characters get emitted twice (regression guard).
         let snip_len = hits[0].snippet.chars().count();
         for w in ranges.windows(2) {
-            assert!(w[0].1 <= w[1].0, "ranges must be sorted·non-overlapping: {ranges:?}");
+            assert!(
+                w[0].1 <= w[1].0,
+                "ranges must be sorted·non-overlapping: {ranges:?}"
+            );
         }
         for &(start, end) in ranges {
-            assert!(start < end && end <= snip_len, "range is within snippet bounds: {ranges:?}");
+            assert!(
+                start < end && end <= snip_len,
+                "range is within snippet bounds: {ranges:?}"
+            );
         }
     }
 
@@ -422,11 +475,16 @@ mod tests {
         let abs = vault.path().join("journal/today.md");
 
         let mut state = IndexState::open_or_create(idx.path(), vault.path()).unwrap();
-        state.index_note(vault.path(), &abs, "本文のトークン").unwrap();
+        state
+            .index_note(vault.path(), &abs, "本文のトークン")
+            .unwrap();
 
         let hits = state.search("トークン", 10).unwrap();
         assert_eq!(hits.len(), 1, "in-memory body is found by search");
-        assert_eq!(hits[0].path, "journal/today.md", "relative path (POSIX) identifier matches");
+        assert_eq!(
+            hits[0].path, "journal/today.md",
+            "relative path (POSIX) identifier matches"
+        );
     }
 
     /// The index of vault A, holding A's `same.md`, with vault B beside it holding its own
@@ -447,11 +505,22 @@ mod tests {
     fn index_note_from_another_vault_leaves_the_index_alone() {
         let (_a, b, _idx, mut state) = two_vaults();
 
-        state.index_note(b.path(), &b.path().join("only-b.md"), "bravo only").unwrap();
-        state.index_note(b.path(), &b.path().join("same.md"), "bravo body").unwrap();
+        state
+            .index_note(b.path(), &b.path().join("only-b.md"), "bravo only")
+            .unwrap();
+        state
+            .index_note(b.path(), &b.path().join("same.md"), "bravo body")
+            .unwrap();
 
-        assert_eq!(num_docs(&state.index), 1, "no note of another vault shows up here");
-        assert!(state.search("bravo", 10).unwrap().is_empty(), "nor replaces a same-named note");
+        assert_eq!(
+            num_docs(&state.index),
+            1,
+            "no note of another vault shows up here"
+        );
+        assert!(
+            state.search("bravo", 10).unwrap().is_empty(),
+            "nor replaces a same-named note"
+        );
         assert_eq!(state.search("alpha", 10).unwrap().len(), 1);
     }
 
@@ -464,14 +533,21 @@ mod tests {
         state.commit().unwrap();
 
         assert_eq!(num_docs(&state.index), 1);
-        assert_eq!(state.search("alpha", 10).unwrap().len(), 1, "a same-named note is not removed");
+        assert_eq!(
+            state.search("alpha", 10).unwrap().len(),
+            1,
+            "a same-named note is not removed"
+        );
     }
 
     #[test]
     fn rebuild_from_another_vault_is_refused() {
         let (_a, b, _idx, mut state) = two_vaults();
 
-        assert!(state.rebuild(b.path()).is_err(), "another vault's files do not fill this index");
+        assert!(
+            state.rebuild(b.path()).is_err(),
+            "another vault's files do not fill this index"
+        );
 
         assert_eq!(num_docs(&state.index), 1, "what the index held is kept");
         assert_eq!(state.search("alpha", 10).unwrap().len(), 1);

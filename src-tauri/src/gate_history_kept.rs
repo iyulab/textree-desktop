@@ -25,11 +25,16 @@ const STEPS: usize = 30;
 
 /// Every commit reachable from the application's own refs in the repository at `root`.
 fn reachable(root: &Path) -> HashSet<Oid> {
-    let Ok(repo) = Repository::open(root) else { return HashSet::new() };
+    let Ok(repo) = Repository::open(root) else {
+        return HashSet::new();
+    };
     let mut walk = repo.revwalk().unwrap();
     let mut any = false;
     for reference in repo.references().unwrap().flatten() {
-        let ours = reference.name().ok().is_some_and(|n: &str| n.starts_with("refs/textree/"));
+        let ours = reference
+            .name()
+            .ok()
+            .is_some_and(|n: &str| n.starts_with("refs/textree/"));
         if let (true, Some(target)) = (ours, reference.target()) {
             walk.push(target).unwrap();
             any = true;
@@ -55,7 +60,10 @@ fn nothing_lost(before: &HashSet<Oid>, after: &HashSet<Oid>) -> Result<(), Strin
 struct Draw(u64);
 impl Draw {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         self.0 >> 33
     }
     fn pick<'a, T>(&mut self, from: &'a [T]) -> Option<&'a T> {
@@ -88,8 +96,16 @@ fn s(p: &Path) -> String {
     p.to_string_lossy().to_string()
 }
 
-const KINDS: [&str; 8] =
-    ["edit", "add version", "delete", "bring back", "rename", "move", "go back", "create"];
+const KINDS: [&str; 8] = [
+    "edit",
+    "add version",
+    "delete",
+    "bring back",
+    "rename",
+    "move",
+    "go back",
+    "create",
+];
 
 /// Runs one operation of kind `kind`. `Ok(false)`: nothing to do it to in this state.
 fn step(root: &Path, kind: &str, draw: &mut Draw, n: usize) -> Result<bool, String> {
@@ -97,44 +113,71 @@ fn step(root: &Path, kind: &str, draw: &mut Draw, n: usize) -> Result<bool, Stri
     let present = notes(root);
     match kind {
         "edit" => {
-            let Some(note) = draw.pick(&present) else { return Ok(false) };
+            let Some(note) = draw.pick(&present) else {
+                return Ok(false);
+            };
             std::fs::write(note, format!("# edit {n}\n")).map_err(|e| e.to_string())?;
         }
         "add version" => {
             if present.is_empty() {
                 return Ok(false);
             }
-            let chosen: Vec<String> = present.iter().filter(|_| draw.next().is_multiple_of(2)).map(|p| s(p)).collect();
-            let chosen = if chosen.is_empty() { vec![s(&present[0])] } else { chosen };
+            let chosen: Vec<String> = present
+                .iter()
+                .filter(|_| draw.next().is_multiple_of(2))
+                .map(|p| s(p))
+                .collect();
+            let chosen = if chosen.is_empty() {
+                vec![s(&present[0])]
+            } else {
+                chosen
+            };
             commit_notes(r, chosen, format!("v{n}"))?;
         }
         "delete" => {
-            let Some(note) = draw.pick(&present) else { return Ok(false) };
+            let Some(note) = draw.pick(&present) else {
+                return Ok(false);
+            };
             delete_node(r, s(note))?;
         }
         "bring back" => {
             let gone = deleted_notes(r.clone())?;
-            let Some(note) = draw.pick(&gone) else { return Ok(false) };
+            let Some(note) = draw.pick(&gone) else {
+                return Ok(false);
+            };
             restore_deleted(r, note.rel.clone())?;
         }
         "rename" => {
-            let Some(note) = draw.pick(&present) else { return Ok(false) };
+            let Some(note) = draw.pick(&present) else {
+                return Ok(false);
+            };
             rename_node(r, s(note), format!("r{n}"))?;
         }
         "move" => {
-            let Some(note) = draw.pick(&present) else { return Ok(false) };
-            let into = if note.parent() == Some(root) { root.join("sub") } else { root.to_path_buf() };
+            let Some(note) = draw.pick(&present) else {
+                return Ok(false);
+            };
+            let into = if note.parent() == Some(root) {
+                root.join("sub")
+            } else {
+                root.to_path_buf()
+            };
             std::fs::create_dir_all(&into).map_err(|e| e.to_string())?;
             move_node(r, s(note), s(&into))?;
         }
         "go back" => {
-            let Some(note) = draw.pick(&present) else { return Ok(false) };
+            let Some(note) = draw.pick(&present) else {
+                return Ok(false);
+            };
             let versions = note_versions(r.clone(), s(note))?;
-            let Some(version) = draw.pick(&versions) else { return Ok(false) };
+            let Some(version) = draw.pick(&versions) else {
+                return Ok(false);
+            };
             restore_version(r, s(note), version.id.clone())?;
         }
         "create" => {
-            std::fs::write(root.join(format!("n{n}.md")), format!("# new {n}\n")).map_err(|e| e.to_string())?;
+            std::fs::write(root.join(format!("n{n}.md")), format!("# new {n}\n"))
+                .map_err(|e| e.to_string())?;
         }
         _ => unreachable!(),
     }
@@ -167,7 +210,10 @@ fn nothing_ever_recorded_stops_being_reachable() {
     }
     // The property only means something if every kind of operation actually ran.
     for kind in KINDS {
-        assert!(done.get(kind).copied().unwrap_or(0) > 0, "'{kind}' never ran: {done:?}");
+        assert!(
+            done.get(kind).copied().unwrap_or(0) > 0,
+            "'{kind}' never ran: {done:?}"
+        );
     }
 }
 
@@ -183,9 +229,19 @@ fn negative_control_moving_a_ref_back_is_noticed() {
     let before = reachable(root);
 
     let repo = Repository::open(root).unwrap();
-    let tip = repo.find_reference(crate::git_engine::NOTES_REF).unwrap().peel_to_commit().unwrap();
+    let tip = repo
+        .find_reference(crate::git_engine::NOTES_REF)
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
     let parent = tip.parent(0).unwrap();
-    repo.reference(crate::git_engine::NOTES_REF, parent.id(), true, "moved back").unwrap();
+    repo.reference(
+        crate::git_engine::NOTES_REF,
+        parent.id(),
+        true,
+        "moved back",
+    )
+    .unwrap();
 
     let err = nothing_lost(&before, &reachable(root)).unwrap_err();
     assert!(err.contains("1 recorded state"), "{err}");

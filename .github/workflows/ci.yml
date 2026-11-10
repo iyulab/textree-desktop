@@ -110,5 +110,8 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/assemble-host-sidecar.ps1
 
+      - name: Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+
       - name: Rust tests (cargo)
         run: cargo test --manifest-path src-tauri/Cargo.toml

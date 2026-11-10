@@ -30,13 +30,21 @@ pub fn id_for(path: &str) -> String {
 /// Makes the folder at `path` known and returns its id. Opening it again gives the same id.
 pub fn register(path: &str) -> String {
     let id = id_for(path);
-    table().lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone(), path.to_string());
+    table()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id.clone(), path.to_string());
     id
 }
 
 /// The path of the folder `id` names, as it was registered.
 pub fn path_of(id: &str) -> Result<String, String> {
-    table().lock().unwrap_or_else(|e| e.into_inner()).get(id).cloned().ok_or_else(|| UNKNOWN.to_string())
+    table()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(id)
+        .cloned()
+        .ok_or_else(|| UNKNOWN.to_string())
 }
 
 #[cfg(test)]

@@ -70,11 +70,7 @@ pub fn create_untitled_note(parent: &Path) -> io::Result<PathBuf> {
 /// (`Summary of X`, `Summary of X (1)`, …). Like the other `create_*` fns it only ever creates a
 /// file ([`write_new`]), so no existing data is at risk and no atomic_write / self_write is needed
 /// (the watcher reflects the new file into the tree).
-pub fn create_note_with_content(
-    parent: &Path,
-    stem: &str,
-    content: &str,
-) -> io::Result<PathBuf> {
+pub fn create_note_with_content(parent: &Path, stem: &str, content: &str) -> io::Result<PathBuf> {
     check_parent_and_name(parent, stem)?;
     write_unique(parent, &format!("{stem}.md"), content.as_bytes())
 }
@@ -124,7 +120,10 @@ fn write_new(path: &Path, bytes: &[u8]) -> io::Result<()> {
 /// Creates a new file for `file_name` in `dir` under the first free name (`name (1)`, …), moving on
 /// to the next if that one is taken before it is created. Returns where it went.
 fn write_unique(dir: &Path, file_name: &str, bytes: &[u8]) -> io::Result<PathBuf> {
-    claim_free_path(dir, file_name, NameKind::File, |path| write_new(path, bytes)).map(|(path, ())| path)
+    claim_free_path(dir, file_name, NameKind::File, |path| {
+        write_new(path, bytes)
+    })
+    .map(|(path, ())| path)
 }
 
 /// Renames a node. A leaf `.md` renames the file; a container renames the directory and its
@@ -191,8 +190,13 @@ pub fn rename_note_unique(target: &Path, desired_name: &str) -> io::Result<PathB
     }
     let parent = target.parent().ok_or_else(|| err("no parent directory"))?;
     // A name found free can be taken before the move lands (a sync client): the next one instead.
-    claim_free_path(parent, &format!("{desired_name}.md"), NameKind::File, |dest| rename(target, dest))
-        .map(|(dest, ())| dest)
+    claim_free_path(
+        parent,
+        &format!("{desired_name}.md"),
+        NameKind::File,
+        |dest| rename(target, dest),
+    )
+    .map(|(dest, ())| dest)
 }
 
 /// Moves a node to a different folder (changes its parent). Returns the new path.
@@ -212,7 +216,9 @@ pub fn move_node(src: &Path, dest_dir: &Path) -> io::Result<PathBuf> {
     }
     let dest = dest_dir.join(name);
     if dest.exists() {
-        return Err(err("an item with the same name already exists in the destination folder"));
+        return Err(err(
+            "an item with the same name already exists in the destination folder",
+        ));
     }
     rename(src, &dest)?;
     Ok(dest)
@@ -262,11 +268,7 @@ pub fn adopt_into_leaf(src: &Path, leaf_md: &Path) -> io::Result<PathBuf> {
 /// (`note_body`, .md) (design §3.2 attachment mapping). Returns the **relative path** to insert into
 /// the body (always forward-slash, e.g. `assets/Pasted-1718....png`) — consistent because the .md
 /// and `assets/` share a parent.
-pub fn save_attachment(
-    note_body: &Path,
-    bytes: &[u8],
-    ext: &str,
-) -> io::Result<String> {
+pub fn save_attachment(note_body: &Path, bytes: &[u8], ext: &str) -> io::Result<String> {
     // Attachments are placed only relative to the note body (.md) — prevents creating assets/ next to an arbitrary path (server-side contract).
     if note_body.extension().and_then(|e| e.to_str()) != Some("md") {
         return Err(err("attachment target is not a note (.md)"));
@@ -353,7 +355,10 @@ impl PresentFiles {
         // not all a filesystem does to names — macOS also treats Unicode NFC and NFD spellings of a
         // name as one — and a note wrongly reported missing would be listed as deleted. Missing
         // files are the few (deleted notes), so this costs little.
-        listing.as_ref().is_some_and(|names| names.contains(&Self::key(name))) || path.is_file()
+        listing
+            .as_ref()
+            .is_some_and(|names| names.contains(&Self::key(name)))
+            || path.is_file()
     }
 }
 
@@ -393,7 +398,11 @@ mod tests {
     fn hold_open(path: &Path) -> std::fs::File {
         use std::os::windows::fs::OpenOptionsExt;
         const FILE_SHARE_READ: u32 = 0x1;
-        std::fs::OpenOptions::new().read(true).share_mode(FILE_SHARE_READ).open(path).unwrap()
+        std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ)
+            .open(path)
+            .unwrap()
     }
 
     /// A folder `box` holding its note and one other note, with the other note held open.
@@ -421,7 +430,10 @@ mod tests {
         release.join().unwrap();
 
         assert_eq!(renamed, root.join("crate"));
-        assert!(root.join("crate").join("crate.md").is_file(), "its note follows");
+        assert!(
+            root.join("crate").join("crate.md").is_file(),
+            "its note follows"
+        );
         assert!(root.join("crate").join("inside.md").is_file());
         assert!(!root.join("box").exists());
     }
@@ -436,7 +448,10 @@ mod tests {
         let _held = folder_with_a_held_note(root);
 
         let refused = rename_node(&root.join("box"), "crate").unwrap_err();
-        assert!(matches!(refused.raw_os_error(), Some(5 | 32)), "{refused:?}");
+        assert!(
+            matches!(refused.raw_os_error(), Some(5 | 32)),
+            "{refused:?}"
+        );
         assert!(root.join("box").join("box.md").is_file(), "nothing moved");
         assert!(!root.join("crate").exists());
     }
@@ -542,7 +557,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let dir = create_folder(tmp.path(), "journal").unwrap();
         assert!(dir.is_dir());
-        assert!(dir.join("journal.md").is_file(), "the folder note should be created");
+        assert!(
+            dir.join("journal.md").is_file(),
+            "the folder note should be created"
+        );
     }
 
     #[test]
@@ -555,11 +573,12 @@ mod tests {
         assert!(!leaf.exists(), "the original leaf file is moved");
         let body = dir.join("foo.md");
         assert!(body.is_file());
-        assert_eq!(std::fs::read_to_string(body).unwrap(), "body text", "content preserved");
+        assert_eq!(
+            std::fs::read_to_string(body).unwrap(),
+            "body text",
+            "content preserved"
+        );
     }
-
-
-
 
     #[test]
     fn rename_leaf_note() {
@@ -582,7 +601,10 @@ mod tests {
 
         let new_dir = rename_node(&dir, "journal").unwrap();
         assert_eq!(new_dir, tmp.path().join("journal"));
-        assert!(new_dir.join("journal.md").is_file(), "the folder note is renamed too");
+        assert!(
+            new_dir.join("journal.md").is_file(),
+            "the folder note is renamed too"
+        );
         assert_eq!(
             std::fs::read_to_string(new_dir.join("journal.md")).unwrap(),
             "diary body"
@@ -601,9 +623,18 @@ mod tests {
         std::fs::write(dir.join("journal.md"), "a child called journal").unwrap();
 
         assert!(rename_node(&dir, "journal").is_err());
-        assert_eq!(std::fs::read_to_string(dir.join("journal.md")).unwrap(), "a child called journal");
-        assert_eq!(std::fs::read_to_string(dir.join("diary.md")).unwrap(), "diary body");
-        assert!(!tmp.path().join("journal").exists(), "the folder is put back");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("journal.md")).unwrap(),
+            "a child called journal"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("diary.md")).unwrap(),
+            "diary body"
+        );
+        assert!(
+            !tmp.path().join("journal").exists(),
+            "the folder is put back"
+        );
     }
 
     #[test]
@@ -612,7 +643,10 @@ mod tests {
         let taken = tmp.path().join("taken.md");
         std::fs::write(&taken, "someone else's").unwrap();
 
-        assert_eq!(write_new(&taken, b"").unwrap_err().kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            write_new(&taken, b"").unwrap_err().kind(),
+            io::ErrorKind::AlreadyExists
+        );
         assert_eq!(std::fs::read_to_string(&taken).unwrap(), "someone else's");
         assert!(create_note(tmp.path(), "taken").is_err());
         assert_eq!(std::fs::read_to_string(&taken).unwrap(), "someone else's");
@@ -647,7 +681,10 @@ mod tests {
         std::fs::write(&from, "a").unwrap();
         std::fs::write(&to, "b").unwrap();
 
-        assert_eq!(rename(&from, &to).unwrap_err().kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            rename(&from, &to).unwrap_err().kind(),
+            io::ErrorKind::AlreadyExists
+        );
         assert_eq!(std::fs::read_to_string(&to).unwrap(), "b");
         assert_eq!(std::fs::read_to_string(&from).unwrap(), "a");
     }
@@ -773,7 +810,10 @@ mod tests {
         assert!(adopt_into_leaf(&src, &leaf).is_err());
         // Rollback verification: leaf restored, promotion folder removed, src preserved.
         assert!(leaf.is_file(), "the leaf should be restored");
-        assert!(!tmp.path().join("b").exists(), "the promotion folder should be rolled back");
+        assert!(
+            !tmp.path().join("b").exists(),
+            "the promotion folder should be rolled back"
+        );
         assert_eq!(std::fs::read_to_string(&leaf).unwrap(), "beta");
         assert!(src.is_file(), "src is unchanged");
     }
@@ -786,7 +826,10 @@ mod tests {
         let bytes = b"\x89PNG\r\n\x1a\n fake png";
 
         let rel = save_attachment(&note, bytes, "png").unwrap();
-        assert!(rel.starts_with("assets/"), "the relative link is under assets/");
+        assert!(
+            rel.starts_with("assets/"),
+            "the relative link is under assets/"
+        );
         assert!(rel.ends_with(".png"));
         // The actual file exists on disk in the same folder's assets/ and its content matches.
         let name = rel.strip_prefix("assets/").unwrap();
@@ -801,7 +844,9 @@ mod tests {
         let note = tmp.path().join("n.md");
         std::fs::write(&note, "").unwrap();
         // Allows normalization of uppercase / leading dot.
-        assert!(save_attachment(&note, b"x", ".JPEG").unwrap().ends_with(".jpeg"));
+        assert!(save_attachment(&note, b"x", ".JPEG")
+            .unwrap()
+            .ends_with(".jpeg"));
         // Rejects non-images.
         assert!(save_attachment(&note, b"x", "exe").is_err());
     }
@@ -813,8 +858,13 @@ mod tests {
         std::fs::write(&note, "").unwrap();
         let a = save_attachment(&note, b"a", "png").unwrap();
         let b = save_attachment(&note, b"b", "png").unwrap();
-        assert_ne!(a, b, "the two attachments must be different files (no overwriting)");
-        let count = std::fs::read_dir(tmp.path().join("assets")).unwrap().count();
+        assert_ne!(
+            a, b,
+            "the two attachments must be different files (no overwriting)"
+        );
+        let count = std::fs::read_dir(tmp.path().join("assets"))
+            .unwrap()
+            .count();
         assert_eq!(count, 2);
     }
 
@@ -825,7 +875,10 @@ mod tests {
         let img = tmp.path().join("pic.png");
         std::fs::write(&img, "x").unwrap();
         assert!(save_attachment(&img, b"y", "png").is_err());
-        assert!(!tmp.path().join("assets").exists(), "assets is not created on rejection");
+        assert!(
+            !tmp.path().join("assets").exists(),
+            "assets is not created on rejection"
+        );
     }
 
     #[test]
@@ -837,12 +890,16 @@ mod tests {
         std::fs::write(&body, "diary body").unwrap();
 
         let rel = save_attachment(&body, b"img", "gif").unwrap();
-        assert!(rel.starts_with("assets/"), "for a folder note too, the relative link is assets/");
+        assert!(
+            rel.starts_with("assets/"),
+            "for a folder note too, the relative link is assets/"
+        );
         let name = rel.strip_prefix("assets/").unwrap();
-        assert!(dir.join("assets").join(name).is_file(), "assets sits next to the folder note (bar/assets)");
+        assert!(
+            dir.join("assets").join(name).is_file(),
+            "assets sits next to the folder note (bar/assets)"
+        );
     }
-
-
 
     #[test]
     fn adopt_rejects_leaf_inside_src() {

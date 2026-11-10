@@ -26,7 +26,10 @@ fn opened(root: &str) -> Result<Root, String> {
         }
     }
     let r = Root::open(root).map_err(|e| e.to_string())?;
-    roots.lock().unwrap_or_else(|e| e.into_inner()).insert(root.to_string(), r.clone());
+    roots
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(root.to_string(), r.clone());
     Ok(r)
 }
 
@@ -41,7 +44,11 @@ fn mapped(e: std::io::Error) -> String {
 /// The parts of `rel`, refusing anything but plain names. The vault itself is never a note.
 fn parts(rel: &str) -> Result<Vec<&str>, String> {
     let parts: Vec<&str> = rel.split('/').collect();
-    if rel.is_empty() || parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || p.contains(['\\', ':'])) {
+    if rel.is_empty()
+        || parts
+            .iter()
+            .any(|p| p.is_empty() || *p == "." || *p == ".." || p.contains(['\\', ':']))
+    {
         return Err(OUTSIDE.into());
     }
     Ok(parts)
@@ -54,7 +61,9 @@ pub fn plain(rel: &str) -> Result<(), String> {
 }
 
 fn joined(root: &str, parts: &[&str]) -> PathBuf {
-    parts.iter().fold(PathBuf::from(root), |p, name| p.join(name))
+    parts
+        .iter()
+        .fold(PathBuf::from(root), |p, name| p.join(name))
 }
 
 /// Where `rel` is, when it must already be there or its nearest existing folder must be inside.
@@ -77,7 +86,8 @@ pub fn folder(root: &str, rel: &str) -> Result<PathBuf, String> {
 /// a command resolved it), or a refusal when it is not inside — made of plain names, as [`resolve`]
 /// takes them.
 pub fn rel_out(root: impl AsRef<Path>, abs: impl AsRef<Path>) -> Result<String, String> {
-    let rel = rel_of(&root.as_ref().to_string_lossy(), abs.as_ref()).ok_or_else(|| OUTSIDE.to_string())?;
+    let rel = rel_of(&root.as_ref().to_string_lossy(), abs.as_ref())
+        .ok_or_else(|| OUTSIDE.to_string())?;
     parts(&rel)?;
     Ok(rel)
 }
@@ -130,14 +140,21 @@ mod tests {
         std::fs::create_dir_all(d.path().join("a").join("b")).unwrap();
         std::fs::write(d.path().join("a").join("b").join("n.md"), "x").unwrap();
         let abs = resolve(&root, "a/b/n.md").unwrap();
-        assert_eq!(abs, d.path().join("a").join("b").join("n.md"), "built part by part on the vault path");
+        assert_eq!(
+            abs,
+            d.path().join("a").join("b").join("n.md"),
+            "built part by part on the vault path"
+        );
         assert_eq!(rel_of(&root, &abs).as_deref(), Some("a/b/n.md"));
     }
 
     #[test]
     fn a_path_that_does_not_exist_yet_resolves_when_its_folder_is_inside() {
         let (d, root) = vault();
-        assert_eq!(resolve(&root, "new/n.md").unwrap(), d.path().join("new").join("n.md"));
+        assert_eq!(
+            resolve(&root, "new/n.md").unwrap(),
+            d.path().join("new").join("n.md")
+        );
     }
 
     #[test]
@@ -151,7 +168,16 @@ mod tests {
     #[test]
     fn anything_but_plain_names_is_outside() {
         let (_d, root) = vault();
-        for bad in ["", "../x.md", "a/../../x.md", "./x.md", "a//b.md", "C:/Windows/x.md", "/etc/x", "a\\..\\..\\x.md"] {
+        for bad in [
+            "",
+            "../x.md",
+            "a/../../x.md",
+            "./x.md",
+            "a//b.md",
+            "C:/Windows/x.md",
+            "/etc/x",
+            "a\\..\\..\\x.md",
+        ] {
             assert_eq!(resolve(&root, bad).unwrap_err(), OUTSIDE, "{bad:?}");
         }
     }
@@ -179,7 +205,11 @@ mod tests {
     fn rel_of_a_path_under_a_differently_spelled_vault() {
         let (d, _) = vault();
         std::fs::write(d.path().join("n.md"), "x").unwrap();
-        let typed = format!("{}{}", d.path().to_string_lossy(), std::path::MAIN_SEPARATOR);
+        let typed = format!(
+            "{}{}",
+            d.path().to_string_lossy(),
+            std::path::MAIN_SEPARATOR
+        );
         let canonical = strip_verbatim(std::fs::canonicalize(d.path()).unwrap()).join("n.md");
         assert_eq!(rel_of(&typed, &canonical).as_deref(), Some("n.md"));
         // A note already gone still has a place.
@@ -194,10 +224,17 @@ mod tests {
         let (d, _) = vault();
         std::fs::create_dir_all(d.path().join("blog")).unwrap();
         std::fs::write(d.path().join("blog").join("post.md"), "x").unwrap();
-        for root in [d.path().to_string_lossy().to_string(), d.path().to_string_lossy().replace('\\', "/")] {
+        for root in [
+            d.path().to_string_lossy().to_string(),
+            d.path().to_string_lossy().replace('\\', "/"),
+        ] {
             let tree = crate::vault::build_tree(Path::new(&root)).unwrap();
             let post = &tree[0].children[0].path;
-            assert_eq!(resolve(&root, "blog/post.md").unwrap().as_os_str(), post.as_os_str(), "{root}");
+            assert_eq!(
+                resolve(&root, "blog/post.md").unwrap().as_os_str(),
+                post.as_os_str(),
+                "{root}"
+            );
         }
     }
 

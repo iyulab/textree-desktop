@@ -53,7 +53,10 @@ pub fn parse_publish_response(body: &str) -> Result<PublishToCloudResult, String
         page_count: usize,
     }
     let raw: Raw = serde_json::from_str(body).map_err(|e| format!("bad server response: {e}"))?;
-    Ok(PublishToCloudResult { url: raw.url, page_count: raw.page_count })
+    Ok(PublishToCloudResult {
+        url: raw.url,
+        page_count: raw.page_count,
+    })
 }
 
 /// Maps a non-2xx publish response to a user-facing message. The token is never included.
@@ -113,7 +116,10 @@ pub fn upload_bundle(
         .send(&zip[..])
     {
         Ok(mut resp) if resp.status().is_success() => {
-            let body = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
+            let body = resp
+                .body_mut()
+                .read_to_string()
+                .map_err(|e| e.to_string())?;
             parse_publish_response(&body)
         }
         Ok(mut resp) => {
@@ -139,7 +145,14 @@ pub fn publish_to_cloud(
 ) -> Result<PublishToCloudResult, String> {
     let tmp = tempfile::tempdir().map_err(|e| e.to_string())?;
     let out = tmp.path().join("site"); // a fresh dir outside the vault (run_publish validates this)
-    run_publish(vault, source, &out, options, canopy, crate::publish::RENDER_TIMEOUT)?;
+    run_publish(
+        vault,
+        source,
+        &out,
+        options,
+        canopy,
+        crate::publish::RENDER_TIMEOUT,
+    )?;
     let zip = zip_vault_output(&out)?;
     upload_bundle(&api_base(), token, zip, UPLOAD_TIMEOUT)
     // tmp (and the rendered output) is removed when `tmp` drops here.
@@ -249,7 +262,10 @@ mod tests {
             .map(|i| archive.by_index(i).unwrap().name().to_string())
             .collect();
         names.sort();
-        assert_eq!(names, vec!["index.html".to_string(), "notes/a.html".to_string()]);
+        assert_eq!(
+            names,
+            vec!["index.html".to_string(), "notes/a.html".to_string()]
+        );
         let mut f = archive.by_name("notes/a.html").unwrap();
         let mut s = String::new();
         f.read_to_string(&mut s).unwrap();
@@ -293,22 +309,43 @@ mod tests {
     fn upload_reads_the_body_of_a_rejected_bundle() {
         // An error status must still yield its body: the server says *why* it rejected the bundle.
         let base = serve_once("HTTP/1.1 400 Bad Request", "missing index.html");
-        let err = upload_bundle(&base, "t", b"zip".to_vec(), std::time::Duration::from_secs(5)).unwrap_err();
+        let err = upload_bundle(
+            &base,
+            "t",
+            b"zip".to_vec(),
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap_err();
         assert_eq!(err, "the server rejected the bundle: missing index.html");
     }
 
     #[test]
     fn upload_maps_a_rejected_token_without_echoing_it() {
         let base = serve_once("HTTP/1.1 401 Unauthorized", "");
-        let err = upload_bundle(&base, "secret-token", b"zip".to_vec(), std::time::Duration::from_secs(5)).unwrap_err();
+        let err = upload_bundle(
+            &base,
+            "secret-token",
+            b"zip".to_vec(),
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap_err();
         assert!(err.contains("token was rejected"));
         assert!(!err.contains("secret-token"));
     }
 
     #[test]
     fn upload_parses_a_successful_publish() {
-        let base = serve_once("HTTP/1.1 200 OK", r#"{"url":"https://example.test/","pageCount":3}"#);
-        let ok = upload_bundle(&base, "t", b"zip".to_vec(), std::time::Duration::from_secs(5)).unwrap();
+        let base = serve_once(
+            "HTTP/1.1 200 OK",
+            r#"{"url":"https://example.test/","pageCount":3}"#,
+        );
+        let ok = upload_bundle(
+            &base,
+            "t",
+            b"zip".to_vec(),
+            std::time::Duration::from_secs(5),
+        )
+        .unwrap();
         assert_eq!(ok.url, "https://example.test/");
         assert_eq!(ok.page_count, 3);
     }

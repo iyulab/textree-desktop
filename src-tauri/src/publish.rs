@@ -11,8 +11,8 @@ use std::ffi::OsString;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use tauri_kit_sidecar::Ran;
 use std::time::Duration;
+use tauri_kit_sidecar::Ran;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,7 +56,9 @@ const CANOPY_CLI_IN_PAYLOAD: [&str; 5] = ["node_modules", "@iyulab", "canopy", "
 pub fn canopy_from_resource_dir(resource: &Path) -> Option<CanopyInvocation> {
     let dir = resource.join("canopy");
     let node = dir.join(if cfg!(windows) { "node.exe" } else { "node" });
-    let cli = CANOPY_CLI_IN_PAYLOAD.iter().fold(dir.clone(), |p, part| p.join(part));
+    let cli = CANOPY_CLI_IN_PAYLOAD
+        .iter()
+        .fold(dir.clone(), |p, part| p.join(part));
     if node.exists() && cli.exists() {
         Some(CanopyInvocation {
             program: node.into_os_string(),
@@ -118,7 +120,11 @@ pub fn outgoing_notes(vault: &Path) -> io::Result<Vec<String>> {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let name = entry.file_name().to_string_lossy().into_owned();
-            let child = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+            let child = if rel.is_empty() {
+                name.clone()
+            } else {
+                format!("{rel}/{name}")
+            };
             let kind = entry.file_type()?;
             if kind.is_dir() {
                 if !name.starts_with('.') && name != "node_modules" {
@@ -127,7 +133,10 @@ pub fn outgoing_notes(vault: &Path) -> io::Result<Vec<String>> {
                         log::warn!("publish: skipping unreadable folder {child}: {e}");
                     }
                 }
-            } else if kind.is_file() && !name.starts_with('.') && crate::note_refs::is_note_path(&name) {
+            } else if kind.is_file()
+                && !name.starts_with('.')
+                && crate::note_refs::is_note_path(&name)
+            {
                 found.push(child);
             }
         }
@@ -175,7 +184,11 @@ fn collision_message(stderr: &str) -> Option<String> {
     if files.is_empty() {
         return None;
     }
-    let named = files.iter().map(|f| format!("\"{f}\"")).collect::<Vec<_>>().join(", ");
+    let named = files
+        .iter()
+        .map(|f| format!("\"{f}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     Some(format!(
         "The published site needs these names for its own files: {named}. Rename or move {}, then publish again.",
         if files.len() == 1 { "it" } else { "them" }
@@ -211,7 +224,9 @@ pub fn count_html_pages(out: &Path) -> usize {
 /// stall), and on timeout the whole process tree is stopped — not only the child, whose own children
 /// would otherwise live on holding the pipes — and the call returns at once.
 fn spawn_bounded(cmd: Command, timeout: Duration) -> Result<Output, String> {
-    match tauri_kit_sidecar::run(cmd, timeout).map_err(|e| format!("failed to start canopy: {e}"))? {
+    match tauri_kit_sidecar::run(cmd, timeout)
+        .map_err(|e| format!("failed to start canopy: {e}"))?
+    {
         Ran::Exited(output) => Ok(output),
         Ran::TimedOut => Err(format!("rendering timed out after {}s", timeout.as_secs())),
     }
@@ -245,7 +260,12 @@ pub fn run_publish(
 
     let mut cmd = Command::new(&canopy.program);
     cmd.args(&canopy.prefix_args);
-    cmd.args(canopy_args(source, out, options, tokens_file.as_ref().map(|f| f.path())));
+    cmd.args(canopy_args(
+        source,
+        out,
+        options,
+        tokens_file.as_ref().map(|f| f.path()),
+    ));
     let output = spawn_bounded(cmd, timeout)?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -275,7 +295,9 @@ mod tests {
             Some("The published site needs these names for its own files: \"tokens.css\", \"guide.html\". Rename or move them, then publish again.")
         );
         let one = "canopy: the vault publishes \"styles.css\", where canopy writes its stylesheet — rename or move it";
-        assert!(collision_message(one).unwrap().ends_with("Rename or move it, then publish again."));
+        assert!(collision_message(one)
+            .unwrap()
+            .ends_with("Rename or move it, then publish again."));
         assert_eq!(collision_message("canopy: something else went wrong"), None);
     }
 
@@ -298,7 +320,10 @@ mod tests {
         let start = Instant::now();
         let result = spawn_bounded(cmd, Duration::from_millis(200));
 
-        assert!(result.is_err(), "a child outliving the deadline must return an error");
+        assert!(
+            result.is_err(),
+            "a child outliving the deadline must return an error"
+        );
         assert!(
             result.unwrap_err().to_lowercase().contains("timed out"),
             "the error should say it timed out"
@@ -410,7 +435,10 @@ mod tests {
             put(root, rel);
         }
 
-        assert_eq!(outgoing_notes(root).unwrap(), vec!["Upper.MD", "a.md", "sub/deep/b.md"]);
+        assert_eq!(
+            outgoing_notes(root).unwrap(),
+            vec!["Upper.MD", "a.md", "sub/deep/b.md"]
+        );
     }
 
     #[test]
@@ -435,18 +463,28 @@ mod tests {
 
     #[test]
     fn canopy_args_carry_the_title_and_tokens_and_nothing_else() {
-        let options = PublishOptions { site_title: Some("Site".into()), tokens_css: None };
+        let options = PublishOptions {
+            site_title: Some("Site".into()),
+            tokens_css: None,
+        };
         let args = canopy_args(
             Path::new("v"),
             Path::new("o"),
             &options,
             Some(Path::new("t.css")),
         );
-        let expected: Vec<OsString> =
-            ["build", "v", "o", "--site-title", "Site", "--stylesheet", "t.css"]
-                .iter()
-                .map(OsString::from)
-                .collect();
+        let expected: Vec<OsString> = [
+            "build",
+            "v",
+            "o",
+            "--site-title",
+            "Site",
+            "--stylesheet",
+            "t.css",
+        ]
+        .iter()
+        .map(OsString::from)
+        .collect();
         assert_eq!(args, expected);
     }
 
@@ -457,7 +495,12 @@ mod tests {
         std::fs::create_dir(&dir).unwrap();
         let node_name = if cfg!(windows) { "node.exe" } else { "node" };
         std::fs::write(dir.join(node_name), "").unwrap();
-        let cli = dir.join("node_modules").join("@iyulab").join("canopy").join("dist").join("cli.js");
+        let cli = dir
+            .join("node_modules")
+            .join("@iyulab")
+            .join("canopy")
+            .join("dist")
+            .join("cli.js");
         std::fs::create_dir_all(cli.parent().unwrap()).unwrap();
         std::fs::write(&cli, "").unwrap();
 
@@ -472,7 +515,12 @@ mod tests {
         let dir = tmp.path().join("canopy");
         std::fs::create_dir(&dir).unwrap();
         // The CLI present but node missing -> not resolvable.
-        let cli = dir.join("node_modules").join("@iyulab").join("canopy").join("dist").join("cli.js");
+        let cli = dir
+            .join("node_modules")
+            .join("@iyulab")
+            .join("canopy")
+            .join("dist")
+            .join("cli.js");
         std::fs::create_dir_all(cli.parent().unwrap()).unwrap();
         std::fs::write(&cli, "").unwrap();
         assert!(canopy_from_resource_dir(tmp.path()).is_none());
@@ -500,12 +548,31 @@ mod tests {
         std::fs::write(vault.join(".env"), "SECRET=1\n").unwrap();
         let out = tmp.path().join("site");
 
-        let result = run_publish(&vault, &vault, &out, &PublishOptions { site_title: None, tokens_css: None }, &canopy, RENDER_TIMEOUT)
-            .expect("publish should succeed via the assembled sidecar");
+        let result = run_publish(
+            &vault,
+            &vault,
+            &out,
+            &PublishOptions {
+                site_title: None,
+                tokens_css: None,
+            },
+            &canopy,
+            RENDER_TIMEOUT,
+        )
+        .expect("publish should succeed via the assembled sidecar");
 
-        assert!(result.page_count >= 1, "expected at least one published page");
-        assert!(out.join("hello.html").exists(), "expected hello.html in the output");
-        assert!(!out.join(".env").exists(), "a hidden file must not reach the site");
+        assert!(
+            result.page_count >= 1,
+            "expected at least one published page"
+        );
+        assert!(
+            out.join("hello.html").exists(),
+            "expected hello.html in the output"
+        );
+        assert!(
+            !out.join(".env").exists(),
+            "a hidden file must not reach the site"
+        );
         // The source vault note is untouched.
         assert_eq!(std::fs::read_to_string(&note).unwrap(), source);
     }
@@ -521,7 +588,10 @@ mod tests {
         // Note: do NOT canonicalize — on Windows that yields a `\\?\` verbatim path that node's
         // module resolver chokes on. Production never canonicalizes the paths it hands canopy.
         let cli = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../canopy/dist/cli.js");
-        assert!(cli.exists(), "build canopy first (npm run build in canopy/)");
+        assert!(
+            cli.exists(),
+            "build canopy first (npm run build in canopy/)"
+        );
 
         let parent = TempDir::new().unwrap();
         let vault = parent.path().join("vault");
@@ -540,12 +610,16 @@ mod tests {
             prefix_args: vec![cli.into_os_string()],
         };
 
-        let result = run_publish(&vault, &vault, &out, &options, &canopy, RENDER_TIMEOUT).expect("publish should succeed");
+        let result = run_publish(&vault, &vault, &out, &options, &canopy, RENDER_TIMEOUT)
+            .expect("publish should succeed");
 
         assert!(result.page_count > 0, "at least one page emitted");
         assert!(out.join("note.html").is_file(), "the note rendered to html");
         let tokens = std::fs::read_to_string(out.join("tokens.css")).unwrap();
-        assert!(tokens.contains("INJECTED"), "injected tokens reached the site");
+        assert!(
+            tokens.contains("INJECTED"),
+            "injected tokens reached the site"
+        );
         // The source `.md` is read-only — its bytes (CRLF included) are untouched by publish.
         assert_eq!(std::fs::read_to_string(&note).unwrap(), source);
     }

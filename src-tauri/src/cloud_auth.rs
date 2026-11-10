@@ -17,7 +17,8 @@ const LOOPBACK_TIMEOUT: Duration = Duration::from_secs(180);
 /// Bounds the code→token exchange request so a stalled server can't hang the flow.
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(30);
 
-const SUCCESS_HTML: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Textree</title></head>\
+const SUCCESS_HTML: &str =
+    "<!doctype html><html><head><meta charset=\"utf-8\"><title>Textree</title></head>\
 <body style=\"font-family:sans-serif;text-align:center;padding:3rem\"><h2>Connected to Textree</h2>\
 <p>You can close this tab and return to the app.</p></body></html>";
 
@@ -112,7 +113,11 @@ fn write_response(stream: &mut TcpStream, status: &str, body: &str) {
 /// releases the code. Any other connection — a stray/speculative browser request, a favicon fetch,
 /// a request that sends nothing, or a forged/non-matching `state` — gets a 404 and is ignored while
 /// we keep waiting for the real redirect. The deadline bounds the total wait.
-fn run_loopback(listener: TcpListener, expected_state: &str, timeout: Duration) -> Result<String, String> {
+fn run_loopback(
+    listener: TcpListener,
+    expected_state: &str,
+    timeout: Duration,
+) -> Result<String, String> {
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let deadline = Instant::now() + timeout;
     loop {
@@ -140,7 +145,9 @@ fn run_loopback(listener: TcpListener, expected_state: &str, timeout: Duration) 
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 if Instant::now() >= deadline {
-                    return Err("sign-in timed out — no response from the browser, try again".to_string());
+                    return Err(
+                        "sign-in timed out — no response from the browser, try again".to_string(),
+                    );
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
@@ -161,7 +168,10 @@ fn exchange_code(api_base: &str, code: &str, verifier: &str) -> Result<String, S
         .send_json(serde_json::json!({ "code": code, "codeVerifier": verifier }))
     {
         Ok(mut resp) if resp.status().is_success() => {
-            let body = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
+            let body = resp
+                .body_mut()
+                .read_to_string()
+                .map_err(|e| e.to_string())?;
             parse_exchange_response(&body)
         }
         Ok(mut resp) => {
@@ -169,7 +179,9 @@ fn exchange_code(api_base: &str, code: &str, verifier: &str) -> Result<String, S
             let body = resp.body_mut().read_to_string().unwrap_or_default();
             Err(map_exchange_error(status, &body))
         }
-        Err(e) => Err(format!("couldn't reach app.textree.me ({e}) — check your connection and try again")),
+        Err(e) => Err(format!(
+            "couldn't reach app.textree.me ({e}) — check your connection and try again"
+        )),
     }
 }
 
@@ -185,7 +197,8 @@ pub fn connect() -> Result<(), String> {
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
     let url = build_authorize_url(&app_base(), port, &state, &challenge);
-    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| format!("couldn't open the browser ({e})"))?;
+    tauri_plugin_opener::open_url(url, None::<&str>)
+        .map_err(|e| format!("couldn't open the browser ({e})"))?;
 
     let code = run_loopback(listener, &state, LOOPBACK_TIMEOUT)?;
     let token = exchange_code(&api_base(), &code, &verifier)?;
@@ -222,7 +235,9 @@ mod tests {
         let b = gen_verifier().unwrap();
         assert_ne!(a, b);
         assert_eq!(a.len(), 43); // 32 bytes base64url-nopad
-        assert!(a.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+        assert!(a
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
     }
 
     #[test]
@@ -251,13 +266,18 @@ mod tests {
 
     #[test]
     fn parse_exchange_response_extracts_token_and_rejects_garbage() {
-        assert_eq!(parse_exchange_response(r#"{"token":"tk_abc"}"#).unwrap(), "tk_abc");
+        assert_eq!(
+            parse_exchange_response(r#"{"token":"tk_abc"}"#).unwrap(),
+            "tk_abc"
+        );
         assert!(parse_exchange_response("not json").is_err());
     }
 
     #[test]
     fn map_exchange_error_explains_400_and_other() {
-        assert!(map_exchange_error(400, "").to_lowercase().contains("try connecting again"));
+        assert!(map_exchange_error(400, "")
+            .to_lowercase()
+            .contains("try connecting again"));
         assert!(map_exchange_error(503, "").contains("503"));
     }
 
@@ -267,7 +287,8 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         std::thread::spawn(move || {
             let mut s = TcpStream::connect(addr).unwrap();
-            s.write_all(b"GET /callback?code=thecode&state=goodstate HTTP/1.1\r\n\r\n").unwrap();
+            s.write_all(b"GET /callback?code=thecode&state=goodstate HTTP/1.1\r\n\r\n")
+                .unwrap();
         });
         let code = run_loopback(listener, "goodstate", Duration::from_secs(5)).unwrap();
         assert_eq!(code, "thecode");
@@ -325,7 +346,10 @@ mod tests {
                 if n == 0 || line == "\r\n" {
                     break;
                 }
-                if let Some(v) = line.strip_prefix("Content-Length:").or_else(|| line.strip_prefix("content-length:")) {
+                if let Some(v) = line
+                    .strip_prefix("Content-Length:")
+                    .or_else(|| line.strip_prefix("content-length:"))
+                {
                     content_length = v.trim().parse().unwrap();
                 }
             }

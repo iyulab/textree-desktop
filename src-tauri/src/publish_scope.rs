@@ -22,7 +22,10 @@ fn covers(choice: &str, rel: &str) -> bool {
 
 /// The explicit choice that decides `rel`: the nearest one covering it (last wins on ties).
 pub fn nearest<'a>(rel: &str, choices: &'a [Choice]) -> Option<&'a Choice> {
-    choices.iter().filter(|c| covers(&c.path, rel)).max_by_key(|c| c.path.len())
+    choices
+        .iter()
+        .filter(|c| covers(&c.path, rel))
+        .max_by_key(|c| c.path.len())
 }
 
 /// Whether `rel` goes out under `choices`.
@@ -41,10 +44,20 @@ fn parse(text: &str) -> Vec<Choice> {
     text.lines()
         .filter_map(|line| {
             let (kind, path) = line.split_once('\t')?;
-            let path = if path == "." { String::new() } else { path.to_string() };
+            let path = if path == "." {
+                String::new()
+            } else {
+                path.to_string()
+            };
             match kind {
-                "include" => Some(Choice { path, include: true }),
-                "leave-out" => Some(Choice { path, include: false }),
+                "include" => Some(Choice {
+                    path,
+                    include: true,
+                }),
+                "leave-out" => Some(Choice {
+                    path,
+                    include: false,
+                }),
                 _ => None,
             }
         })
@@ -58,7 +71,11 @@ fn render(choices: &[Choice]) -> String {
         .iter()
         .map(|c| {
             let kind = if c.include { "include" } else { "leave-out" };
-            let path = if c.path.is_empty() { "." } else { c.path.as_str() };
+            let path = if c.path.is_empty() {
+                "."
+            } else {
+                c.path.as_str()
+            };
             format!("{kind}\t{path}\n")
         })
         .collect()
@@ -71,7 +88,9 @@ fn choices_in(repo: &Repository, tree: Option<&Tree<'_>>) -> Result<Vec<Choice>,
     let Some(id) = crate::git_engine::blob_in_tree(repo, tree, Path::new(FILE)) else {
         return Ok(Vec::new());
     };
-    Ok(parse(&String::from_utf8_lossy(repo.find_blob(id)?.content())))
+    Ok(parse(&String::from_utf8_lossy(
+        repo.find_blob(id)?.content(),
+    )))
 }
 
 /// The choices recorded on `at` (a reference name), `/`-separated and relative to the repository.
@@ -103,7 +122,10 @@ pub fn set(repo: &Repository, rel_in_repo: &str, choice: Option<bool>) -> Result
     update(repo, "Publish choice", |choices| {
         choices.retain(|c| !c.path.eq_ignore_ascii_case(rel_in_repo));
         if let Some(include) = choice {
-            choices.push(Choice { path: rel_in_repo.to_string(), include });
+            choices.push(Choice {
+                path: rel_in_repo.to_string(),
+                include,
+            });
         }
         true
     })
@@ -133,7 +155,9 @@ pub fn vacate(repo: &Repository, paths: &[PathBuf]) -> Result<(), git2::Error> {
         return Ok(());
     }
     update(repo, "Publish choice cleared", |choices| {
-        paths.iter().fold(false, |changed, p| drop_under(choices, &slashed(p), |c| c.include) | changed)
+        paths.iter().fold(false, |changed, p| {
+            drop_under(choices, &slashed(p), |c| c.include) | changed
+        })
     })
 }
 
@@ -149,8 +173,9 @@ pub fn follow_moves(repo: &Repository, moves: &[(PathBuf, PathBuf)]) -> Result<(
             }
             // Taken out before the destination is cleared: a rename that only changes case has a
             // destination covering its source.
-            let (mut moving, mut rest): (Vec<Choice>, Vec<Choice>) =
-                std::mem::take(choices).into_iter().partition(|c| covers(&from, &c.path));
+            let (mut moving, mut rest): (Vec<Choice>, Vec<Choice>) = std::mem::take(choices)
+                .into_iter()
+                .partition(|c| covers(&from, &c.path));
             // Every kind: the carried choice is the only one left at the destination.
             changed |= drop_under(&mut rest, &to, |_| true);
             for c in &mut moving {
@@ -179,15 +204,22 @@ impl Moved<'_> {
         if path.is_empty() {
             return None;
         }
-        if let Some((_, to)) = self.renames.iter().find(|(from, _)| from.eq_ignore_ascii_case(path)) {
+        if let Some((_, to)) = self
+            .renames
+            .iter()
+            .find(|(from, _)| from.eq_ignore_ascii_case(path))
+        {
             return Some(to.clone());
         }
         if holds(repo, &self.tip, path) {
             return None;
         }
         self.renames.iter().find_map(|(from, to)| {
-            let below = from.get(path.len()..).filter(|_| covers(path, from) && from.len() > path.len())?;
-            (to.len() > below.len() && to.ends_with(below)).then(|| to[..to.len() - below.len()].to_string())
+            let below = from
+                .get(path.len()..)
+                .filter(|_| covers(path, from) && from.len() > path.len())?;
+            (to.len() > below.len() && to.ends_with(below))
+                .then(|| to[..to.len() - below.len()].to_string())
         })
     }
 
@@ -198,7 +230,10 @@ impl Moved<'_> {
         let (mut moved, mut stayed): (Vec<Choice>, Vec<Choice>) = (Vec::new(), Vec::new());
         for c in choices {
             match self.destination(repo, &c.path) {
-                Some(path) => moved.push(Choice { path, include: c.include }),
+                Some(path) => moved.push(Choice {
+                    path,
+                    include: c.include,
+                }),
                 None => stayed.push(c.clone()),
             }
         }
@@ -213,7 +248,9 @@ fn holds(repo: &Repository, tree: &Tree<'_>, rel: &str) -> bool {
     let mut current = tree.clone();
     let mut names = rel.split('/').peekable();
     while let Some(name) = names.next() {
-        let Some(id) = current.get_name(name).map(|e| e.id()) else { return false };
+        let Some(id) = current.get_name(name).map(|e| e.id()) else {
+            return false;
+        };
         if names.peek().is_none() {
             return true;
         }
@@ -227,10 +264,14 @@ fn holds(repo: &Repository, tree: &Tree<'_>, rel: &str) -> bool {
 
 /// The renames on each side of the recorded notes since the two last agreed, as (here, there).
 /// `None` for a side when there is nothing to compare: no notes recorded here or received.
-fn moved_on_each_side(repo: &Repository) -> Result<(Option<Moved<'_>>, Option<Moved<'_>>), git2::Error> {
+fn moved_on_each_side(
+    repo: &Repository,
+) -> Result<(Option<Moved<'_>>, Option<Moved<'_>>), git2::Error> {
     let notes = crate::git_engine::NOTES_REF;
-    let (Ok(ours), Ok(theirs)) = (repo.refname_to_id(notes), repo.refname_to_id(&crate::remote::tracking_of(notes)))
-    else {
+    let (Ok(ours), Ok(theirs)) = (
+        repo.refname_to_id(notes),
+        repo.refname_to_id(&crate::remote::tracking_of(notes)),
+    ) else {
         return Ok((None, None));
     };
     let base = match repo.merge_base(ours, theirs) {
@@ -255,7 +296,10 @@ fn moved_on_each_side(repo: &Repository) -> Result<(Option<Moved<'_>>, Option<Mo
 }
 
 fn value_of(choices: &[Choice], path: &str) -> Option<bool> {
-    choices.iter().find(|c| c.path.eq_ignore_ascii_case(path)).map(|c| c.include)
+    choices
+        .iter()
+        .find(|c| c.path.eq_ignore_ascii_case(path))
+        .map(|c| c.include)
 }
 
 /// Joins two sides against what both started from. A side that did not touch a path takes the
@@ -270,7 +314,11 @@ fn join(base: &[Choice], mine: &[Choice], other: &[Choice]) -> Vec<Choice> {
     }
     let mut joined = Vec::new();
     for path in paths {
-        let (b, m, o) = (value_of(base, path), value_of(mine, path), value_of(other, path));
+        let (b, m, o) = (
+            value_of(base, path),
+            value_of(mine, path),
+            value_of(other, path),
+        );
         let (value, from) = if m == b {
             (o, other)
         } else if o == b || m == o {
@@ -279,8 +327,15 @@ fn join(base: &[Choice], mine: &[Choice], other: &[Choice]) -> Vec<Choice> {
             (Some(false), mine)
         };
         if let Some(include) = value {
-            let spelled = from.iter().chain(mine).chain(other).find(|c| c.path.eq_ignore_ascii_case(path));
-            joined.push(Choice { path: spelled.map_or(path, |c| c.path.as_str()).to_string(), include });
+            let spelled = from
+                .iter()
+                .chain(mine)
+                .chain(other)
+                .find(|c| c.path.eq_ignore_ascii_case(path));
+            joined.push(Choice {
+                path: spelled.map_or(path, |c| c.path.as_str()).to_string(),
+                include,
+            });
         }
     }
     joined
@@ -290,7 +345,9 @@ fn join(base: &[Choice], mine: &[Choice], other: &[Choice]) -> Vec<Choice> {
 /// simply behind, keep when it is ahead, and otherwise join the two in one revision. Everything is
 /// read inside one turn, so a choice made here meanwhile is never joined from a stale tip.
 pub fn take_in(repo: &Repository) -> Result<(), git2::Error> {
-    let Ok(theirs) = repo.refname_to_id(&crate::remote::tracking_of(PUBLIC_REF)) else { return Ok(()) };
+    let Ok(theirs) = repo.refname_to_id(&crate::remote::tracking_of(PUBLIC_REF)) else {
+        return Ok(());
+    };
     let (author, committer) = crate::git_engine::commit_identities(repo)?;
     const MESSAGE: &str = "Publish choices from another device";
     crate::git_engine::advancing(|| {
@@ -311,7 +368,10 @@ pub fn take_in(repo: &Repository) -> Result<(), git2::Error> {
                 // Choices name paths; a note one side moved is still the same note. Each side's
                 // choices are carried along the other side's moves first, so a choice made on one
                 // device about a note never stays behind at a name the other device moved it from.
-                let (mut mine, mut other) = (choices_in(repo, Some(&a.tree()?))?, choices_in(repo, Some(&b.tree()?))?);
+                let (mut mine, mut other) = (
+                    choices_in(repo, Some(&a.tree()?))?,
+                    choices_in(repo, Some(&b.tree()?))?,
+                );
                 let mut base = base;
                 let (here, there) = moved_on_each_side(repo)?;
                 if let Some(here) = &here {
@@ -324,9 +384,17 @@ pub fn take_in(repo: &Repository) -> Result<(), git2::Error> {
                 }
                 let joined = join(&base, &mine, &other);
                 let blob = repo.blob(render(&joined).as_bytes())?;
-                let tree = crate::git_engine::tree_with_file(repo, None, Path::new(FILE), Some(blob))?;
+                let tree =
+                    crate::git_engine::tree_with_file(repo, None, Path::new(FILE), Some(blob))?;
                 let tree = repo.find_tree(tree)?;
-                let commit = repo.commit(None, &author, &committer, "Publish choices joined with another device", &tree, &[&a, &b])?;
+                let commit = repo.commit(
+                    None,
+                    &author,
+                    &committer,
+                    "Publish choices joined with another device",
+                    &tree,
+                    &[&a, &b],
+                )?;
                 crate::git_engine::advance(repo, PUBLIC_REF, commit, Some(ours), MESSAGE)
             }
         }
@@ -345,14 +413,23 @@ pub fn for_vault(choices: &[Choice], vault_in_repo: &str) -> Vec<Choice> {
         .filter(|c| covers(&c.path, vault_in_repo) && !c.path.eq_ignore_ascii_case(vault_in_repo))
         .max_by_key(|c| c.path.len())
     {
-        out.push(Choice { path: String::new(), include: above.include });
+        out.push(Choice {
+            path: String::new(),
+            include: above.include,
+        });
     }
     for c in choices {
         if c.path.eq_ignore_ascii_case(vault_in_repo) {
             out.retain(|o: &Choice| !o.path.is_empty());
-            out.push(Choice { path: String::new(), include: c.include });
+            out.push(Choice {
+                path: String::new(),
+                include: c.include,
+            });
         } else if covers(vault_in_repo, &c.path) {
-            out.push(Choice { path: c.path[vault_in_repo.len() + 1..].to_string(), include: c.include });
+            out.push(Choice {
+                path: c.path[vault_in_repo.len() + 1..].to_string(),
+                include: c.include,
+            });
         }
     }
     out
@@ -365,11 +442,20 @@ mod tests {
     #[test]
     fn nearest_is_the_closest_explicit_choice_or_none() {
         let choices = vec![
-            Choice { path: "a".into(), include: true },
-            Choice { path: "a/private".into(), include: false },
+            Choice {
+                path: "a".into(),
+                include: true,
+            },
+            Choice {
+                path: "a/private".into(),
+                include: false,
+            },
         ];
         assert_eq!(nearest("a/x.md", &choices).map(|c| c.include), Some(true));
-        assert_eq!(nearest("A/Private/x.png", &choices).map(|c| c.include), Some(false));
+        assert_eq!(
+            nearest("A/Private/x.png", &choices).map(|c| c.include),
+            Some(false)
+        );
         assert!(nearest("b/x.md", &choices).is_none());
     }
 
@@ -410,7 +496,10 @@ mod tests {
         assert!(!is_included("work/memo.md", &got));
         assert!(is_included("work/press release.md", &got));
         set(&repo, "work", None).unwrap();
-        assert!(is_included("work/memo.md", &read(&repo, PUBLIC_REF).unwrap()));
+        assert!(is_included(
+            "work/memo.md",
+            &read(&repo, PUBLIC_REF).unwrap()
+        ));
     }
 
     #[test]
@@ -419,7 +508,9 @@ mod tests {
         set(&repo, "a.md", Some(true)).unwrap();
         let first = repo.refname_to_id(PUBLIC_REF).unwrap();
         set(&repo, "b.md", Some(true)).unwrap();
-        let second = repo.find_commit(repo.refname_to_id(PUBLIC_REF).unwrap()).unwrap();
+        let second = repo
+            .find_commit(repo.refname_to_id(PUBLIC_REF).unwrap())
+            .unwrap();
         assert_eq!(second.parent_ids().collect::<Vec<_>>(), vec![first]);
         set(&repo, "b.md", Some(true)).unwrap(); // nothing changed
         assert_eq!(repo.refname_to_id(PUBLIC_REF).unwrap(), second.id());
@@ -431,28 +522,63 @@ mod tests {
         set(&repo, "a.md", Some(true)).unwrap();
         let (author, committer) = crate::git_engine::commit_identities(&repo).unwrap();
         let mut first = true;
-        crate::git_engine::update_tree_on(&repo, PUBLIC_REF, "Publish choice", &author, &committer, |tree| {
-            let mut choices = choices_in(&repo, tree)?;
-            if first {
-                first = false;
-                // Someone else records a choice after this attempt has read the tip.
-                let mut theirs = choices.clone();
-                theirs.push(Choice { path: "secret".into(), include: false });
-                let blob = repo.blob(render(&theirs).as_bytes())?;
-                let t = crate::git_engine::tree_with_file(&repo, None, Path::new(FILE), Some(blob))?;
-                let tip = repo.find_commit(repo.refname_to_id(PUBLIC_REF)?)?;
-                let c = repo.commit(None, &author, &committer, "other", &repo.find_tree(t)?, &[&tip])?;
-                repo.reference(PUBLIC_REF, c, true, "other")?;
-            }
-            choices.push(Choice { path: "b.md".into(), include: true });
-            let blob = repo.blob(render(&choices).as_bytes())?;
-            crate::git_engine::tree_with_file(&repo, None, Path::new(FILE), Some(blob)).map(Some)
-        })
+        crate::git_engine::update_tree_on(
+            &repo,
+            PUBLIC_REF,
+            "Publish choice",
+            &author,
+            &committer,
+            |tree| {
+                let mut choices = choices_in(&repo, tree)?;
+                if first {
+                    first = false;
+                    // Someone else records a choice after this attempt has read the tip.
+                    let mut theirs = choices.clone();
+                    theirs.push(Choice {
+                        path: "secret".into(),
+                        include: false,
+                    });
+                    let blob = repo.blob(render(&theirs).as_bytes())?;
+                    let t = crate::git_engine::tree_with_file(
+                        &repo,
+                        None,
+                        Path::new(FILE),
+                        Some(blob),
+                    )?;
+                    let tip = repo.find_commit(repo.refname_to_id(PUBLIC_REF)?)?;
+                    let c = repo.commit(
+                        None,
+                        &author,
+                        &committer,
+                        "other",
+                        &repo.find_tree(t)?,
+                        &[&tip],
+                    )?;
+                    repo.reference(PUBLIC_REF, c, true, "other")?;
+                }
+                choices.push(Choice {
+                    path: "b.md".into(),
+                    include: true,
+                });
+                let blob = repo.blob(render(&choices).as_bytes())?;
+                crate::git_engine::tree_with_file(&repo, None, Path::new(FILE), Some(blob))
+                    .map(Some)
+            },
+        )
         .unwrap();
         let got = read(&repo, PUBLIC_REF).unwrap();
-        assert!(got.contains(&Choice { path: "secret".into(), include: false }));
-        assert!(got.contains(&Choice { path: "b.md".into(), include: true }));
-        assert!(got.contains(&Choice { path: "a.md".into(), include: true }));
+        assert!(got.contains(&Choice {
+            path: "secret".into(),
+            include: false
+        }));
+        assert!(got.contains(&Choice {
+            path: "b.md".into(),
+            include: true
+        }));
+        assert!(got.contains(&Choice {
+            path: "a.md".into(),
+            include: true
+        }));
     }
 
     #[test]
@@ -464,13 +590,16 @@ mod tests {
         set(&repo, "press.md", Some(true)).unwrap();
         set(&repo, "work", Some(false)).unwrap();
         let theirs = repo.refname_to_id(PUBLIC_REF).unwrap();
-        repo.reference("refs/textree-remote/public", theirs, true, "t").unwrap();
+        repo.reference("refs/textree-remote/public", theirs, true, "t")
+            .unwrap();
         repo.reference(PUBLIC_REF, base, true, "rewind").unwrap();
         set(&repo, "work", Some(true)).unwrap();
         let ours = repo.refname_to_id(PUBLIC_REF).unwrap();
 
         take_in(&repo).unwrap();
-        let joined = repo.find_commit(repo.refname_to_id(PUBLIC_REF).unwrap()).unwrap();
+        let joined = repo
+            .find_commit(repo.refname_to_id(PUBLIC_REF).unwrap())
+            .unwrap();
         assert_eq!(joined.parent_ids().collect::<Vec<_>>(), vec![ours, theirs]);
         let got = read(&repo, PUBLIC_REF).unwrap();
         assert!(is_included("press.md", &got));
@@ -491,7 +620,8 @@ mod tests {
         let base = repo.refname_to_id(PUBLIC_REF).unwrap();
         theirs_change(repo);
         let theirs = repo.refname_to_id(PUBLIC_REF).unwrap();
-        repo.reference("refs/textree-remote/public", theirs, true, "t").unwrap();
+        repo.reference("refs/textree-remote/public", theirs, true, "t")
+            .unwrap();
         repo.reference(PUBLIC_REF, base, true, "rewind").unwrap();
         mine_change(repo);
         take_in(repo).unwrap();
@@ -529,28 +659,48 @@ mod tests {
     fn notes_at(repo: &git2::Repository, parent: Option<git2::Oid>, files: &[&str]) -> git2::Oid {
         let mut tree: Option<git2::Oid> = None;
         for f in files {
-            let blob = repo.blob(format!("note {}", f.rsplit('/').next().unwrap()).as_bytes()).unwrap();
+            let blob = repo
+                .blob(format!("note {}", f.rsplit('/').next().unwrap()).as_bytes())
+                .unwrap();
             let base = tree.map(|t| repo.find_tree(t).unwrap());
-            tree = Some(crate::git_engine::tree_with_file(repo, base.as_ref(), Path::new(f), Some(blob)).unwrap());
+            tree = Some(
+                crate::git_engine::tree_with_file(repo, base.as_ref(), Path::new(f), Some(blob))
+                    .unwrap(),
+            );
         }
         let tree = repo.find_tree(tree.unwrap()).unwrap();
         let (author, committer) = crate::git_engine::commit_identities(repo).unwrap();
-        let parents: Vec<git2::Commit<'_>> = parent.map(|p| repo.find_commit(p).unwrap()).into_iter().collect();
+        let parents: Vec<git2::Commit<'_>> = parent
+            .map(|p| repo.find_commit(p).unwrap())
+            .into_iter()
+            .collect();
         let refs: Vec<&git2::Commit<'_>> = parents.iter().collect();
-        repo.commit(None, &author, &committer, "notes", &tree, &refs).unwrap()
+        repo.commit(None, &author, &committer, "notes", &tree, &refs)
+            .unwrap()
     }
 
     /// The recorded notes as this side (`ours`) and the other device (`theirs`) hold them.
     fn notes_on_each_side(repo: &git2::Repository, ours: git2::Oid, theirs: git2::Oid) {
-        repo.reference(crate::git_engine::NOTES_REF, ours, true, "ours").unwrap();
-        repo.reference(&crate::remote::tracking_of(crate::git_engine::NOTES_REF), theirs, true, "theirs").unwrap();
+        repo.reference(crate::git_engine::NOTES_REF, ours, true, "ours")
+            .unwrap();
+        repo.reference(
+            &crate::remote::tracking_of(crate::git_engine::NOTES_REF),
+            theirs,
+            true,
+            "theirs",
+        )
+        .unwrap();
     }
 
     #[test]
     fn a_leave_out_made_on_the_other_device_follows_a_folder_moved_here() {
         let (_d, repo) = repo();
         let before = notes_at(&repo, None, &["blog/a.md", "blog/draft.md"]);
-        let moved = notes_at(&repo, Some(before), &["site/blog/a.md", "site/blog/draft.md"]);
+        let moved = notes_at(
+            &repo,
+            Some(before),
+            &["site/blog/a.md", "site/blog/draft.md"],
+        );
         notes_on_each_side(&repo, moved, before);
         set(&repo, "blog", Some(true)).unwrap();
         diverge(
@@ -561,14 +711,21 @@ mod tests {
         let got = read(&repo, PUBLIC_REF).unwrap();
         assert!(!is_included("site/blog/draft.md", &got), "{got:?}");
         assert!(is_included("site/blog/a.md", &got), "{got:?}");
-        assert!(got.iter().all(|c| !covers("blog", &c.path)), "nothing left at the old place: {got:?}");
+        assert!(
+            got.iter().all(|c| !covers("blog", &c.path)),
+            "nothing left at the old place: {got:?}"
+        );
     }
 
     #[test]
     fn a_leave_out_made_here_follows_a_folder_the_other_device_moved() {
         let (_d, repo) = repo();
         let before = notes_at(&repo, None, &["blog/a.md", "blog/draft.md"]);
-        let moved = notes_at(&repo, Some(before), &["site/blog/a.md", "site/blog/draft.md"]);
+        let moved = notes_at(
+            &repo,
+            Some(before),
+            &["site/blog/a.md", "site/blog/draft.md"],
+        );
         notes_on_each_side(&repo, before, moved);
         set(&repo, "blog", Some(true)).unwrap();
         diverge(
@@ -604,12 +761,34 @@ mod tests {
         let (author, committer) = crate::git_engine::commit_identities(&repo).unwrap();
         let root = |choices: Vec<Choice>| {
             let blob = repo.blob(render(&choices).as_bytes()).unwrap();
-            let t = crate::git_engine::tree_with_file(&repo, None, Path::new(FILE), Some(blob)).unwrap();
-            repo.commit(None, &author, &committer, "root", &repo.find_tree(t).unwrap(), &[]).unwrap()
+            let t = crate::git_engine::tree_with_file(&repo, None, Path::new(FILE), Some(blob))
+                .unwrap();
+            repo.commit(
+                None,
+                &author,
+                &committer,
+                "root",
+                &repo.find_tree(t).unwrap(),
+                &[],
+            )
+            .unwrap()
         };
-        let theirs = root(vec![Choice { path: "work".into(), include: false }]);
-        let ours = root(vec![Choice { path: "work".into(), include: true }, Choice { path: "a.md".into(), include: true }]);
-        repo.reference("refs/textree-remote/public", theirs, true, "t").unwrap();
+        let theirs = root(vec![Choice {
+            path: "work".into(),
+            include: false,
+        }]);
+        let ours = root(vec![
+            Choice {
+                path: "work".into(),
+                include: true,
+            },
+            Choice {
+                path: "a.md".into(),
+                include: true,
+            },
+        ]);
+        repo.reference("refs/textree-remote/public", theirs, true, "t")
+            .unwrap();
         repo.reference(PUBLIC_REF, ours, true, "o").unwrap();
         take_in(&repo).unwrap();
         let got = read(&repo, PUBLIC_REF).unwrap();
@@ -626,11 +805,13 @@ mod tests {
         let first = repo.refname_to_id(PUBLIC_REF).unwrap();
         set(&repo, "b.md", Some(true)).unwrap();
         let second = repo.refname_to_id(PUBLIC_REF).unwrap();
-        repo.reference("refs/textree-remote/public", second, true, "t").unwrap();
+        repo.reference("refs/textree-remote/public", second, true, "t")
+            .unwrap();
         repo.reference(PUBLIC_REF, first, true, "rewind").unwrap();
         take_in(&repo).unwrap(); // behind: fast-forward
         assert_eq!(repo.refname_to_id(PUBLIC_REF).unwrap(), second);
-        repo.reference("refs/textree-remote/public", first, true, "t").unwrap();
+        repo.reference("refs/textree-remote/public", first, true, "t")
+            .unwrap();
         take_in(&repo).unwrap(); // ahead: kept
         assert_eq!(repo.refname_to_id(PUBLIC_REF).unwrap(), second);
         repo.find_reference(PUBLIC_REF).unwrap().delete().unwrap();
@@ -646,7 +827,10 @@ mod tests {
         set(&repo, "notes/a.md", Some(true)).unwrap();
         follow_moves(
             &repo,
-            &[(PathBuf::from("blog"), PathBuf::from("site/blog")), (PathBuf::from("notes/a.md"), PathBuf::from("notes/b.md"))],
+            &[
+                (PathBuf::from("blog"), PathBuf::from("site/blog")),
+                (PathBuf::from("notes/a.md"), PathBuf::from("notes/b.md")),
+            ],
         )
         .unwrap();
         let got = read(&repo, PUBLIC_REF).unwrap();
@@ -666,8 +850,17 @@ mod tests {
             set(&repo, moved, Some(false)).unwrap();
             follow_moves(&repo, &[(PathBuf::from(moved), PathBuf::from(stale))]).unwrap();
             let got = read(&repo, PUBLIC_REF).unwrap();
-            assert!(!is_included(&format!("{stale}/diary.md"), &got), "{moved} -> {stale}: {got:?}");
-            assert_eq!(got, vec![Choice { path: stale.into(), include: false }]);
+            assert!(
+                !is_included(&format!("{stale}/diary.md"), &got),
+                "{moved} -> {stale}: {got:?}"
+            );
+            assert_eq!(
+                got,
+                vec![Choice {
+                    path: stale.into(),
+                    include: false
+                }]
+            );
         }
     }
 
@@ -682,7 +875,10 @@ mod tests {
         let got = read(&repo, PUBLIC_REF).unwrap();
         assert!(!is_included("target/a.md", &got));
         assert!(!is_included("target/sub/x.md", &got));
-        assert!(is_included("targets/keep.md", &got), "a name that only starts the same is not under it");
+        assert!(
+            is_included("targets/keep.md", &got),
+            "a name that only starts the same is not under it"
+        );
     }
 
     #[test]
@@ -707,7 +903,16 @@ mod tests {
         vacate(&repo, &[PathBuf::from("a")]).unwrap();
         assert_eq!(
             read(&repo, PUBLIC_REF).unwrap(),
-            vec![Choice { path: "a/secret.md".into(), include: false }, Choice { path: "ab".into(), include: true }]
+            vec![
+                Choice {
+                    path: "a/secret.md".into(),
+                    include: false
+                },
+                Choice {
+                    path: "ab".into(),
+                    include: true
+                }
+            ]
         );
         // Only a leave-out there: nothing to drop, nothing written.
         let tip = repo.refname_to_id(PUBLIC_REF).unwrap();
@@ -719,23 +924,52 @@ mod tests {
     fn gate_l2_8_vacating_nothing_writes_nothing() {
         let (_d, repo) = repo();
         vacate(&repo, &[PathBuf::from("a.md")]).unwrap();
-        assert!(repo.refname_to_id(PUBLIC_REF).is_err(), "no choices yet: nothing is started");
+        assert!(
+            repo.refname_to_id(PUBLIC_REF).is_err(),
+            "no choices yet: nothing is started"
+        );
         set(&repo, "a.md", Some(true)).unwrap();
         let tip = repo.refname_to_id(PUBLIC_REF).unwrap();
-        vacate(&repo, &[PathBuf::from("b.md"), PathBuf::from("a.md/x"), PathBuf::from("")]).unwrap();
+        vacate(
+            &repo,
+            &[
+                PathBuf::from("b.md"),
+                PathBuf::from("a.md/x"),
+                PathBuf::from(""),
+            ],
+        )
+        .unwrap();
         assert_eq!(repo.refname_to_id(PUBLIC_REF).unwrap(), tip);
     }
 
     #[test]
     fn a_vault_inside_a_bigger_repository_sees_its_own_choices() {
         let choices = vec![
-            Choice { path: "docs".into(), include: true },
-            Choice { path: "docs/internal".into(), include: false },
-            Choice { path: "src".into(), include: true },
+            Choice {
+                path: "docs".into(),
+                include: true,
+            },
+            Choice {
+                path: "docs/internal".into(),
+                include: false,
+            },
+            Choice {
+                path: "src".into(),
+                include: true,
+            },
         ];
         assert_eq!(
             for_vault(&choices, "docs"),
-            vec![Choice { path: "".into(), include: true }, Choice { path: "internal".into(), include: false }]
+            vec![
+                Choice {
+                    path: "".into(),
+                    include: true
+                },
+                Choice {
+                    path: "internal".into(),
+                    include: false
+                }
+            ]
         );
         assert_eq!(for_vault(&choices, ""), choices);
     }
