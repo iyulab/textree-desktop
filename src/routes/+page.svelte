@@ -8,6 +8,8 @@
     registerRoot,
     type RootId,
     ensureDefaultVault,
+    workspaceAdd,
+    workspaceList,
     listTree,
     readNote,
     writeNote,
@@ -562,6 +564,9 @@
   async function finalizeOpenedVault() {
     if (!rootPath) return;
     localStorage.setItem(LAST_VAULT_KEY, rootPath);
+    // The device's list of notes folders keeps every folder opened — the sidebar will show them.
+    // Best effort: a list that cannot be written must not stop the folder from opening.
+    void workspaceAdd(rootPath).catch((e) => console.warn("Could not keep the notes folder in the list:", e));
     if (!activePath) {
       const first = findFirstOpenableNote(tree, "", nav.order);
       if (first) await handleSelect(first);
@@ -1628,7 +1633,15 @@
     // Decide the startup vault: restore the last one, or create/open the default on first run.
     // Effects (localStorage, IPC) live here; the decision itself is the pure decideStartup().
     void (async () => {
-      const plan = decideStartup(localStorage.getItem(LAST_VAULT_KEY));
+      const kept = await workspaceList().catch((e) => {
+        console.warn("Could not read the list of notes folders:", e);
+        return null;
+      });
+      if (kept?.setAside) console.warn("The list of notes folders could not be read; it was kept at", kept.setAside);
+      const plan = decideStartup(
+        localStorage.getItem(LAST_VAULT_KEY),
+        kept?.roots.map((r) => r.path),
+      );
       if (plan.action === "restore") {
         try {
           if (await loadVault(plan.path)) await finalizeOpenedVault();
