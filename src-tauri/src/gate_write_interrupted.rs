@@ -413,6 +413,7 @@ fn refuse_renames(times: usize, refusal: fn() -> io::Error) -> (write_step::Inst
     (hook, tried)
 }
 
+#[cfg(windows)] // only the Windows refusal cases below ask it
 fn nothing_staged_left(base: &Path, shape: &Shape) -> Vec<String> {
     read_disk(base).into_keys().filter(|rel| is_staged_temp(rel, shape.vault)).collect()
 }

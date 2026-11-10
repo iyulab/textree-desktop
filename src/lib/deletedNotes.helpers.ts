@@ -7,6 +7,7 @@
  * what "restore" will bring back.
  */
 import type { DeletedNote, RestoredNote } from "./ipc";
+import { SCREEN_LOCALE } from "./screenLocale";
 
 /** Last component of a path, `/`-separated as the backend reports it. */
 export function displayName(rel: string): string {
@@ -42,7 +43,7 @@ export function formatDeletedAt(seconds: number, now: Date = new Date()): string
   if (seconds <= 0) return "date unknown";
   const at = new Date(seconds * 1000);
   const sameYear = at.getFullYear() === now.getFullYear();
-  const date = at.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const date = at.toLocaleDateString(SCREEN_LOCALE, { month: "short", day: "numeric" });
   return sameYear ? `deleted ${date}` : `deleted ${date}, ${at.getFullYear()}`;
 }
 

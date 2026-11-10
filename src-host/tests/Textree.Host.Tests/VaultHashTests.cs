@@ -6,9 +6,13 @@ public class VaultHashTests
     [Fact]
     public void SamePathNormalizedToSameHash()
     {
-        var a = VaultHash.For(@"C:\data\vault");
-        var b = VaultHash.For(@"C:\data\vault\");      // trailing separator
-        var c = VaultHash.For(@"C:/data/VAULT");        // separators + casing
+        // Spelled the way this machine spells paths: a Windows-shaped literal is a relative file
+        // name elsewhere, and `\` is an ordinary character in it.
+        var vault = Path.Combine(Path.GetTempPath(), "data", "vault");
+        var a = VaultHash.For(vault);
+        var b = VaultHash.For(vault + Path.DirectorySeparatorChar);    // trailing separator
+        var c = VaultHash.For(Path.Combine(Path.GetTempPath(), "data", "VAULT")
+            .Replace(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)); // separators + casing
         Assert.Equal(a, b);
         Assert.Equal(a, c);
     }
