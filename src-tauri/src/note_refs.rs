@@ -76,7 +76,8 @@ pub fn targets(markdown: &str) -> Vec<Target> {
             let target = if let Some(stripped) = rest.strip_prefix('<') {
                 stripped.find('>').map(|e| &stripped[..e])
             } else {
-                rest.find(')').map(|e| rest[..e].split_whitespace().next().unwrap_or(""))
+                rest.find(')')
+                    .map(|e| rest[..e].split_whitespace().next().unwrap_or(""))
             };
             if let Some(t) = target.filter(|t| !t.is_empty()) {
                 found.push(Target::Path(t.to_string()));
@@ -101,7 +102,9 @@ fn percent_decoded(s: &str) -> String {
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
             // `get` yields None when the slice would split a UTF-8 character: not an escape.
-            let hex = s.get(i + 1..i + 3).filter(|h| h.bytes().all(|b| b.is_ascii_hexdigit()));
+            let hex = s
+                .get(i + 1..i + 3)
+                .filter(|h| h.bytes().all(|b| b.is_ascii_hexdigit()));
             if let Some(v) = hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
                 out.push(v);
                 i += 3;
@@ -172,23 +175,45 @@ mod tests {
 
     #[test]
     fn code_is_not_read_as_links() {
-        let md = "`![x](inline.png)`\n```\n![y](fenced.png)\n```\n~~~md\n[[z]]\n~~~\n![real](real.png)";
+        let md =
+            "`![x](inline.png)`\n```\n![y](fenced.png)\n```\n~~~md\n[[z]]\n~~~\n![real](real.png)";
         assert_eq!(targets(md), vec![Target::Path("real.png".into())]);
     }
 
     #[test]
     fn angle_brackets_and_spaces() {
-        assert_eq!(targets("![a](<my photo.png>)"), vec![Target::Path("my photo.png".into())]);
-        assert_eq!(targets("![a](my%20photo.png)"), vec![Target::Path("my%20photo.png".into())]);
+        assert_eq!(
+            targets("![a](<my photo.png>)"),
+            vec![Target::Path("my photo.png".into())]
+        );
+        assert_eq!(
+            targets("![a](my%20photo.png)"),
+            vec![Target::Path("my%20photo.png".into())]
+        );
     }
 
     #[test]
     fn resolving_stays_inside_the_folder() {
-        assert_eq!(resolve("blog/post.md", "img/a.png").as_deref(), Some("blog/img/a.png"));
-        assert_eq!(resolve("blog/post.md", "../shared/a.png").as_deref(), Some("shared/a.png"));
-        assert_eq!(resolve("blog/post.md", "/top.png").as_deref(), Some("top.png"));
-        assert_eq!(resolve("blog/post.md", "my%20photo.png").as_deref(), Some("blog/my photo.png"));
-        assert_eq!(resolve("blog/post.md", "a.png?raw=1#x").as_deref(), Some("blog/a.png"));
+        assert_eq!(
+            resolve("blog/post.md", "img/a.png").as_deref(),
+            Some("blog/img/a.png")
+        );
+        assert_eq!(
+            resolve("blog/post.md", "../shared/a.png").as_deref(),
+            Some("shared/a.png")
+        );
+        assert_eq!(
+            resolve("blog/post.md", "/top.png").as_deref(),
+            Some("top.png")
+        );
+        assert_eq!(
+            resolve("blog/post.md", "my%20photo.png").as_deref(),
+            Some("blog/my photo.png")
+        );
+        assert_eq!(
+            resolve("blog/post.md", "a.png?raw=1#x").as_deref(),
+            Some("blog/a.png")
+        );
         assert_eq!(resolve("post.md", "../outside.txt"), None);
         assert_eq!(resolve("post.md", "https://example.com/a.png"), None);
         assert_eq!(resolve("post.md", "mailto:a@example.com"), None);
@@ -207,7 +232,10 @@ mod tests {
         assert_eq!(resolve("post.md", "..%5Csecret.txt"), None);
         assert_eq!(resolve("post.md", "%2e%2e/x"), None);
         assert_eq!(resolve("post.md", "a%00.png"), None);
-        assert_eq!(resolve("blog/post.md", "img\\a.png").as_deref(), Some("blog/img/a.png"));
+        assert_eq!(
+            resolve("blog/post.md", "img\\a.png").as_deref(),
+            Some("blog/img/a.png")
+        );
     }
 
     #[test]

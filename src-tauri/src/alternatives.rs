@@ -79,12 +79,17 @@ fn target(repo: &Repository, name: &str) -> Option<Oid> {
 /// The value of `key` among the trailing `Key: value` lines of a revision message.
 fn trailer<'m>(message: &'m str, key: &str) -> Option<&'m str> {
     let prefix = format!("{key}: ");
-    message.lines().rev().find_map(|l| l.strip_prefix(prefix.as_str())).map(str::trim)
+    message
+        .lines()
+        .rev()
+        .find_map(|l| l.strip_prefix(prefix.as_str()))
+        .map(str::trim)
 }
 
 fn random_id() -> Result<String, git2::Error> {
     let mut bytes = [0u8; 8];
-    getrandom::getrandom(&mut bytes).map_err(|e| error(format!("no randomness for a new id: {e}")))?;
+    getrandom::getrandom(&mut bytes)
+        .map_err(|e| error(format!("no randomness for a new id: {e}")))?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -129,9 +134,13 @@ pub fn start(
     let tip = repo
         .find_reference(NOTES_REF)
         .and_then(|r| r.peel_to_commit())
-        .map_err(|_| error("add a version of this note first — an alternative starts from its last version"))?;
+        .map_err(|_| {
+            error("add a version of this note first — an alternative starts from its last version")
+        })?;
     if blob_in_tree(repo, &tip.tree()?, subject).is_none() {
-        return Err(error("add a version of this note first — an alternative starts from its last version"));
+        return Err(error(
+            "add a version of this note first — an alternative starts from its last version",
+        ));
     }
     let id = random_id()?;
     let message = format!("Alternative\n\n{ALTERNATIVE_OF}: {path}");
@@ -156,9 +165,12 @@ pub fn arrive(
     }
     let parent = repo.find_commit(theirs)?;
     if blob_in_tree(repo, &parent.tree()?, subject).is_none() {
-        return Err(error(format!("the arriving revision does not hold '{path}'")));
+        return Err(error(format!(
+            "the arriving revision does not hold '{path}'"
+        )));
     }
-    let message = format!("Changed elsewhere\n\n{ALTERNATIVE_OF}: {path}\n{ARRIVED_FROM}: {theirs}");
+    let message =
+        format!("Changed elsewhere\n\n{ALTERNATIVE_OF}: {path}\n{ARRIVED_FROM}: {theirs}");
     match open(repo, &id, &parent, &message, author, committer) {
         // Another writer opened it first: that one is this one.
         Err(e) if e.code() == git2::ErrorCode::Exists => Ok(id),
@@ -188,7 +200,9 @@ fn describe(repo: &Repository, id: &str, tip: Oid) -> Result<Alternative, git2::
             Err(_) => break,
         };
     }
-    Err(error(format!("alternative {id} does not say which note it belongs to")))
+    Err(error(format!(
+        "alternative {id} does not say which note it belongs to"
+    )))
 }
 
 fn listed(repo: &Repository, prefix: &str) -> Result<Vec<Alternative>, git2::Error> {
@@ -212,7 +226,12 @@ fn listed(repo: &Repository, prefix: &str) -> Result<Vec<Alternative>, git2::Err
             Err(e) => log::warn!("alternatives: skipping {name}: {}", e.message()),
         }
     }
-    found.sort_by(|a, b| a.path.cmp(&b.path).then(a.seconds.cmp(&b.seconds)).then(a.id.cmp(&b.id)));
+    found.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.seconds.cmp(&b.seconds))
+            .then(a.id.cmp(&b.id))
+    });
     Ok(found)
 }
 
@@ -239,7 +258,10 @@ pub fn get(repo: &Repository, id: &str) -> Result<Alternative, git2::Error> {
 }
 
 /// What the alternative holds for its note, or `None` when it holds no version of it.
-pub fn content(repo: &Repository, alternative: &Alternative) -> Result<Option<Vec<u8>>, git2::Error> {
+pub fn content(
+    repo: &Repository,
+    alternative: &Alternative,
+) -> Result<Option<Vec<u8>>, git2::Error> {
     let tree = repo.find_commit(alternative.tip)?.tree()?;
     let Some(blob) = blob_in_tree(repo, &tree, Path::new(&alternative.path)) else {
         return Ok(None);
@@ -271,7 +293,16 @@ pub fn record(
     advancing(|| {
         let alternative = get(repo, id)?;
         let entries = [(PathBuf::from(&alternative.path), content.to_vec())];
-        extend_once(repo, &open_ref(id), alternative.tip, &entries, message, author, committer, WhenUnchanged::Skip)
+        extend_once(
+            repo,
+            &open_ref(id),
+            alternative.tip,
+            &entries,
+            message,
+            author,
+            committer,
+            WhenUnchanged::Skip,
+        )
     })
 }
 
@@ -315,7 +346,15 @@ pub fn pick(
         .ok_or_else(|| error("that alternative holds no version of its note"))?;
     let entries = [(PathBuf::from(&alternative.path), chosen.clone())];
     let message = format!("Used an alternative\n\n{PICKED}: {id}");
-    commit_paths(repo, NOTES_REF, &entries, &message, author, committer, WhenUnchanged::Record)?;
+    commit_paths(
+        repo,
+        NOTES_REF,
+        &entries,
+        &message,
+        author,
+        committer,
+        WhenUnchanged::Record,
+    )?;
     end(repo, id)?;
     Ok(chosen)
 }
@@ -356,7 +395,7 @@ pub fn picked(repo: &Repository) -> Result<Vec<String>, git2::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git_engine::{content_at_tip, commit_paths};
+    use crate::git_engine::{commit_paths, content_at_tip};
     use tempfile::TempDir;
 
     fn sig() -> Signature<'static> {
@@ -366,9 +405,20 @@ mod tests {
     fn repo_with(files: &[(&str, &str)]) -> (TempDir, Repository) {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
-        let entries: Vec<(PathBuf, Vec<u8>)> =
-            files.iter().map(|(p, c)| (PathBuf::from(p), c.as_bytes().to_vec())).collect();
-        commit_paths(&repo, NOTES_REF, &entries, "first", &sig(), &sig(), WhenUnchanged::Skip).unwrap();
+        let entries: Vec<(PathBuf, Vec<u8>)> = files
+            .iter()
+            .map(|(p, c)| (PathBuf::from(p), c.as_bytes().to_vec()))
+            .collect();
+        commit_paths(
+            &repo,
+            NOTES_REF,
+            &entries,
+            "first",
+            &sig(),
+            &sig(),
+            WhenUnchanged::Skip,
+        )
+        .unwrap();
         (dir, repo)
     }
 
@@ -377,7 +427,12 @@ mod tests {
     }
 
     fn at_tip(repo: &Repository, path: &str) -> String {
-        String::from_utf8(content_at_tip(repo, NOTES_REF, Path::new(path)).unwrap().unwrap()).unwrap()
+        String::from_utf8(
+            content_at_tip(repo, NOTES_REF, Path::new(path))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -408,9 +463,16 @@ mod tests {
         assert_eq!(content(&repo, &alternative).unwrap().unwrap(), b"two");
         assert!(differs(&repo, &alternative).unwrap());
         // The same content again adds nothing.
-        assert_eq!(record(&repo, &id, b"two", "again", &sig(), &sig()).unwrap(), None);
+        assert_eq!(
+            record(&repo, &id, b"two", "again", &sig(), &sig()).unwrap(),
+            None
+        );
 
-        assert_eq!(target(&repo, NOTES_REF), before, "the note's history is untouched");
+        assert_eq!(
+            target(&repo, NOTES_REF),
+            before,
+            "the note's history is untouched"
+        );
         assert_eq!(at_tip(&repo, "notes/a.md"), "one");
     }
 
@@ -426,11 +488,23 @@ mod tests {
         let chosen = pick(&repo, &id, &sig(), &sig()).unwrap();
         assert_eq!(chosen, b"two");
 
-        let after = repo.find_reference(NOTES_REF).unwrap().peel_to_commit().unwrap();
-        assert_eq!(after.parent_id(0).unwrap(), before, "exactly one new version");
+        let after = repo
+            .find_reference(NOTES_REF)
+            .unwrap()
+            .peel_to_commit()
+            .unwrap();
+        assert_eq!(
+            after.parent_id(0).unwrap(),
+            before,
+            "exactly one new version"
+        );
         assert_eq!(after.parent_count(), 1, "not a join of the two histories");
         assert_eq!(at_tip(&repo, "a.md"), "two");
-        assert_eq!(notes_blob(&repo, "b.md"), b_before, "other notes are untouched");
+        assert_eq!(
+            notes_blob(&repo, "b.md"),
+            b_before,
+            "other notes are untouched"
+        );
 
         assert!(list(&repo).unwrap().is_empty());
         assert!(get(&repo, &id).is_err());
@@ -467,9 +541,22 @@ mod tests {
         end(&repo, &id).unwrap();
 
         let entries = [(PathBuf::from("a.md"), b"late".to_vec())];
-        let late = extend_once(&repo, &open_ref(&id), read.tip, &entries, "late", &sig(), &sig(), WhenUnchanged::Skip);
+        let late = extend_once(
+            &repo,
+            &open_ref(&id),
+            read.tip,
+            &entries,
+            "late",
+            &sig(),
+            &sig(),
+            WhenUnchanged::Skip,
+        );
         assert!(late.is_err());
-        assert_eq!(target(&repo, &open_ref(&id)), None, "the open name stays gone");
+        assert_eq!(
+            target(&repo, &open_ref(&id)),
+            None,
+            "the open name stays gone"
+        );
         assert_eq!(target(&repo, &ended_ref(&id)), Some(read.tip));
     }
 
@@ -483,7 +570,14 @@ mod tests {
             let (w_at, e_at) = (at.clone(), at.clone());
             let w = std::thread::spawn(move || {
                 let repo = Repository::open(&w_at).unwrap();
-                let _ = record(&repo, &writer, format!("take {round}").as_bytes(), "try", &sig(), &sig());
+                let _ = record(
+                    &repo,
+                    &writer,
+                    format!("take {round}").as_bytes(),
+                    "try",
+                    &sig(),
+                    &sig(),
+                );
             });
             let e = std::thread::spawn(move || {
                 let repo = Repository::open(&e_at).unwrap();
@@ -491,7 +585,11 @@ mod tests {
             });
             w.join().unwrap();
             e.join().unwrap();
-            assert_eq!(target(&repo, &open_ref(&id)), None, "round {round}: ended, so not open");
+            assert_eq!(
+                target(&repo, &open_ref(&id)),
+                None,
+                "round {round}: ended, so not open"
+            );
             assert!(target(&repo, &ended_ref(&id)).is_some());
         }
     }
@@ -511,17 +609,41 @@ mod tests {
     fn an_arrival_is_kept_once_and_its_decision_is_remembered() {
         let (_dir, repo) = repo_with(&[("a.md", "one"), ("b.md", "bee")]);
         // What elsewhere recorded: the same note, changed differently.
-        let base = repo.find_reference(NOTES_REF).unwrap().peel_to_commit().unwrap();
+        let base = repo
+            .find_reference(NOTES_REF)
+            .unwrap()
+            .peel_to_commit()
+            .unwrap();
         let blob = repo.blob(b"elsewhere").unwrap();
-        let tree = crate::git_engine::tree_with_file(&repo, Some(&base.tree().unwrap()), Path::new("a.md"), Some(blob)).unwrap();
+        let tree = crate::git_engine::tree_with_file(
+            &repo,
+            Some(&base.tree().unwrap()),
+            Path::new("a.md"),
+            Some(blob),
+        )
+        .unwrap();
         let theirs = repo
-            .commit(None, &sig(), &sig(), "theirs", &repo.find_tree(tree).unwrap(), &[&base])
+            .commit(
+                None,
+                &sig(),
+                &sig(),
+                "theirs",
+                &repo.find_tree(tree).unwrap(),
+                &[&base],
+            )
             .unwrap();
 
         let id = arrive(&repo, theirs, Path::new("a.md"), &sig(), &sig()).unwrap();
-        assert_eq!(arrive(&repo, theirs, Path::new("a.md"), &sig(), &sig()).unwrap(), id);
+        assert_eq!(
+            arrive(&repo, theirs, Path::new("a.md"), &sig(), &sig()).unwrap(),
+            id
+        );
         let open = list(&repo).unwrap();
-        assert_eq!(open.len(), 1, "taking the same revision in again does not ask again");
+        assert_eq!(
+            open.len(),
+            1,
+            "taking the same revision in again does not ask again"
+        );
         assert_eq!(open[0].arrived_from, Some(theirs));
         assert!(differs(&repo, &open[0]).unwrap());
         assert!(!decided(&repo, "a.md", blob).unwrap());
@@ -529,8 +651,14 @@ mod tests {
         // Kept mine.
         end(&repo, &id).unwrap();
         assert!(decided(&repo, "a.md", blob).unwrap());
-        assert_eq!(arrive(&repo, theirs, Path::new("a.md"), &sig(), &sig()).unwrap(), id);
-        assert!(list(&repo).unwrap().is_empty(), "an ended arrival is not opened again");
+        assert_eq!(
+            arrive(&repo, theirs, Path::new("a.md"), &sig(), &sig()).unwrap(),
+            id
+        );
+        assert!(
+            list(&repo).unwrap().is_empty(),
+            "an ended arrival is not opened again"
+        );
         assert!(!decided(&repo, "b.md", blob).unwrap());
     }
 
@@ -541,14 +669,29 @@ mod tests {
         let mut index = repo.index().unwrap();
         index.add_path(Path::new("a.md")).unwrap();
         index.write().unwrap();
-        let staged = repo.index().unwrap().get_path(Path::new("a.md"), 0).unwrap().id;
+        let staged = repo
+            .index()
+            .unwrap()
+            .get_path(Path::new("a.md"), 0)
+            .unwrap()
+            .id;
 
         let id = start(&repo, Path::new("a.md"), &sig(), &sig()).unwrap();
         record(&repo, &id, b"two", "try", &sig(), &sig()).unwrap();
         pick(&repo, &id, &sig(), &sig()).unwrap();
 
-        assert_eq!(std::fs::read_to_string(dir.path().join("a.md")).unwrap(), "on disk");
-        assert_eq!(repo.index().unwrap().get_path(Path::new("a.md"), 0).unwrap().id, staged);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
+            "on disk"
+        );
+        assert_eq!(
+            repo.index()
+                .unwrap()
+                .get_path(Path::new("a.md"), 0)
+                .unwrap()
+                .id,
+            staged
+        );
         assert!(repo.head().is_err(), "no branch was created or moved");
     }
 }

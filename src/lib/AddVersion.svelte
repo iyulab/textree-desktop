@@ -1,11 +1,12 @@
 <script lang="ts">
+  import type { RootId } from "./ipc";
   import { commitNotes } from "./ipc";
   import { friendlyError, type FriendlyError } from "./friendlyError.helpers";
   import { outcomeMessage, scopeSummary, versionName } from "./addVersion.helpers";
 
   interface Props {
     /** Absolute vault root path. */
-    root: string;
+    root: RootId;
     /** Absolute paths of the notes this version covers. */
     paths: string[];
     /** The note goes out when the folder is published. */

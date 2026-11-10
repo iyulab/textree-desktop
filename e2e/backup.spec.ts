@@ -7,6 +7,7 @@ import {
   readVaultFile,
   expectOpenNote,
   tauriInvoke,
+  rootIdOf,
   addVersion,
 } from "./helpers";
 import { gitAvailable, startTestRemote, type TestRemote } from "./git-remote";
@@ -143,7 +144,7 @@ test("backup: connect from the indicator, receive in another folder, send new ve
   } finally {
     // The access token is kept in the system's credential store; leave none behind.
     for (const vault of [first, second]) {
-      await tauriInvoke(page, "disconnect_remote", { root: vault }).catch(() => {});
+      await tauriInvoke(page, "disconnect_remote", { rootId: await rootIdOf(page, vault) }).catch(() => {});
     }
     removeTempVault(first);
     removeTempVault(second);
@@ -189,7 +190,7 @@ test("backup: a repository that cannot be reached is said once, not every time t
     await expect(settings).toHaveCount(0);
     await expect(notice).toHaveCount(0);
   } finally {
-    await tauriInvoke(page, "disconnect_remote", { root: vault }).catch(() => {});
+    await tauriInvoke(page, "disconnect_remote", { rootId: await rootIdOf(page, vault) }).catch(() => {});
     removeTempVault(vault);
     removeTempVault(elsewhere);
     await remote.close().catch(() => {});

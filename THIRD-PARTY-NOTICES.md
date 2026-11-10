@@ -40,7 +40,7 @@ libssh2 code is present in this distribution.
 
 ## Rust crates
 
-The 361 crates below are the normal-dependency closure of the binary, resolved for
+The 362 crates below are the normal-dependency closure of the binary, resolved for
 `x86_64-pc-windows-msvc`. Build-time and test-only dependencies are excluded because their code is not
 distributed.
 
@@ -298,18 +298,19 @@ distributed.
 | `tao` | 0.37.1 | Apache-2.0 | https://github.com/tauri-apps/tao |
 | `tauri` | 2.12.4 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | `tauri-codegen` | 2.7.3 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
-| `tauri-kit-credentials` | 0.30.0 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-diagnostics` | 0.30.0 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-fs` | 0.30.0 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-sidecar` | 0.30.0 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-state` | 0.30.0 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-watch` | 0.30.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-credentials` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-diagnostics` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-fs` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-sidecar` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-state` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-watch` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `tauri-macros` | 2.7.3 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | `tauri-plugin-dialog` | 2.8.3 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-fs` | 2.7.1 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-log` | 2.10.1 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-opener` | 2.7.2 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-process` | 2.4.0 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
+| `tauri-plugin-single-instance` | 2.5.5 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-updater` | 2.14.0 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-runtime` | 2.12.2 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | `tauri-runtime-wry` | 2.12.2 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
@@ -632,59 +633,59 @@ The helper that indexes notes and runs local models is a self-contained .NET pro
 runtime ships inside it, as the runtime packs listed below, whose own third-party notices are
 reproduced in THIRD-PARTY-LICENSES.txt with the rest.
 
-The 73 NuGet packages below put code into the helper (runtime or native assets).
+The 74 NuGet packages below put code into the helper (runtime or native assets).
 
 | Component | Version | License | Upstream |
 | --- | --- | --- | --- |
-| `Anthropic` | 13.1.0 | Apache-2.0 | https://www.github.com/anthropics/anthropic-sdk-csharp |
-| `ChildProcessGuard` | 1.4.0 | MIT | https://github.com/iyulab/ChildProcessGuard |
-| `CsvHelper` | 33.1.0 | MS-PL OR Apache-2.0 | https://github.com/JoshClose/CsvHelper |
-| `FileFlux` | 0.65.3 | MIT | https://github.com/iyulab/FileFlux |
-| `FileFlux.Core` | 0.65.3 | MIT | https://github.com/iyulab/FileFlux |
+| `Anthropic` | 13.3.0 | Apache-2.0 | https://www.github.com/anthropics/anthropic-sdk-csharp |
+| `ChildProcessGuard` | 1.5.0 | MIT | https://github.com/iyulab/ChildProcessGuard |
+| `CsvHelper` | 34.0.0 | MS-PL OR Apache-2.0 | https://github.com/JoshClose/CsvHelper |
+| `FileFlux` | 0.68.0 | MIT | https://github.com/iyulab/FileFlux |
+| `FileFlux.Core` | 0.68.0 | MIT | https://github.com/iyulab/FileFlux |
 | `Flux.Abstractions` | 0.27.0 | MIT | https://github.com/iyulab/flux-abstractions |
-| `FluxCurator` | 0.18.1 | MIT | https://github.com/iyulab/FluxCurator |
-| `FluxCurator.Core` | 0.18.1 | MIT | https://github.com/iyulab/FluxCurator |
-| `FluxFeed` | 0.58.0 | MIT | https://github.com/iyulab/FluxFeed |
-| `FluxGuard` | 0.25.1 | MIT | https://github.com/iyulab/FluxGuard |
-| `FluxGuard.Remote` | 0.25.1 | MIT | https://github.com/iyulab/FluxGuard |
+| `FluxCurator` | 0.19.0 | MIT | https://github.com/iyulab/FluxCurator |
+| `FluxCurator.Core` | 0.19.0 | MIT | https://github.com/iyulab/FluxCurator |
+| `FluxFeed` | 0.59.0 | MIT | https://github.com/iyulab/FluxFeed |
+| `FluxGuard` | 0.27.0 | MIT | https://github.com/iyulab/FluxGuard |
+| `FluxGuard.Remote` | 0.27.0 | MIT | https://github.com/iyulab/FluxGuard |
 | `FluxImprover` | 0.23.0 | MIT | https://github.com/iyulab/FluxImprover |
-| `FluxIndex.Core` | 0.104.0 | MIT | https://github.com/iyulab/FluxIndex |
-| `FluxIndex.Providers.LMSupply` | 0.104.0 | MIT | https://github.com/iyulab/FluxIndex |
-| `FluxIndex.SDK` | 0.104.0 | MIT | https://github.com/iyulab/FluxIndex |
-| `FluxIndex.Storage.SQLite` | 0.104.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.Core` | 0.106.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.Providers.LMSupply` | 0.106.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.SDK` | 0.106.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.Storage.SQLite` | 0.106.0 | MIT | https://github.com/iyulab/FluxIndex |
 | `Google.Apis` | 1.69.0 | Apache-2.0 | https://github.com/googleapis/google-api-dotnet-client |
 | `Google.Apis.Auth` | 1.69.0 | Apache-2.0 | https://github.com/googleapis/google-api-dotnet-client |
 | `Google.Apis.Core` | 1.69.0 | Apache-2.0 | https://github.com/googleapis/google-api-dotnet-client |
 | `Google.GenAI` | 1.27.0 | Apache-2.0 | https://github.com/googleapis/dotnet-genai |
 | `Google.Protobuf` | 3.30.2 | BSD-3-Clause | https://github.com/protocolbuffers/protobuf |
 | `HtmlAgilityPack` | 1.13.1 | MIT | https://github.com/zzzprojects/html-agility-pack/ |
-| `IronHive.Abstractions` | 0.70.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Extensions.AI` | 0.70.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.Anthropic` | 0.70.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.GoogleAI` | 0.70.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.OpenAI` | 0.70.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.OpenAI.Compatible` | 0.70.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronProw.Core` | 0.18.0 | MIT | https://github.com/iyulab/iron-prow |
-| `IronProw.IronHive` | 0.18.0 | MIT | https://github.com/iyulab/iron-prow |
-| `IronProw.LMSupply` | 0.18.0 | MIT | https://github.com/iyulab/iron-prow |
-| `LMSupply.Core` | 0.136.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Embedder` | 0.136.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Generator` | 0.136.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Generator.Onnx` | 0.136.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Llama` | 0.136.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Reranker` | 0.136.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Text.Core` | 0.136.0 | MIT | https://github.com/iyulab/lm-supply |
-| `Markdig` | 1.4.2 | BSD-2-Clause | https://github.com/xoofx/markdig |
+| `IronHive.Abstractions` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Extensions.AI` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.Anthropic` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.GoogleAI` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.OpenAI` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.OpenAI.Compatible` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronProw.Core` | 0.19.0 | MIT | https://github.com/iyulab/iron-prow |
+| `IronProw.IronHive` | 0.19.0 | MIT | https://github.com/iyulab/iron-prow |
+| `IronProw.LMSupply` | 0.19.0 | MIT | https://github.com/iyulab/iron-prow |
+| `LMSupply.Core` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Embedder` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Generator` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Generator.Onnx` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Llama` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Reranker` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Text.Core` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
+| `Markdig` | 1.6.0 | BSD-2-Clause | https://github.com/xoofx/markdig |
 | `Microsoft.AspNetCore.App.Runtime.win-x64` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
-| `Microsoft.Data.Sqlite.Core` | 10.0.13 | MIT | https://github.com/dotnet/dotnet |
-| `Microsoft.EntityFrameworkCore` | 10.0.13 | MIT | https://github.com/dotnet/dotnet |
-| `Microsoft.EntityFrameworkCore.Abstractions` | 10.0.13 | MIT | https://github.com/dotnet/dotnet |
-| `Microsoft.EntityFrameworkCore.Relational` | 10.0.13 | MIT | https://github.com/dotnet/dotnet |
-| `Microsoft.EntityFrameworkCore.Sqlite.Core` | 10.0.13 | MIT | https://github.com/dotnet/dotnet |
+| `Microsoft.Data.Sqlite.Core` | 11.0.0 | MIT | https://github.com/dotnet/dotnet |
+| `Microsoft.EntityFrameworkCore` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
+| `Microsoft.EntityFrameworkCore.Abstractions` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
+| `Microsoft.EntityFrameworkCore.Relational` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
+| `Microsoft.EntityFrameworkCore.Sqlite.Core` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
 | `Microsoft.Extensions.AI.Abstractions` | 10.11.0 | MIT | https://github.com/dotnet/extensions |
-| `Microsoft.Extensions.DependencyModel` | 10.0.13 | MIT | https://github.com/dotnet/dotnet |
-| `Microsoft.ML.OnnxRuntime.Managed` | 1.31.0 | MIT | https://github.com/microsoft/onnxruntime |
-| `Microsoft.ML.OnnxRuntimeGenAI.Managed` | 0.18.0 | MIT | https://github.com/microsoft/onnxruntime-genai/ |
+| `Microsoft.Extensions.DependencyModel` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
+| `Microsoft.ML.OnnxRuntime.Managed` | 1.31.1 | MIT | https://github.com/microsoft/onnxruntime |
+| `Microsoft.ML.OnnxRuntimeGenAI.Managed` | 0.19.0 | MIT | https://github.com/microsoft/onnxruntime-genai/ |
 | `Microsoft.ML.Tokenizers` | 2.0.1 | MIT | https://github.com/dotnet/machinelearning |
 | `Microsoft.NETCore.App.Runtime.win-x64` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
 | `Newtonsoft.Json` | 13.0.3 | MIT | https://github.com/JamesNK/Newtonsoft.Json |
@@ -696,19 +697,20 @@ The 73 NuGet packages below put code into the helper (runtime or native assets).
 | `SQLitePCLRaw.config.e_sqlite3` | 3.0.5 | Apache-2.0 | https://github.com/ericsink/SQLitePCL.raw |
 | `SQLitePCLRaw.core` | 3.0.5 | Apache-2.0 | https://github.com/ericsink/SQLitePCL.raw |
 | `SQLitePCLRaw.provider.e_sqlite3` | 3.0.5 | Apache-2.0 | https://github.com/ericsink/SQLitePCL.raw |
-| `System.ClientModel` | 1.16.0 | MIT | https://github.com/Azure/azure-sdk-for-net |
+| `System.ClientModel` | 1.17.0 | MIT | https://github.com/Azure/azure-sdk-for-net |
 | `System.CodeDom` | 7.0.0 | MIT | https://github.com/dotnet/runtime |
 | `System.Management` | 7.0.2 | MIT | https://github.com/dotnet/runtime |
 | `System.Memory.Data` | 10.0.10 | MIT | https://github.com/dotnet/dotnet |
-| `System.Numerics.Tensors` | 10.0.13 | MIT | https://github.com/dotnet/dotnet |
-| `TauriKit.Sidecar.Loopback` | 0.30.0 | MIT | https://github.com/iyulab/tauri-kit |
-| `TauriKit.Sidecar.Loopback.AspNetCore` | 0.30.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `System.Numerics.Tensors` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
+| `TauriKit.Diagnostics` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `TauriKit.Sidecar.Loopback` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `TauriKit.Sidecar.Loopback.AspNetCore` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `Tiktoken.Core` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |
 | `Tiktoken.Encodings.Abstractions` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |
 | `Tiktoken.Encodings.cl100k` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |
-| `Undoc` | 0.27.0 | MIT | https://github.com/iyulab/undoc |
+| `Undoc` | 0.27.3 | MIT | https://github.com/iyulab/undoc |
 | `Unhwp` | 0.23.1 | MIT | https://github.com/iyulab/unhwp |
-| `Unpdf` | 0.48.0 | MIT | https://github.com/iyulab/unpdf |
+| `Unpdf` | 0.54.0 | MIT | https://github.com/iyulab/unpdf |
 
 The license texts these components carry are reproduced in THIRD-PARTY-LICENSES.txt, next to this
 file. For a component that publishes without one, the text is taken from its source at the same

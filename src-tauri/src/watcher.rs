@@ -164,7 +164,10 @@ pub fn rebuild_index(handle: &IndexHandle, root: &Path) {
     let mut guard = handle.0.lock().unwrap_or_else(|e| e.into_inner());
     let Some(state) = guard.as_mut() else { return };
     if !state.serves(root) {
-        log::debug!("watcher: rescan of {} is for an index no longer installed; skipped", root.display());
+        log::debug!(
+            "watcher: rescan of {} is for an index no longer installed; skipped",
+            root.display()
+        );
         return;
     }
     if let Err(e) = state.rebuild(root) {
@@ -194,7 +197,13 @@ mod tests {
         assert!(is_head_reference(&Path::new(".git").join("HEAD")));
         // Everything else in there stays ignored: these change constantly, and none of them
         // says anything about the notes.
-        for noisy in [".git/index", ".git/config", ".git/objects/ab/cdef", ".git/logs/HEAD", ".git/refs/heads/main"] {
+        for noisy in [
+            ".git/index",
+            ".git/config",
+            ".git/objects/ab/cdef",
+            ".git/logs/HEAD",
+            ".git/refs/heads/main",
+        ] {
             let path = PathBuf::from(noisy);
             assert!(!is_head_reference(&path), "{noisy}");
             assert!(is_ignored(&path), "{noisy}");
@@ -207,7 +216,10 @@ mod tests {
     fn the_probe_writes_only_into_repository_storage_inside_the_folder() {
         let repo = TempDir::new().unwrap();
         git2::Repository::init(repo.path()).unwrap();
-        assert_eq!(probe_dir(repo.path()), Some(Path::new(".git").join(PROBE_DIR_NAME)));
+        assert_eq!(
+            probe_dir(repo.path()),
+            Some(Path::new(".git").join(PROBE_DIR_NAME))
+        );
 
         // A folder inside a repository: its storage is outside the folder.
         let inside = repo.path().join("docs");
@@ -226,7 +238,8 @@ mod tests {
         std::fs::write(vault.path().join("a.md"), "stale note").unwrap();
 
         let handle: Arc<IndexHandle> = Arc::new(IndexHandle::default());
-        *handle.0.lock().unwrap() = Some(IndexState::open_or_create(idx.path(), vault.path()).unwrap());
+        *handle.0.lock().unwrap() =
+            Some(IndexState::open_or_create(idx.path(), vault.path()).unwrap());
         apply_changes_to_index(
             &handle,
             vault.path(),
@@ -244,8 +257,16 @@ mod tests {
 
         let guard = handle.0.lock().unwrap();
         let st = guard.as_ref().unwrap();
-        assert_eq!(st.search("stale", 10).unwrap().len(), 0, "stale doc must be gone");
-        assert_eq!(st.search("fresh", 10).unwrap().len(), 1, "missed file must be indexed");
+        assert_eq!(
+            st.search("stale", 10).unwrap().len(),
+            0,
+            "stale doc must be gone"
+        );
+        assert_eq!(
+            st.search("fresh", 10).unwrap().len(),
+            1,
+            "missed file must be indexed"
+        );
     }
 
     #[test]
@@ -255,14 +276,51 @@ mod tests {
         std::fs::write(vault.path().join("a.md"), "initial body").unwrap();
 
         let handle: Arc<IndexHandle> = Arc::new(IndexHandle::default());
-        *handle.0.lock().unwrap() = Some(IndexState::open_or_create(idx.path(), vault.path()).unwrap());
+        *handle.0.lock().unwrap() =
+            Some(IndexState::open_or_create(idx.path(), vault.path()).unwrap());
         let at = vault.path().join("a.md").display().to_string();
 
-        apply_changes_to_index(&handle, vault.path(), &[FsChange { kind: ChangeKind::Modified, path: at.clone() }]);
-        assert_eq!(handle.0.lock().unwrap().as_ref().unwrap().search("body", 10).unwrap().len(), 1);
+        apply_changes_to_index(
+            &handle,
+            vault.path(),
+            &[FsChange {
+                kind: ChangeKind::Modified,
+                path: at.clone(),
+            }],
+        );
+        assert_eq!(
+            handle
+                .0
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .search("body", 10)
+                .unwrap()
+                .len(),
+            1
+        );
 
-        apply_changes_to_index(&handle, vault.path(), &[FsChange { kind: ChangeKind::Removed, path: at }]);
-        assert_eq!(handle.0.lock().unwrap().as_ref().unwrap().search("body", 10).unwrap().len(), 0);
+        apply_changes_to_index(
+            &handle,
+            vault.path(),
+            &[FsChange {
+                kind: ChangeKind::Removed,
+                path: at,
+            }],
+        );
+        assert_eq!(
+            handle
+                .0
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .search("body", 10)
+                .unwrap()
+                .len(),
+            0
+        );
     }
 
     /// Surfaces delivered until `done` holds, or ten seconds pass.
@@ -290,9 +348,14 @@ mod tests {
         drop(repo);
         let own = OwnWrites::new();
         let (tx, rx) = mpsc::channel();
-        let _watcher = watch_vault(vault.path(), &own, Arc::new(IndexHandle::default()), move |s| {
-            let _ = tx.send(s);
-        })
+        let _watcher = watch_vault(
+            vault.path(),
+            &own,
+            Arc::new(IndexHandle::default()),
+            move |s| {
+                let _ = tx.send(s);
+            },
+        )
         .unwrap();
         std::thread::sleep(Duration::from_millis(300));
 
@@ -305,10 +368,17 @@ mod tests {
         std::fs::write(&theirs, "written elsewhere").unwrap();
         let seen = until(&rx, |s| changed(s, &theirs, ChangeKind::Modified));
         assert!(changed(&seen, &theirs, ChangeKind::Modified), "{seen:?}");
-        assert!(!changed(&seen, &mine, ChangeKind::Modified), "our own write came back: {seen:?}");
+        assert!(
+            !changed(&seen, &mine, ChangeKind::Modified),
+            "our own write came back: {seen:?}"
+        );
 
         // Repository storage is quiet, except the record of the checked-out branch.
-        std::fs::write(vault.path().join(".git").join("HEAD"), "ref: refs/heads/other\n").unwrap();
+        std::fs::write(
+            vault.path().join(".git").join("HEAD"),
+            "ref: refs/heads/other\n",
+        )
+        .unwrap();
         let seen = until(&rx, |s| s.contains(&Surface::Rescan));
         assert!(seen.contains(&Surface::Rescan), "{seen:?}");
     }

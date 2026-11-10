@@ -11,7 +11,6 @@ import {
   relativeTo,
   remapRenamed,
   samePath,
-  sameVault,
 } from "./vaultPaths.helpers";
 
 describe("vault paths", () => {
@@ -36,7 +35,6 @@ describe("vault paths", () => {
     expect(relativeTo("C:\\Notes\\", "C:\\Notes")).toBe("");
     expect(relativeTo("C:\\Notes", "C:\\Notes2\\b.md")).toBeNull();
     expect(relativeTo("C:\\Notes", "D:\\other\\b.md")).toBeNull();
-    expect(sameVault("C:\\Notes\\", "c:/notes")).toBe(true);
   });
 
   it("name a note by its file and a folder's body by the folder", () => {

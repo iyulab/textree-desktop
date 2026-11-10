@@ -49,7 +49,16 @@ mod tests {
 
     #[test]
     fn valid_name_rejects_what_windows_cannot_hold_or_silently_changes() {
-        for name in ["What?", "a:b", "a*b", "a<b", "a>b", "a|b", "say \"hi\"", "tab\there"] {
+        for name in [
+            "What?",
+            "a:b",
+            "a*b",
+            "a<b",
+            "a>b",
+            "a|b",
+            "say \"hi\"",
+            "tab\there",
+        ] {
             assert!(!is_valid_name(name), "{name:?} cannot be a name on Windows");
         }
         // Windows drops a trailing dot or space, so the note would land under another name.
@@ -67,7 +76,7 @@ mod tests {
         assert!(!is_valid_name("COM1"));
         assert!(!is_valid_name("LPT9"));
         assert!(!is_valid_name("CON.md")); // regardless of extension
-        // Normal names that merely contain a reserved name are allowed.
+                                           // Normal names that merely contain a reserved name are allowed.
         assert!(is_valid_name("CONTROL"));
         assert!(is_valid_name("réunion-CON"));
     }

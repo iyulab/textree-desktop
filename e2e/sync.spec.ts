@@ -7,6 +7,7 @@ import {
   writeVaultFile,
   readVaultFile,
   listVaultDir,
+  rootIdOf,
 } from "./helpers";
 import { chmodSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -342,15 +343,16 @@ test("a save never replaces a change it has not seen", async () => {
   try {
     await loadVault(page, vault);
     writeVaultFile(vault, "cas.md", "changed elsewhere\n");
+    const rootId = await rootIdOf(page, vault);
     const invoke = (content: string, expected: string) =>
       page.evaluate(
-        ([root, content, expected]) =>
+        ([rootId, content, expected]) =>
           (
             window as unknown as {
               __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
             }
-          ).__TAURI_INTERNALS__.invoke("write_note", { root, rel: "cas.md", content, expected }),
-        [vault, content, expected],
+          ).__TAURI_INTERNALS__.invoke("write_note", { rootId, rel: "cas.md", content, expected }),
+        [rootId, content, expected],
       );
 
     // Based on what was loaded, but the note has moved on: nothing is written.

@@ -13,11 +13,17 @@
     <PackageReference Include="LMSupply.Embedder" />
     <PackageReference Include="LMSupply.Generator" />
     <PackageReference Include="LMSupply.Generator.Onnx" />
+    <PackageReference Include="LMSupply.Reranker" /> <!-- version pin only: see Directory.Packages.props -->
     <PackageReference Include="IronProw.LMSupply" />
     <PackageReference Include="IronProw.IronHive" />
     <PackageReference Include="TauriKit.Sidecar.Loopback" />
     <PackageReference Include="TauriKit.Sidecar.Loopback.AspNetCore" />
+    <PackageReference Include="TauriKit.Diagnostics" />
     <PackageReference Include="sqlite-vec" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The registry the shell verifies the host's reports with: one file, compiled into both. -->
+    <EmbeddedResource Include="../../../src-tauri/src/telemetry/registry.json" LogicalName="textree-registry.json" />
   </ItemGroup>
 </Project>

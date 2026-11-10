@@ -1,3 +1,4 @@
+import type { RootId } from "./ipc";
 /*
  * Backup store — which repository the open folder backs up to, and the exchanges with it.
  *
@@ -30,10 +31,10 @@ export type SyncReason = "manual" | "background";
 
 /** How the page hears about what happened to a folder. */
 export interface BackupListener {
-  exchanged: (root: string, exchange: RemoteExchange, reason: SyncReason) => void;
-  failed: (root: string, error: FriendlyError, reason: SyncReason) => void;
+  exchanged: (root: RootId, exchange: RemoteExchange, reason: SyncReason) => void;
+  failed: (root: RootId, error: FriendlyError, reason: SyncReason) => void;
   /** The folder was connected or disconnected. */
-  connectionChanged: (root: string) => void;
+  connectionChanged: (root: RootId) => void;
 }
 
 /** What this session knows about one folder's exchanges. */
@@ -50,7 +51,7 @@ const IDLE: Session = { running: false, syncedAt: null, outcome: null, failure: 
 
 class BackupStore {
   /** The folder the connection below belongs to. */
-  root = $state<string | null>(null);
+  root = $state<RootId | null>(null);
   /** Its repository, or null when it backs up nowhere. Meaningful once `known`. */
   connection = $state<RemoteConnection | null>(null);
   /** Whether the connection of `root` has been looked up. */
@@ -74,7 +75,7 @@ class BackupStore {
   }
 
   /** The open folder changed: look up where it backs up to. */
-  async select(root: string | null): Promise<void> {
+  async select(root: RootId | null): Promise<void> {
     this.root = root;
     this.connection = null;
     this.known = false;
@@ -82,7 +83,7 @@ class BackupStore {
     if (root) await this.lookup(root);
   }
 
-  private async lookup(root: string): Promise<RemoteConnection | null> {
+  private async lookup(root: RootId): Promise<RemoteConnection | null> {
     const mine = ++this.lookups;
     try {
       const found = await remoteConnection(root);
@@ -106,7 +107,7 @@ class BackupStore {
    * Connects `root` to the repository at `url` and exchanges with it once. Throws when the
    * repository could not be reached with `token` — then nothing was saved.
    */
-  async connect(root: string, url: string, token: string): Promise<void> {
+  async connect(root: RootId, url: string, token: string): Promise<void> {
     await connectRemote(root, url, "", token);
     this.patch(root, { outcome: null, failure: null });
     await this.lookup(root);
@@ -115,7 +116,7 @@ class BackupStore {
   }
 
   /** Stops backing `root` up on this machine. What the repository holds stays there. */
-  async disconnect(root: string): Promise<void> {
+  async disconnect(root: RootId): Promise<void> {
     await disconnectRemote(root);
     this.patch(root, { syncedAt: null, outcome: null, failure: null });
     await this.lookup(root);
@@ -123,7 +124,7 @@ class BackupStore {
   }
 
   /** Exchanges with `root`'s repository if it has one. Never throws. */
-  async syncIfConnected(root: string, reason: SyncReason = "background"): Promise<void> {
+  async syncIfConnected(root: RootId, reason: SyncReason = "background"): Promise<void> {
     let connected: RemoteConnection | null;
     try {
       connected = await remoteConnection(root);
@@ -137,7 +138,7 @@ class BackupStore {
    * One exchange for `root`. While another runs for it, this waits for that one and runs once
    * afterwards — joined with any others asked for meanwhile. Never throws: the listener hears.
    */
-  sync(root: string, reason: SyncReason): Promise<void> {
+  sync(root: RootId, reason: SyncReason): Promise<void> {
     const waiting = this.queued.get(root);
     if (waiting) {
       if (reason === "manual") waiting.reason = "manual";
@@ -154,7 +155,7 @@ class BackupStore {
     return entry.promise;
   }
 
-  private start(root: string, reason: SyncReason): Promise<void> {
+  private start(root: RootId, reason: SyncReason): Promise<void> {
     this.patch(root, { running: true });
     const run = this.run(root, reason).finally(() => {
       this.inFlight.delete(root);
@@ -164,7 +165,7 @@ class BackupStore {
     return run;
   }
 
-  private async run(root: string, reason: SyncReason): Promise<void> {
+  private async run(root: RootId, reason: SyncReason): Promise<void> {
     try {
       const exchange = await syncRemote(root);
       this.patch(root, {
@@ -180,11 +181,11 @@ class BackupStore {
     }
   }
 
-  private sessionOf(root: string): Session {
+  private sessionOf(root: RootId): Session {
     return this.sessions[root] ?? IDLE;
   }
 
-  private patch(root: string, change: Partial<Session>): void {
+  private patch(root: RootId, change: Partial<Session>): void {
     this.sessions[root] = { ...this.sessionOf(root), ...change };
   }
 }

@@ -1,9 +1,10 @@
 <script lang="ts">
+  import type { RootId } from "./ipc";
   import BackupPanel from "./BackupPanel.svelte";
 
   interface Props {
     /** Absolute folder root to back up. */
-    root: string;
+    root: RootId;
     onclose: () => void;
   }
   let { root, onclose }: Props = $props();

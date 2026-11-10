@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { RootId } from "./ipc";
   import { noteVersions, noteVersionText, restoreVersion, type NoteVersion } from "./ipc";
   import { friendlyError, type FriendlyError } from "./friendlyError.helpers";
   import { noteName } from "./addVersion.helpers";
@@ -13,7 +14,7 @@
 
   interface Props {
     /** Absolute vault root path. */
-    root: string;
+    root: RootId;
     /** Path of the note whose states are listed, relative to the vault. */
     path: string;
     /** Moves on when the folder's history may have changed: the list is read again. */
@@ -42,7 +43,7 @@
   });
 
   let reads = 0;
-  async function load(atRoot: string, ofNote: string) {
+  async function load(atRoot: RootId, ofNote: string) {
     const mine = ++reads;
     failure = null;
     selected = null;

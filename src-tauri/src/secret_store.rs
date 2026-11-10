@@ -35,7 +35,10 @@ mod tests {
     #[test]
     fn a_release_build_keeps_the_name_installed_apps_already_store_under() {
         // Changing how the shipped name is formed would orphan every secret users already have.
-        let release = Credentials::new("com.example.secret", tauri_kit_credentials::BuildKind::Release);
+        let release = Credentials::new(
+            "com.example.secret",
+            tauri_kit_credentials::BuildKind::Release,
+        );
         assert_eq!(release.service(), "com.example.secret");
     }
 

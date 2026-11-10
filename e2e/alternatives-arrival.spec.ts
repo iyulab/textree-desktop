@@ -8,6 +8,7 @@ import {
   expectOpenNote,
   writeVaultFile,
   tauriInvoke,
+  rootIdOf,
   addVersion,
   refsUnder,
 } from "./helpers";
@@ -103,7 +104,7 @@ test("alternatives: a note changed in two folders arrives as an alternative, and
     // The first folder changed it too, while it was not open — as a computer that was offline
     // would. Opening it exchanges, and the version from elsewhere is kept as an alternative.
     writeVaultFile(first, "plan.md", "# Plan\n\nWe meet on Wednesday.\n");
-    await tauriInvoke(page, "commit_notes", { root: first, rels: ["plan.md"], message: "plan" });
+    await tauriInvoke(page, "commit_notes", { rootId: await rootIdOf(page, first), rels: ["plan.md"], message: "plan" });
     await loadVault(page, first);
     await page.getByRole("treeitem", { name: /plan/ }).click();
     await expectOpenNote(page, "plan");
@@ -136,7 +137,7 @@ test("alternatives: a note changed in two folders arrives as an alternative, and
     expect(refsUnder(second, "refs/textree/alternatives/")).toEqual([]);
   } finally {
     for (const vault of [first, second]) {
-      await tauriInvoke(page, "disconnect_remote", { root: vault }).catch(() => {});
+      await tauriInvoke(page, "disconnect_remote", { rootId: await rootIdOf(page, vault) }).catch(() => {});
     }
     // The folder left open may still be finishing its exchange; removing it waits for that.
     for (const vault of [first, second]) {

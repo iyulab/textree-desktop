@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { RootId } from "./ipc";
   import { palette } from "./paletteStore.svelte";
   import { nav } from "./nav.svelte";
   import { fuzzyMatch, type Match } from "./fuzzy";
@@ -33,7 +34,7 @@
     onOpenFile: (path: string) => void;
     onRunCommand: (cmd: Command) => void;
     onSearchContent: (query: string) => Promise<SearchHit[]>;
-    vaultRoot?: string | null;
+    vaultRoot?: RootId | null;
     scopePath?: string | null;
   } = $props();
 

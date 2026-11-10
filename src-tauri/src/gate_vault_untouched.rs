@@ -64,10 +64,18 @@ fn looking_at_a_folder_does_not_turn_it_into_a_repository() {
 
     let before = entries(root);
     deleted_notes(root_s.clone()).unwrap();
-    note_versions(root_s.clone(), root.join("a.md").to_string_lossy().to_string()).unwrap();
+    note_versions(
+        root_s.clone(),
+        root.join("a.md").to_string_lossy().to_string(),
+    )
+    .unwrap();
     move_state_out_of_vault(root_s).unwrap();
 
-    assert_eq!(entries(root), before, "the folder is exactly as it was found");
+    assert_eq!(
+        entries(root),
+        before,
+        "the folder is exactly as it was found"
+    );
     assert!(!root.join(".git").exists());
 }
 

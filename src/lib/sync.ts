@@ -5,9 +5,9 @@
 // The state itself is held by the page; here we only coordinate via injected handlers.
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { listTree, readNote, type TreeNode } from "./ipc";
+import { listTree, readNote, type RootId, type TreeNode } from "./ipc";
 import { decideChangeAction, decideRescanAction } from "./sync.helpers";
-import { samePath, sameVault } from "./vaultPaths.helpers";
+import { samePath } from "./vaultPaths.helpers";
 
 export type FsChangeKind = "created" | "modified" | "removed";
 
@@ -18,14 +18,14 @@ export interface FsChange {
 
 /** A change as the backend says it: the folder it happened in, and where in it. */
 interface FsEvent {
-  root: string;
+  rootId: RootId;
   kind: FsChangeKind;
   rel: string;
 }
 
 export interface SyncHandlers {
   /** Current vault root (null if none). */
-  root: () => string | null;
+  root: () => RootId | null;
   /** Body path of the currently open note, relative to the vault (null if none). */
   activePath: () => string | null;
   /** Current text of the open note as the user sees it (live editor doc). */
@@ -50,7 +50,7 @@ export interface SyncHandlers {
 async function handleChange(handlers: SyncHandlers, event: FsEvent): Promise<void> {
   const root = handlers.root();
   // A change in a folder no longer open says nothing about this one, even for a note of the same name.
-  if (!root || !sameVault(event.root, root)) return;
+  if (!root || event.rootId !== root) return;
   const payload: FsChange = { kind: event.kind, path: event.rel };
 
   // 1) Refresh the tree on any change (reflect create/remove/rename).
@@ -90,9 +90,10 @@ async function handleChange(handlers: SyncHandlers, event: FsEvent): Promise<voi
  * The reconcile is content-compared (see decideRescanAction): an unaffected note is left
  * completely alone, so a rescan never disturbs typing focus or shows a false banner.
  */
-async function handleRescan(handlers: SyncHandlers): Promise<void> {
+async function handleRescan(handlers: SyncHandlers, rootId: RootId): Promise<void> {
   const root = handlers.root();
-  if (!root) return;
+  // A rescan of a folder no longer open says nothing about this one.
+  if (!root || root !== rootId) return;
 
   try {
     handlers.setTree(await listTree(root));
@@ -130,8 +131,8 @@ export async function startSync(handlers: SyncHandlers): Promise<UnlistenFn> {
   const unlistenChanged = await listen<FsEvent>("fs_changed", ({ payload }) => {
     enqueue(() => handleChange(handlers, payload));
   });
-  const unlistenRescan = await listen<null>("fs_rescan", () => {
-    enqueue(() => handleRescan(handlers));
+  const unlistenRescan = await listen<{ rootId: RootId }>("fs_rescan", ({ payload }) => {
+    enqueue(() => handleRescan(handlers, payload.rootId));
   });
   return () => {
     unlistenChanged();

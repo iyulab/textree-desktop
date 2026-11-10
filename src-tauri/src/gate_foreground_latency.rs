@@ -173,7 +173,11 @@ fn asking_about_a_note_named_by_both_references_still_stops_early() {
     let listed = deleted_notes(root.to_string_lossy().to_string()).unwrap();
     let visited = revisions_visited::taken();
 
-    assert_eq!(listed.len(), 1, "the deleted note is listed once, not twice");
+    assert_eq!(
+        listed.len(),
+        1,
+        "the deleted note is listed once, not twice"
+    );
     assert!(
         visited <= 4,
         "the newest revisions hold the answer, so the walk should stop within a few of them;          it visited {visited} of 41"
@@ -188,14 +192,23 @@ fn vault_of_size(notes: usize, per_folder: usize) -> TempDir {
     let (author, committer) = commit_identities(&repo).unwrap();
     let mut entries = Vec::with_capacity(notes);
     for note in 0..notes {
-        let rel = PathBuf::from(format!("folder-{}", note / per_folder)).join(format!("note-{note}.md"));
+        let rel =
+            PathBuf::from(format!("folder-{}", note / per_folder)).join(format!("note-{note}.md"));
         let body = format!("# note {note}\n\nsome text\n").into_bytes();
         std::fs::create_dir_all(root.join(rel.parent().unwrap())).unwrap();
         std::fs::write(root.join(&rel), &body).unwrap();
         entries.push((rel, body));
     }
-    commit_paths(&repo, NOTES_REF, &entries, "everything", &author, &committer, WhenUnchanged::Skip)
-        .unwrap();
+    commit_paths(
+        &repo,
+        NOTES_REF,
+        &entries,
+        "everything",
+        &author,
+        &committer,
+        WhenUnchanged::Skip,
+    )
+    .unwrap();
     tmp
 }
 
@@ -204,7 +217,9 @@ fn vault_of_size(notes: usize, per_folder: usize) -> TempDir {
 #[test]
 #[ignore = "reports timings rather than asserting; run with --ignored to take the numbers"]
 fn measure_foreground_against_tree_size() {
-    println!("notes | per folder | list_tree | read_note | add version | note_versions | deleted_notes");
+    println!(
+        "notes | per folder | list_tree | read_note | add version | note_versions | deleted_notes"
+    );
     for (notes, per_folder) in [
         (1_000usize, 100usize),
         (5_000, 100),
@@ -219,7 +234,11 @@ fn measure_foreground_against_tree_size() {
         let one_s = one.to_string_lossy().to_string();
         crate::commands::delete_node(
             root.clone(),
-            tmp.path().join("folder-0").join("note-1.md").to_string_lossy().to_string(),
+            tmp.path()
+                .join("folder-0")
+                .join("note-1.md")
+                .to_string_lossy()
+                .to_string(),
         )
         .unwrap();
 
@@ -279,5 +298,8 @@ fn measure_where_the_deleted_list_spends_its_time() {
         }
         assert!(seen >= 10_000);
     });
-    println!("tip_paths walk {walk} ms · exists() x{} {stat} ms · read_dir per folder {listing} ms", paths.len());
+    println!(
+        "tip_paths walk {walk} ms · exists() x{} {stat} ms · read_dir per folder {listing} ms",
+        paths.len()
+    );
 }

@@ -17,8 +17,16 @@ export interface TreeNode {
   children: TreeNode[];
 }
 
-export async function openVault(root: string): Promise<TreeNode[]> {
-  return invoke<TreeNode[]>("open_vault", { root });
+/** The id a notes folder is named by in every command that works in it. Only `registerRoot` makes one. */
+export type RootId = string & { readonly __rootId: unique symbol };
+
+/** Makes the folder at `path` known and returns the id to name it by. Looks at nothing on disk. */
+export async function registerRoot(path: string): Promise<RootId> {
+  return invoke<RootId>("register_root", { path });
+}
+
+export async function openVault(rootId: RootId): Promise<TreeNode[]> {
+  return invoke<TreeNode[]>("open_vault", { rootId });
 }
 
 /** Resolved default vault: its absolute path, and whether the preferred (Documents) location was
@@ -34,12 +42,12 @@ export async function ensureDefaultVault(): Promise<DefaultVault> {
   return invoke<DefaultVault>("ensure_default_vault");
 }
 
-export async function listTree(root: string): Promise<TreeNode[]> {
-  return invoke<TreeNode[]>("list_tree", { root });
+export async function listTree(rootId: RootId): Promise<TreeNode[]> {
+  return invoke<TreeNode[]>("list_tree", { rootId });
 }
 
-export async function readNote(root: string, path: string): Promise<string> {
-  return invoke<string>("read_note", { root, rel: path });
+export async function readNote(rootId: RootId, path: string): Promise<string> {
+  return invoke<string>("read_note", { rootId, rel: path });
 }
 
 /**
@@ -53,12 +61,12 @@ export type WriteOutcome = { kind: "written" } | { kind: "conflict"; disk: strin
  * and disk last agreed on. A save never overwrites a change it has not seen.
  */
 export async function writeNote(
-  root: string,
+  rootId: RootId,
   path: string,
   content: string,
   expected: string,
 ): Promise<WriteOutcome> {
-  return invoke<WriteOutcome>("write_note", { root, rel: path, content, expected });
+  return invoke<WriteOutcome>("write_note", { rootId, rel: path, content, expected });
 }
 
 /**
@@ -69,11 +77,11 @@ export async function writeNote(
  * repository busy with another operation all leave the history untouched.
  */
 export async function commitNotes(
-  root: string,
+  rootId: RootId,
   paths: string[],
   message: string,
 ): Promise<string | null> {
-  return invoke<string | null>("commit_notes", { root, rels: paths.map((p) => p), message });
+  return invoke<string | null>("commit_notes", { rootId, rels: paths.map((p) => p), message });
 }
 
 /** One recorded state of a note. `id` is opaque — hand it back to `noteVersionText`. */
@@ -110,17 +118,17 @@ export type RestoredNote = {
 };
 
 /** Every recorded state of one note, newest first. */
-export async function noteVersions(root: string, path: string): Promise<NoteVersion[]> {
-  return invoke<NoteVersion[]>("note_versions", { root, rel: path });
+export async function noteVersions(rootId: RootId, path: string): Promise<NoteVersion[]> {
+  return invoke<NoteVersion[]>("note_versions", { rootId, rel: path });
 }
 
 /** What a note held at one recorded state. The file on disk is not touched. */
 export async function noteVersionText(
-  root: string,
+  rootId: RootId,
   path: string,
   id: string,
 ): Promise<string> {
-  return invoke<string>("note_version_text", { root, rel: path, id });
+  return invoke<string>("note_version_text", { rootId, rel: path, id });
 }
 
 /**
@@ -129,11 +137,11 @@ export async function noteVersionText(
  * What is being replaced is kept first, so unrecorded work is never the price of going back.
  */
 export async function restoreVersion(
-  root: string,
+  rootId: RootId,
   path: string,
   id: string,
 ): Promise<void> {
-  return invoke<void>("restore_version", { root, rel: path, id });
+  return invoke<void>("restore_version", { rootId, rel: path, id });
 }
 
 /** One open alternative of a note: a second version kept beside it until a person picks one. */
@@ -152,41 +160,41 @@ export type NoteAlternative = {
 };
 
 /** The open alternatives of the notes in a folder. */
-export async function listAlternatives(root: string): Promise<NoteAlternative[]> {
-  return invoke<NoteAlternative[]>("list_alternatives", { root });
+export async function listAlternatives(rootId: RootId): Promise<NoteAlternative[]> {
+  return invoke<NoteAlternative[]>("list_alternatives", { rootId });
 }
 
 /** Starts an alternative of a note from its last recorded version. The file is not touched. */
-export async function startAlternative(root: string, path: string): Promise<NoteAlternative> {
-  return invoke<NoteAlternative>("start_alternative", { root, rel: path });
+export async function startAlternative(rootId: RootId, path: string): Promise<NoteAlternative> {
+  return invoke<NoteAlternative>("start_alternative", { rootId, rel: path });
 }
 
 /** What an alternative holds for its note. */
-export async function alternativeText(root: string, id: string): Promise<string> {
-  return invoke<string>("alternative_text", { root, id });
+export async function alternativeText(rootId: RootId, id: string): Promise<string> {
+  return invoke<string>("alternative_text", { rootId, id });
 }
 
 /**
  * What is being typed into an alternative — kept outside the folder until it is added as a version.
  * Null when nothing is: the alternative then holds just {@link alternativeText}.
  */
-export async function alternativeDraft(root: string, id: string): Promise<string | null> {
-  return invoke<string | null>("alternative_draft", { root, id });
+export async function alternativeDraft(rootId: RootId, id: string): Promise<string | null> {
+  return invoke<string | null>("alternative_draft", { rootId, id });
 }
 
 /** Keeps what is being typed into an alternative. The note's file is not touched. */
-export async function writeAlternativeDraft(root: string, id: string, text: string): Promise<void> {
-  return invoke<void>("write_alternative_draft", { root, id, text });
+export async function writeAlternativeDraft(rootId: RootId, id: string, text: string): Promise<void> {
+  return invoke<void>("write_alternative_draft", { rootId, id, text });
 }
 
 /** Adds a version to an alternative. Null when it already holds exactly this. */
 export async function addAlternativeVersion(
-  root: string,
+  rootId: RootId,
   id: string,
   text: string,
   message: string,
 ): Promise<string | null> {
-  return invoke<string | null>("add_alternative_version", { root, id, text, message });
+  return invoke<string | null>("add_alternative_version", { rootId, id, text, message });
 }
 
 /**
@@ -194,16 +202,16 @@ export async function addAlternativeVersion(
  * version — and ends the alternative. What was on disk is kept first, and what was still being
  * typed into the alternative is its version.
  */
-export async function useAlternative(root: string, path: string, id: string): Promise<void> {
-  return invoke<void>("use_alternative", { root, rel: path, id });
+export async function useAlternative(rootId: RootId, path: string, id: string): Promise<void> {
+  return invoke<void>("use_alternative", { rootId, rel: path, id });
 }
 
 /**
  * Ends an alternative without using it. The note stays as it is; the alternative is kept, with
  * what was still being typed into it.
  */
-export async function setAsideAlternative(root: string, id: string): Promise<void> {
-  return invoke<void>("set_aside_alternative", { root, id });
+export async function setAsideAlternative(rootId: RootId, id: string): Promise<void> {
+  return invoke<void>("set_aside_alternative", { rootId, id });
 }
 
 /** What a folder gave up when the app stopped keeping things inside it. */
@@ -223,13 +231,13 @@ export type MoveOut = {
  *
  * Safe to call on every open: a folder with nothing left inside it reports that nothing moved.
  */
-export async function moveStateOutOfVault(root: string): Promise<MoveOut> {
-  return invoke<MoveOut>("move_state_out_of_vault", { root });
+export async function moveStateOutOfVault(rootId: RootId): Promise<MoveOut> {
+  return invoke<MoveOut>("move_state_out_of_vault", { rootId });
 }
 
 /** Everything the history holds that is no longer in the folder, newest first. */
-export async function deletedNotes(root: string): Promise<DeletedNote[]> {
-  return invoke<DeletedNote[]>("deleted_notes", { root });
+export async function deletedNotes(rootId: RootId): Promise<DeletedNote[]> {
+  return invoke<DeletedNote[]>("deleted_notes", { rootId });
 }
 
 /**
@@ -238,72 +246,72 @@ export async function deletedNotes(root: string): Promise<DeletedNote[]> {
  *
  * Never overwrites: if the name is in use the copy is numbered alongside it.
  */
-export async function restoreDeleted(root: string, rel: string): Promise<RestoredNote> {
-  return invoke<RestoredNote>("restore_deleted", { root, rel });
+export async function restoreDeleted(rootId: RootId, rel: string): Promise<RestoredNote> {
+  return invoke<RestoredNote>("restore_deleted", { rootId, rel });
 }
 
 // ── Structure edits (M4) ────────────────────────────────────────────────
 
 export async function createNote(
-  root: string,
+  rootId: RootId,
   parent: string,
   name: string,
 ): Promise<string> {
-  return invoke<string>("create_note", { root, parent, name });
+  return invoke<string>("create_note", { rootId, parent, name });
 }
 
-export async function createUntitledNote(root: string, parent: string): Promise<string> {
-  return invoke<string>("create_untitled_note", { root, parent });
+export async function createUntitledNote(rootId: RootId, parent: string): Promise<string> {
+  return invoke<string>("create_untitled_note", { rootId, parent });
 }
 
 export async function createNoteWithContent(
-  root: string,
+  rootId: RootId,
   parent: string,
   name: string,
   content: string,
 ): Promise<string> {
-  return invoke<string>("create_note_with_content", { root, parent, name, content });
+  return invoke<string>("create_note_with_content", { rootId, parent, name, content });
 }
 
 export async function createFolder(
-  root: string,
+  rootId: RootId,
   parent: string,
   name: string,
 ): Promise<string> {
-  return invoke<string>("create_folder", { root, parent, name });
+  return invoke<string>("create_folder", { rootId, parent, name });
 }
 
 export async function renameNode(
-  root: string,
+  rootId: RootId,
   path: string,
   name: string,
 ): Promise<string> {
-  return invoke<string>("rename_node", { root, rel: path, name });
+  return invoke<string>("rename_node", { rootId, rel: path, name });
 }
 
 export async function renameNoteUnique(
-  root: string,
+  rootId: RootId,
   path: string,
   name: string,
 ): Promise<string> {
-  return invoke<string>("rename_note_unique", { root, rel: path, name });
+  return invoke<string>("rename_note_unique", { rootId, rel: path, name });
 }
 
 export async function moveNode(
-  root: string,
+  rootId: RootId,
   path: string,
   dest: string,
 ): Promise<string> {
-  return invoke<string>("move_node", { root, rel: path, dest });
+  return invoke<string>("move_node", { rootId, rel: path, dest });
 }
 
 /** Promote a leaf note to a container and move the path node into it. Returns the new path. */
 export async function adoptNode(
-  root: string,
+  rootId: RootId,
   path: string,
   leaf: string,
 ): Promise<string> {
-  return invoke<string>("adopt_node", { root, rel: path, leaf });
+  return invoke<string>("adopt_node", { rootId, rel: path, leaf });
 }
 
 /**
@@ -311,42 +319,42 @@ export async function adoptNode(
  * Returns the relative link to insert into the body (e.g. "assets/Pasted-….png").
  */
 export async function saveAttachment(
-  root: string,
+  rootId: RootId,
   note: string,
   data: string,
   ext: string,
 ): Promise<string> {
-  return invoke<string>("save_attachment", { root, note, data, ext });
+  return invoke<string>("save_attachment", { rootId, note, data, ext });
 }
 
-export async function deleteNode(root: string, path: string): Promise<void> {
-  return invoke<void>("delete_node", { root, rel: path });
+export async function deleteNode(rootId: RootId, path: string): Promise<void> {
+  return invoke<void>("delete_node", { rootId, rel: path });
 }
 
 export async function promoteNode(
-  root: string,
+  rootId: RootId,
   path: string,
 ): Promise<string> {
-  return invoke<string>("promote_node", { root, rel: path });
+  return invoke<string>("promote_node", { rootId, rel: path });
 }
 
 // ── Sidecar persistence (per-vault settings kept with the app) ────────
 
 /** Read the `<rel>` sidecar kept for this vault. null if absent. */
 export async function readSidecar(
-  root: string,
+  rootId: RootId,
   rel: string,
 ): Promise<string | null> {
-  return invoke<string | null>("read_sidecar", { root, rel });
+  return invoke<string | null>("read_sidecar", { rootId, rel });
 }
 
 /** Atomic write of the `<rel>` sidecar kept for this vault (parent auto-created). */
 export async function writeSidecar(
-  root: string,
+  rootId: RootId,
   rel: string,
   content: string,
 ): Promise<void> {
-  return invoke<void>("write_sidecar", { root, rel, content });
+  return invoke<void>("write_sidecar", { rootId, rel, content });
 }
 
 /**
@@ -354,8 +362,8 @@ export async function writeSidecar(
  * before anything reads them. `readOnly`: a newer release saved them, and nothing may be written
  * over them until the app is updated.
  */
-export async function prepareSidecar(root: string): Promise<{ readOnly: boolean }> {
-  return invoke<{ readOnly: boolean }>("prepare_sidecar", { root });
+export async function prepareSidecar(rootId: RootId): Promise<{ readOnly: boolean }> {
+  return invoke<{ readOnly: boolean }>("prepare_sidecar", { rootId });
 }
 
 /** An edit to a note already left, kept because it could not be written to it yet. */
@@ -367,24 +375,24 @@ export interface StrandedEdit {
 }
 
 /** Keep an unwritten edit where it outlasts the app. Returns its id. */
-export async function keepStranded(root: string, path: string, text: string, base: string): Promise<string> {
-  return invoke<string>("keep_stranded", { root, rel: path, text, base });
+export async function keepStranded(rootId: RootId, path: string, text: string, base: string): Promise<string> {
+  return invoke<string>("keep_stranded", { rootId, rel: path, text, base });
 }
 
 /** Let go of a kept edit once it has landed. */
-export async function forgetStranded(root: string, id: string): Promise<void> {
-  return invoke<void>("forget_stranded", { root, id });
+export async function forgetStranded(rootId: RootId, id: string): Promise<void> {
+  return invoke<void>("forget_stranded", { rootId, id });
 }
 
 /** Edits kept for this vault's notes from an earlier run, oldest first. */
-export async function listStranded(root: string): Promise<StrandedEdit[]> {
-  const kept = await invoke<(Omit<StrandedEdit, "path"> & { rel: string })[]>("list_stranded", { root });
+export async function listStranded(rootId: RootId): Promise<StrandedEdit[]> {
+  const kept = await invoke<(Omit<StrandedEdit, "path"> & { rel: string })[]>("list_stranded", { rootId });
   return kept.map(({ rel, ...edit }) => ({ ...edit, path: rel }));
 }
 
 /** Move an unreadable settings file aside, keeping it. Returns the name it is kept under. */
-export async function setAsideSidecar(root: string, rel: string): Promise<string> {
-  return invoke<string>("set_aside_sidecar", { root, rel });
+export async function setAsideSidecar(rootId: RootId, rel: string): Promise<string> {
+  return invoke<string>("set_aside_sidecar", { rootId, rel });
 }
 
 // ── Body full-text search (P1b) ──────────────────────────────────────────
@@ -407,8 +415,8 @@ export async function searchContent(
 }
 
 /** Full reindex (>reindex command). */
-export async function rebuildIndex(root: string): Promise<void> {
-  return invoke<void>("rebuild_index", { root });
+export async function rebuildIndex(rootId: RootId): Promise<void> {
+  return invoke<void>("rebuild_index", { rootId });
 }
 
 // ── Publishing (P2 — render the vault to a static site via canopy) ─────────
@@ -430,11 +438,11 @@ export interface PublishResult {
  * the source: the vault `.md` is never mutated. Spawns the canopy renderer in the backend.
  */
 export async function publishSite(
-  vaultPath: string,
+  rootId: RootId,
   outDir: string,
   options: PublishOptions = {},
 ): Promise<PublishResult> {
-  return invoke<PublishResult>("publish_site", { vaultPath, outDir, options });
+  return invoke<PublishResult>("publish_site", { rootId, outDir, options });
 }
 
 /** What publishing the vault would send out — shown for confirmation before anything is sent. */
@@ -460,22 +468,22 @@ export interface PublishPreview {
 }
 
 /** List what publishing the vault would send out. Reads only. */
-export async function publishPreview(vaultPath: string): Promise<PublishPreview> {
-  return invoke<PublishPreview>("publish_preview", { vaultPath });
+export async function publishPreview(rootId: RootId): Promise<PublishPreview> {
+  return invoke<PublishPreview>("publish_preview", { rootId });
 }
 
 /** The folder's publish choices, relative to it ("" = the whole folder). */
-export async function publishChoices(root: string): Promise<PublishChoice[]> {
-  return invoke<PublishChoice[]>("publish_choices", { root });
+export async function publishChoices(rootId: RootId): Promise<PublishChoice[]> {
+  return invoke<PublishChoice[]>("publish_choices", { rootId });
 }
 
 /** Include (true), leave out (false), or follow the folder above (null). Returns the new choices. */
 export async function setPublishChoice(
-  root: string,
+  rootId: RootId,
   rel: string,
   choice: boolean | null,
 ): Promise<PublishChoice[]> {
-  return invoke<PublishChoice[]>("set_publish_choice", { root, rel, choice });
+  return invoke<PublishChoice[]>("set_publish_choice", { rootId, rel, choice });
 }
 
 // ── Remote (exchange recorded notes with a remote the person connected) ─────────────────────
@@ -507,36 +515,36 @@ export interface RemoteExchange {
   sent: boolean;
 }
 
-export async function remoteConnection(root: string): Promise<RemoteConnection | null> {
-  return invoke<RemoteConnection | null>("remote_connection", { root });
+export async function remoteConnection(rootId: RootId): Promise<RemoteConnection | null> {
+  return invoke<RemoteConnection | null>("remote_connection", { rootId });
 }
 
 /** Reaches the remote with `secret` first and remembers it only when that worked. */
 export async function connectRemote(
-  root: string,
+  rootId: RootId,
   url: string,
   username: string,
   secret: string,
 ): Promise<void> {
-  return invoke<void>("connect_remote", { root, url, username, secret });
+  return invoke<void>("connect_remote", { rootId, url, username, secret });
 }
 
 /** Forgets this folder's remote on this machine. Nothing on the remote changes. */
-export async function disconnectRemote(root: string): Promise<void> {
-  return invoke<void>("disconnect_remote", { root });
+export async function disconnectRemote(rootId: RootId): Promise<void> {
+  return invoke<void>("disconnect_remote", { rootId });
 }
 
 /**
  * Whether this folder's recorded notes are somewhere besides this machine: connected to a remote
  * that held everything recorded here at the last exchange. Asks nothing over the network.
  */
-export async function notesBackedUp(root: string): Promise<boolean> {
-  return invoke<boolean>("notes_backed_up", { root });
+export async function notesBackedUp(rootId: RootId): Promise<boolean> {
+  return invoke<boolean>("notes_backed_up", { rootId });
 }
 
 /** One exchange: take in what arrived where it can, send what was recorded here. */
-export async function syncRemote(root: string): Promise<RemoteExchange> {
-  return invoke<RemoteExchange>("sync_remote", { root });
+export async function syncRemote(rootId: RootId): Promise<RemoteExchange> {
+  return invoke<RemoteExchange>("sync_remote", { rootId });
 }
 
 export interface CloudPublishResult {
@@ -548,10 +556,10 @@ export interface CloudPublishResult {
  * token is read from the OS keychain in the backend (never passed from JS). Reuses the same
  * read-only canopy render as `publishSite`. */
 export async function publishToCloud(
-  vaultPath: string,
+  rootId: RootId,
   options: PublishOptions = {},
 ): Promise<CloudPublishResult> {
-  return invoke<CloudPublishResult>("publish_to_cloud", { vaultPath, options });
+  return invoke<CloudPublishResult>("publish_to_cloud", { rootId, options });
 }
 
 /** Run the in-app web-publish sign-in (browser OAuth loopback + PKCE) and store the resulting
@@ -586,13 +594,13 @@ export interface SemanticHit {
 export type HostStatus = "starting" | "ready" | "unavailable";
 
 export async function semanticSearch(
-  vault: string,
+  rootId: RootId,
   query: string,
   scopePath: string | null,
   limit = 20,
 ): Promise<SemanticHit[]> {
   return invoke<SemanticHit[]>("semantic_search", {
-    vault,
+    rootId,
     query,
     scope: scopePath,
     limit,
@@ -622,7 +630,7 @@ export type AskEvent =
   | { kind: 'error'; message: string };
 
 export function ask(
-  vault: string,
+  rootId: RootId,
   messages: ChatMessage[],
   citationHits: SemanticHit[],
   scopePath: string | null,
@@ -630,7 +638,7 @@ export function ask(
 ): Promise<void> {
   const channel = new Channel<AskEvent>();
   channel.onmessage = onEvent;
-  return invoke<void>('ask', { vault, messages, citationHits, scope: scopePath, onEvent: channel });
+  return invoke<void>('ask', { rootId, messages, citationHits, scope: scopePath, onEvent: channel });
 }
 
 export function prepareGeneration(): Promise<void> {

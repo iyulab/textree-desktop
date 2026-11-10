@@ -6,6 +6,7 @@
  * that — so a page is asked for, and the fact that there is more is said rather than hidden.
  */
 import type { NoteVersion } from "./ipc";
+import { SCREEN_LOCALE } from "./screenLocale";
 
 /** How many states are shown before the list says there are older ones. */
 export const PAGE = 25;
@@ -41,9 +42,9 @@ export function formatRecordedAt(seconds: number, now: Date = new Date()): strin
     at.getFullYear() === now.getFullYear() &&
     at.getMonth() === now.getMonth() &&
     at.getDate() === now.getDate();
-  const time = at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const time = at.toLocaleTimeString(SCREEN_LOCALE, { hour: "numeric", minute: "2-digit" });
   if (sameDay) return time;
-  const date = at.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const date = at.toLocaleDateString(SCREEN_LOCALE, { month: "short", day: "numeric" });
   const year = at.getFullYear() === now.getFullYear() ? "" : `, ${at.getFullYear()}`;
   return `${date}${year}, ${time}`;
 }

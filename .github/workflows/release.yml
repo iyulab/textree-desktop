@@ -67,7 +67,7 @@ jobs:
         uses: iyulab/code-sign@c4c68c25295ce0010a396d54cdb017fd248c5cce # main
         with:
           description: Textree
-          description-url: https://github.com/iyulab/textree
+          description-url: https://github.com/iyulab/textree-desktop
 
       - name: Build, sign, and release
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0

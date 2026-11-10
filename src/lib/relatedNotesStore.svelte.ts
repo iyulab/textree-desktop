@@ -1,3 +1,4 @@
+import type { RootId } from "./ipc";
 /*
  * Related-notes store — semantic similarity panel for the open note.
  *
@@ -33,7 +34,7 @@ class RelatedNotesStore {
    *                   for the whole vault.
    */
   async load(
-    vaultRoot: string,
+    vaultRoot: RootId,
     notePath: string,
     noteBody: string,
     scopePath: string | null,

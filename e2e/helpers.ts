@@ -324,10 +324,15 @@ export function refsUnder(repo: string, prefix: string): string[] {
   return git(repo, "for-each-ref", "--format=%(refname)", prefix).split("\n").filter(Boolean);
 }
 
+/** The id the app names the folder at `path` by in its commands (making it known if it is not yet). */
+export async function rootIdOf(page: Page, path: string): Promise<string> {
+  return tauriInvoke<string>(page, "register_root", { path });
+}
+
 /** Adds a version of each note (paths relative to the vault) through the app, as the person would. */
 export async function recordNotes(page: Page, vault: string, rels: string[]): Promise<void> {
   await tauriInvoke(page, "commit_notes", {
-    root: vault,
+    rootId: await rootIdOf(page, vault),
     rels,
     message: "test",
   });
@@ -335,5 +340,5 @@ export async function recordNotes(page: Page, vault: string, rels: string[]): Pr
 
 /** Chooses `rel` ("" = the whole folder) for publishing, or leaves it out. */
 export async function choosePublish(page: Page, vault: string, rel: string, include: boolean): Promise<void> {
-  await tauriInvoke(page, "set_publish_choice", { root: vault, rel, choice: include });
+  await tauriInvoke(page, "set_publish_choice", { rootId: await rootIdOf(page, vault), rel, choice: include });
 }

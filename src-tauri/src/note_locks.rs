@@ -41,7 +41,10 @@ impl Busy {
 
     fn tree_is_free(&self, place: &Path) -> bool {
         !self.notes.iter().any(|n| n.starts_with(place))
-            && !self.trees.iter().any(|t| t.starts_with(place) || place.starts_with(t))
+            && !self
+                .trees
+                .iter()
+                .any(|t| t.starts_with(place) || place.starts_with(t))
     }
 }
 
@@ -147,7 +150,9 @@ mod tests {
             "the second save to a note must not start while the first runs"
         );
         drop(first);
-        finished.recv_timeout(Duration::from_secs(5)).expect("it starts once the first ends");
+        finished
+            .recv_timeout(Duration::from_secs(5))
+            .expect("it starts once the first ends");
         waiter.join().unwrap();
     }
 
@@ -205,7 +210,10 @@ mod tests {
             let locks = Arc::clone(&locks);
             move || drop(locks.turn(Path::new("/v/box/deep/a.md")))
         });
-        assert!(waited, "a save under a folder being moved must wait for the move");
+        assert!(
+            waited,
+            "a save under a folder being moved must wait for the move"
+        );
         drop(changing);
         save.join().unwrap();
     }
@@ -219,7 +227,10 @@ mod tests {
             let locks = Arc::clone(&locks);
             move || drop(locks.turn(Path::new("/v/box")))
         });
-        assert!(waited, "a note created in a folder being deleted would be deleted unkept");
+        assert!(
+            waited,
+            "a note created in a folder being deleted would be deleted unkept"
+        );
         drop(deleting);
         create.join().unwrap();
 
@@ -228,7 +239,10 @@ mod tests {
             let locks = Arc::clone(&locks);
             move || drop(locks.subtree(&[Path::new("/v")]))
         });
-        assert!(waited, "and deleting the folder above waits for the creation");
+        assert!(
+            waited,
+            "and deleting the folder above waits for the creation"
+        );
         drop(creating);
         delete.join().unwrap();
     }

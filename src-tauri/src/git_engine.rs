@@ -59,7 +59,12 @@ pub(crate) fn blob_in_tree(repo: &Repository, tree: &Tree<'_>, rel: &Path) -> Op
     let (last, dirs) = names.split_last()?;
     let mut current = tree.clone();
     for name in dirs {
-        let next = current.get_name(name)?.to_object(repo).ok()?.into_tree().ok()?;
+        let next = current
+            .get_name(name)?
+            .to_object(repo)
+            .ok()?
+            .into_tree()
+            .ok()?;
         current = next;
     }
     let entry = current.get_name(last)?;
@@ -209,7 +214,11 @@ fn names_path(commit: &git2::Commit<'_>, target: &Path) -> bool {
         .any(|named: &str| named.trim() == wanted)
 }
 
-fn touch(repo: &Repository, commit: &git2::Commit<'_>, target: &Path) -> Result<Touch, git2::Error> {
+fn touch(
+    repo: &Repository,
+    commit: &git2::Commit<'_>,
+    target: &Path,
+) -> Result<Touch, git2::Error> {
     let here = blob_in_tree(repo, &commit.tree()?, target);
     // A revision that joins two lines of history carries each path from one of them. It is a
     // state of the path only when it matches none — otherwise the path's history is the line it
@@ -348,7 +357,10 @@ pub fn content_at_version(
     rel: &Path,
     id: &str,
 ) -> Result<Option<Vec<u8>>, git2::Error> {
-    let Some(version) = history(repo, reference, rel)?.into_iter().find(|v| v.id == id) else {
+    let Some(version) = history(repo, reference, rel)?
+        .into_iter()
+        .find(|v| v.id == id)
+    else {
         return Ok(None);
     };
     content_at(repo, id, Path::new(&version.path))
@@ -413,11 +425,7 @@ pub fn last_written(
 ///
 /// Reads objects only: nothing is written to the working tree, so looking at an earlier state
 /// cannot disturb what is currently on disk.
-pub fn content_at(
-    repo: &Repository,
-    id: &str,
-    rel: &Path,
-) -> Result<Option<Vec<u8>>, git2::Error> {
+pub fn content_at(repo: &Repository, id: &str, rel: &Path) -> Result<Option<Vec<u8>>, git2::Error> {
     let commit = repo.find_commit(Oid::from_str(id)?)?;
     let tree = commit.tree()?;
     let Some(blob) = blob_in_tree(repo, &tree, rel) else {
@@ -529,7 +537,9 @@ pub fn commit_paths(
     unchanged: WhenUnchanged,
 ) -> Result<Option<Oid>, git2::Error> {
     advancing(|| {
-        commit_paths_once(repo, reference, entries, message, author, committer, unchanged)
+        commit_paths_once(
+            repo, reference, entries, message, author, committer, unchanged,
+        )
     })
 }
 
@@ -550,7 +560,9 @@ fn commit_paths_once(
         .find_reference(reference)
         .ok()
         .and_then(|r| r.peel_to_commit().ok());
-    commit_on(repo, reference, parent, entries, message, author, committer, unchanged)
+    commit_on(
+        repo, reference, parent, entries, message, author, committer, unchanged,
+    )
 }
 
 /// Adds a revision to `reference` on top of `tip` — only while the reference still points there.
@@ -574,7 +586,16 @@ pub(crate) fn extend_once(
         return Err(git2::Error::from_str("nothing to commit"));
     }
     let parent = repo.find_commit(tip)?;
-    commit_on(repo, reference, Some(parent), entries, message, author, committer, unchanged)
+    commit_on(
+        repo,
+        reference,
+        Some(parent),
+        entries,
+        message,
+        author,
+        committer,
+        unchanged,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -628,7 +649,13 @@ fn commit_on(
     // Passing `None` as the update target keeps libgit2 from moving any reference on our
     // behalf: only the reference named by the caller is advanced, below.
     let commit = repo.commit(None, author, committer, &message, &tree, &parents)?;
-    advance(repo, reference, commit, parent.as_ref().map(|c| c.id()), &message)?;
+    advance(
+        repo,
+        reference,
+        commit,
+        parent.as_ref().map(|c| c.id()),
+        &message,
+    )?;
     Ok(Some(commit))
 }
 
@@ -679,7 +706,11 @@ fn move_recorded_once(
 ) -> Result<Option<Oid>, git2::Error> {
     // The tip is read once: the moves are applied to its tree, and the revision is written on top
     // of that same tip or not at all (see [`advance`]).
-    let Some(parent) = repo.find_reference(reference).and_then(|r| r.peel_to_commit()).ok() else {
+    let Some(parent) = repo
+        .find_reference(reference)
+        .and_then(|r| r.peel_to_commit())
+        .ok()
+    else {
         return Ok(None);
     };
     let mut tree = parent.tree()?;
@@ -740,7 +771,9 @@ static REFERENCE_WRITERS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// Writers in this process take turns ([`REFERENCE_WRITERS`]); the check in [`advance`] is what
 /// covers everything else that can move the reference — another instance of the app, or git
 /// itself — and the retry is for those.
-pub(crate) fn advancing<T>(mut attempt: impl FnMut() -> Result<T, git2::Error>) -> Result<T, git2::Error> {
+pub(crate) fn advancing<T>(
+    mut attempt: impl FnMut() -> Result<T, git2::Error>,
+) -> Result<T, git2::Error> {
     let mut tries = 1;
     loop {
         let result = {
@@ -753,7 +786,9 @@ pub(crate) fn advancing<T>(mut attempt: impl FnMut() -> Result<T, git2::Error>) 
                 let jitter = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_or(0, |d| u64::from(d.subsec_nanos()) % 5);
-                std::thread::sleep(std::time::Duration::from_millis(u64::from(tries.min(10)) + jitter));
+                std::thread::sleep(std::time::Duration::from_millis(
+                    u64::from(tries.min(10)) + jitter,
+                ));
                 tries += 1;
             }
             done => return done,
@@ -919,7 +954,9 @@ pub enum RepoState {
 /// Cheaper than opening the repository, and enough for callers that only need somewhere on the
 /// same volume that is not part of anyone's working tree.
 pub fn git_dir(root: &Path) -> Option<PathBuf> {
-    Repository::discover(root).ok().map(|r| r.path().to_path_buf())
+    Repository::discover(root)
+        .ok()
+        .map(|r| r.path().to_path_buf())
 }
 
 /// Classifies `root` against the repository, if any, that contains it.
@@ -971,7 +1008,10 @@ impl VaultRepo {
         if self.prefix.as_os_str().is_empty() {
             return Some(in_repo.to_path_buf());
         }
-        in_repo.strip_prefix(&self.prefix).ok().map(Path::to_path_buf)
+        in_repo
+            .strip_prefix(&self.prefix)
+            .ok()
+            .map(Path::to_path_buf)
     }
 }
 
@@ -1018,7 +1058,9 @@ fn open_governing(vault_root: &Path, state: RepoState) -> Result<VaultRepo, git2
             let prefix = canonical
                 .strip_prefix(&workdir)
                 .map_err(|_| {
-                    git2::Error::from_str("the folder is not inside the repository that reported it")
+                    git2::Error::from_str(
+                        "the folder is not inside the repository that reported it",
+                    )
                 })?
                 .to_path_buf();
             Ok(VaultRepo {
@@ -1032,9 +1074,7 @@ fn open_governing(vault_root: &Path, state: RepoState) -> Result<VaultRepo, git2
         RepoState::Bare(_) => Err(git2::Error::from_str(
             "this folder is a repository without a working tree, so notes cannot live in it",
         )),
-        RepoState::None => Err(git2::Error::from_str(
-            "no repository governs this folder",
-        )),
+        RepoState::None => Err(git2::Error::from_str("no repository governs this folder")),
     }
 }
 
@@ -1056,23 +1096,46 @@ mod tests {
         body: &[u8],
     ) -> Result<Option<Oid>, git2::Error> {
         let entries = [(rel, body.to_vec())];
-        commit_paths(repo, NOTES_REF, &entries, "rec", &author(), &author(), WhenUnchanged::Skip)
+        commit_paths(
+            repo,
+            NOTES_REF,
+            &entries,
+            "rec",
+            &author(),
+            &author(),
+            WhenUnchanged::Skip,
+        )
     }
 
     #[test]
     fn a_revision_built_on_an_old_tip_is_refused() {
         let tmp = TempDir::new().unwrap();
         let repo = Repository::init(tmp.path()).unwrap();
-        let first = record_note(&repo, PathBuf::from("a.md"), b"1").unwrap().unwrap();
-        let second = record_note(&repo, PathBuf::from("a.md"), b"2").unwrap().unwrap();
+        let first = record_note(&repo, PathBuf::from("a.md"), b"1")
+            .unwrap()
+            .unwrap();
+        let second = record_note(&repo, PathBuf::from("a.md"), b"2")
+            .unwrap()
+            .unwrap();
         // Something built on `first` while `second` landed.
         let stale = repo.find_commit(first).unwrap();
         let orphan = repo
-            .commit(None, &author(), &author(), "late", &stale.tree().unwrap(), &[&stale])
+            .commit(
+                None,
+                &author(),
+                &author(),
+                "late",
+                &stale.tree().unwrap(),
+                &[&stale],
+            )
             .unwrap();
         let refused = advance(&repo, NOTES_REF, orphan, Some(first), "late").unwrap_err();
         assert!(lost_race(&refused), "{refused:?}");
-        assert_eq!(repo.refname_to_id(NOTES_REF).unwrap(), second, "the newer revision stays");
+        assert_eq!(
+            repo.refname_to_id(NOTES_REF).unwrap(),
+            second,
+            "the newer revision stays"
+        );
     }
 
     #[test]
@@ -1088,13 +1151,29 @@ mod tests {
             tries += 1;
             if tries > 1 {
                 let (a, c) = (author(), author());
-                return commit_paths_once(&repo, NOTES_REF, &mine, "mine", &a, &c, WhenUnchanged::Skip);
+                return commit_paths_once(
+                    &repo,
+                    NOTES_REF,
+                    &mine,
+                    "mine",
+                    &a,
+                    &c,
+                    WhenUnchanged::Skip,
+                );
             }
             let tip = repo.refname_to_id(NOTES_REF)?;
             let rival = Repository::open(tmp.path()).unwrap();
             let entries = [(PathBuf::from("rival.md"), b"rival".to_vec())];
             let (a, c) = (author(), author());
-            commit_paths_once(&rival, NOTES_REF, &entries, "rival", &a, &c, WhenUnchanged::Skip)?;
+            commit_paths_once(
+                &rival,
+                NOTES_REF,
+                &entries,
+                "rival",
+                &a,
+                &c,
+                WhenUnchanged::Skip,
+            )?;
             // Built on the tip read before the rival landed.
             let base = repo.find_commit(tip)?;
             let late = repo.commit(None, &author(), &author(), "mine", &base.tree()?, &[&base])?;
@@ -1103,11 +1182,18 @@ mod tests {
         .unwrap();
 
         assert_eq!(tries, 2, "refused once, then rebuilt");
-        let tip = repo.find_reference(NOTES_REF).unwrap().peel_to_commit().unwrap();
+        let tip = repo
+            .find_reference(NOTES_REF)
+            .unwrap()
+            .peel_to_commit()
+            .unwrap();
         assert_eq!(Some(tip.id()), landed);
         let tree = tip.tree().unwrap();
         for name in ["a.md", "rival.md", "mine.md"] {
-            assert!(tree.get_name(name).is_some(), "{name} is in the latest state");
+            assert!(
+                tree.get_name(name).is_some(),
+                "{name} is in the latest state"
+            );
         }
     }
 
@@ -1115,10 +1201,16 @@ mod tests {
     fn a_first_revision_does_not_replace_one_that_appeared_meanwhile() {
         let tmp = TempDir::new().unwrap();
         let repo = Repository::init(tmp.path()).unwrap();
-        let there = record_note(&repo, PathBuf::from("a.md"), b"1").unwrap().unwrap();
+        let there = record_note(&repo, PathBuf::from("a.md"), b"1")
+            .unwrap()
+            .unwrap();
         let tree = repo.find_commit(there).unwrap().tree().unwrap();
-        let rival = repo.commit(None, &author(), &author(), "rival", &tree, &[]).unwrap();
-        assert!(lost_race(&advance(&repo, NOTES_REF, rival, None, "rival").unwrap_err()));
+        let rival = repo
+            .commit(None, &author(), &author(), "rival", &tree, &[])
+            .unwrap();
+        assert!(lost_race(
+            &advance(&repo, NOTES_REF, rival, None, "rival").unwrap_err()
+        ));
         assert_eq!(repo.refname_to_id(NOTES_REF).unwrap(), there);
     }
 
@@ -1148,9 +1240,21 @@ mod tests {
         let repo = Repository::open(tmp.path()).unwrap();
         let mut walk = repo.revwalk().unwrap();
         walk.push(repo.refname_to_id(NOTES_REF).unwrap()).unwrap();
-        assert_eq!(walk.count(), THREADS * EACH, "every revision is an ancestor of the tip");
-        let tree = repo.find_reference(NOTES_REF).unwrap().peel_to_tree().unwrap();
-        assert_eq!(tree.len(), THREADS * EACH, "every note is in the latest state");
+        assert_eq!(
+            walk.count(),
+            THREADS * EACH,
+            "every revision is an ancestor of the tip"
+        );
+        let tree = repo
+            .find_reference(NOTES_REF)
+            .unwrap()
+            .peel_to_tree()
+            .unwrap();
+        assert_eq!(
+            tree.len(),
+            THREADS * EACH,
+            "every note is in the latest state"
+        );
     }
 
     #[test]
@@ -1162,7 +1266,11 @@ mod tests {
         let mover = std::thread::spawn(move || {
             let repo = Repository::open(&dir).unwrap();
             for i in 0..10 {
-                let (from, to) = if i % 2 == 0 { ("old.md", "new.md") } else { ("new.md", "old.md") };
+                let (from, to) = if i % 2 == 0 {
+                    ("old.md", "new.md")
+                } else {
+                    ("new.md", "old.md")
+                };
                 let moves = [(PathBuf::from(from), PathBuf::from(to))];
                 move_recorded(&repo, NOTES_REF, &moves, &author(), &author()).unwrap();
             }
@@ -1171,10 +1279,20 @@ mod tests {
             record_note(&repo, PathBuf::from(format!("k{i}.md")), b"k").unwrap();
         }
         mover.join().unwrap();
-        let tree = repo.find_reference(NOTES_REF).unwrap().peel_to_tree().unwrap();
-        assert!(tree.get_name("old.md").is_some(), "ten moves end where they started");
+        let tree = repo
+            .find_reference(NOTES_REF)
+            .unwrap()
+            .peel_to_tree()
+            .unwrap();
+        assert!(
+            tree.get_name("old.md").is_some(),
+            "ten moves end where they started"
+        );
         for i in 0..10 {
-            assert!(tree.get_name(&format!("k{i}.md")).is_some(), "k{i}.md was dropped by a move");
+            assert!(
+                tree.get_name(&format!("k{i}.md")).is_some(),
+                "k{i}.md was dropped by a move"
+            );
         }
     }
 
@@ -1226,8 +1344,14 @@ mod tests {
             &repo,
             SNAPSHOT_REF,
             &[
-                (std::path::PathBuf::from("Draft.md"), b"the deleted one".to_vec()),
-                (std::path::PathBuf::from("Notes.md"), b"the other one".to_vec()),
+                (
+                    std::path::PathBuf::from("Draft.md"),
+                    b"the deleted one".to_vec(),
+                ),
+                (
+                    std::path::PathBuf::from("Notes.md"),
+                    b"the other one".to_vec(),
+                ),
             ],
             "keep deleted content",
             &author(),
@@ -1248,7 +1372,11 @@ mod tests {
         )
         .unwrap();
 
-        let tip = repo.find_reference(SNAPSHOT_REF).unwrap().peel_to_commit().unwrap();
+        let tip = repo
+            .find_reference(SNAPSHOT_REF)
+            .unwrap()
+            .peel_to_commit()
+            .unwrap();
         let kept = blob_in_tree(&repo, &tip.tree().unwrap(), Path::new("Draft.md")).unwrap();
         let blob = repo.find_blob(kept).unwrap();
         assert_eq!(
@@ -1354,7 +1482,13 @@ mod tests {
         )
         .unwrap();
 
-        let tree = repo.head().unwrap().peel_to_commit().unwrap().tree().unwrap();
+        let tree = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .tree()
+            .unwrap();
         assert!(tree.get_path(Path::new("docs/b.md")).is_ok());
         assert!(
             tree.get_path(Path::new("start.md")).is_ok(),
@@ -1635,7 +1769,10 @@ mod tests {
 
         let prepared = prepare(&vault).unwrap();
         assert!(vault.join(".git").exists());
-        assert_eq!(prepared.path_in_repo(Path::new("a.md")), PathBuf::from("a.md"));
+        assert_eq!(
+            prepared.path_in_repo(Path::new("a.md")),
+            PathBuf::from("a.md")
+        );
 
         // Preparing again opens what is already there rather than starting over.
         let again = prepare(&vault).unwrap();
@@ -1690,7 +1827,10 @@ mod tests {
             WhenUnchanged::Skip
         )
         .is_err());
-        assert!(repo.find_reference(NOTES_REF).is_err(), "no reference is created");
+        assert!(
+            repo.find_reference(NOTES_REF).is_err(),
+            "no reference is created"
+        );
     }
 
     #[test]
@@ -1699,7 +1839,9 @@ mod tests {
         let repo = Repository::init(dir.path()).unwrap();
         let mut config = repo.config().unwrap();
         config.set_str("user.name", "Their Name").unwrap();
-        config.set_str("user.email", "them@example.invalid").unwrap();
+        config
+            .set_str("user.email", "them@example.invalid")
+            .unwrap();
 
         let (author, committer) = commit_identities(&repo).unwrap();
         assert_eq!(author.name().unwrap(), "Their Name");
@@ -1878,7 +2020,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn a_folder_inside_a_repository_reports_the_enclosing_root() {
         let dir = TempDir::new().unwrap();
@@ -1906,7 +2047,9 @@ mod tests {
         record(&repo, &nested, "body");
 
         assert_eq!(
-            content_at_tip(&repo, NOTES_REF, &nested).unwrap().as_deref(),
+            content_at_tip(&repo, NOTES_REF, &nested)
+                .unwrap()
+                .as_deref(),
             Some(b"body".as_slice()),
             "a path one level down must be found"
         );
@@ -2029,11 +2172,9 @@ mod tests {
             content_at_tip(&repo, NOTES_REF, &nested).unwrap().unwrap(),
             b"second"
         );
-        assert!(
-            content_at(&repo, &earliest.id, Path::new("absent.md"))
-                .unwrap()
-                .is_none()
-        );
+        assert!(content_at(&repo, &earliest.id, Path::new("absent.md"))
+            .unwrap()
+            .is_none());
         assert!(
             !dir.path().join("docs").exists(),
             "reading history must not materialise anything"

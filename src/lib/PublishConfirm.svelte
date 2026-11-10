@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { RootId } from "./ipc";
   import { onMount } from "svelte";
   import { commitNotes, publishPreview, type PublishPreview } from "./ipc";
   import { friendlyError, type FriendlyError } from "./friendlyError.helpers";
@@ -20,7 +21,7 @@
 
   interface Props {
     /** Absolute path of the folder to publish. */
-    root: string;
+    root: RootId;
     /** Where the site goes. */
     destination: PublishDestination;
     /** The person chose to publish. */

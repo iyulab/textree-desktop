@@ -3,26 +3,30 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="FluxIndex.Core" Version="0.104.0" />
-    <PackageVersion Include="FluxIndex.Storage.SQLite" Version="0.104.0" />
-    <PackageVersion Include="FluxIndex.Providers.LMSupply" Version="0.104.0" />
-    <PackageVersion Include="FluxFeed" Version="0.58.0" />
-    <PackageVersion Include="FileFlux" Version="0.65.3" />
-    <PackageVersion Include="LMSupply.Embedder" Version="0.136.0" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.136.0" />
-    <PackageVersion Include="LMSupply.Generator.Onnx" Version="0.136.0" />
-    <PackageVersion Include="IronProw.LMSupply" Version="0.18.0" />
-    <PackageVersion Include="IronProw.IronHive" Version="0.18.0" />
-    <PackageVersion Include="TauriKit.Sidecar.Loopback" Version="0.30.0" />
-    <PackageVersion Include="TauriKit.Sidecar.Loopback.AspNetCore" Version="0.30.0" />
+    <PackageVersion Include="FluxIndex.Core" Version="0.106.0" />
+    <PackageVersion Include="FluxIndex.Storage.SQLite" Version="0.106.0" />
+    <PackageVersion Include="FluxIndex.Providers.LMSupply" Version="0.106.0" />
+    <PackageVersion Include="FluxFeed" Version="0.59.0" />
+    <PackageVersion Include="FileFlux" Version="0.68.0" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.141.0" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.141.0" />
+    <PackageVersion Include="LMSupply.Generator.Onnx" Version="0.141.0" />
+    <!-- Pinned here because FluxIndex.Providers.LMSupply asks only for >= 0.139, and the lowest match
+         then demands LMSupply.Core = 0.139 against the 0.141 the other LMSupply packages bring. -->
+    <PackageVersion Include="LMSupply.Reranker" Version="0.141.0" />
+    <PackageVersion Include="IronProw.LMSupply" Version="0.19.0" />
+    <PackageVersion Include="IronProw.IronHive" Version="0.19.0" />
+    <PackageVersion Include="TauriKit.Sidecar.Loopback" Version="0.32.0" />
+    <PackageVersion Include="TauriKit.Sidecar.Loopback.AspNetCore" Version="0.32.0" />
+    <PackageVersion Include="TauriKit.Diagnostics" Version="0.32.0" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="11.0.0" />
   </ItemGroup>
   <ItemGroup>
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.15" />
     <PackageVersion Include="FluentAssertions" Version="8.11.0" />
   </ItemGroup>
 </Project>

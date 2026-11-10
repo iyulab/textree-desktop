@@ -575,14 +575,18 @@ pub fn apply(
     // without ever being on disk — and that folder's next exchange would find nothing to take.
     let mut changes: Vec<(String, Place)> = Vec::new();
     for path in changed(repo, from_tree.as_ref(), &to_tree).map_err(err)? {
-        let place = place_of(vault, root, &path)
-            .ok_or_else(|| format!("{path}: this cannot be the place of a note, so nothing was taken in"))?;
+        let place = place_of(vault, root, &path).ok_or_else(|| {
+            format!("{path}: this cannot be the place of a note, so nothing was taken in")
+        })?;
         changes.push((path, place));
     }
     // One order for every caller that holds several notes at once, so two of them cannot each
     // wait for the other.
     changes.sort_by(|a, b| a.1.file.cmp(&b.1.file));
-    let _turns: Vec<_> = changes.iter().map(|(_, place)| locks.turn(&place.file)).collect();
+    let _turns: Vec<_> = changes
+        .iter()
+        .map(|(_, place)| locks.turn(&place.file))
+        .collect();
 
     let mut writes = Vec::new();
     let mut kept_back = Vec::new();
@@ -644,7 +648,11 @@ pub fn apply(
 
 /// Keeps the arriving version of each held note both sides still hold as an alternative of it.
 /// A note one side deleted has no version here to be an alternative of; it stays held.
-fn keep_as_alternatives(repo: &Repository, overlap: &[String], theirs: Oid) -> Result<Vec<String>, git2::Error> {
+fn keep_as_alternatives(
+    repo: &Repository,
+    overlap: &[String],
+    theirs: Oid,
+) -> Result<Vec<String>, git2::Error> {
     let their_tree = repo.find_commit(theirs)?.tree()?;
     let Some(our_tree) = crate::git_engine::tip_tree(repo, NOTES_REF) else {
         return Ok(Vec::new());
@@ -667,10 +675,13 @@ fn keep_as_alternatives(repo: &Repository, overlap: &[String], theirs: Oid) -> R
 /// that ended elsewhere ends here too. Moves references only; no note's file is touched.
 fn take_in_alternatives(repo: &Repository) -> Result<(), git2::Error> {
     use crate::alternatives::{ALTERNATIVES, ENDED};
-    let arrived_prefix = |local: &str| format!("{TRACKING}{}", local.strip_prefix(OWN).unwrap_or(local));
+    let arrived_prefix =
+        |local: &str| format!("{TRACKING}{}", local.strip_prefix(OWN).unwrap_or(local));
     for reference in repo.references_glob(&format!("{}*", arrived_prefix(ENDED)))? {
         let reference = reference?;
-        let (Ok(name), Some(tip)) = (reference.name(), reference.target()) else { continue };
+        let (Ok(name), Some(tip)) = (reference.name(), reference.target()) else {
+            continue;
+        };
         let id = &name[arrived_prefix(ENDED).len()..];
         let ended_here = format!("{ENDED}{id}");
         if id_of(repo, &ended_here).is_none() {
@@ -679,7 +690,9 @@ fn take_in_alternatives(repo: &Repository) -> Result<(), git2::Error> {
     }
     for reference in repo.references_glob(&format!("{}*", arrived_prefix(ALTERNATIVES)))? {
         let reference = reference?;
-        let (Ok(name), Some(tip)) = (reference.name(), reference.target()) else { continue };
+        let (Ok(name), Some(tip)) = (reference.name(), reference.target()) else {
+            continue;
+        };
         let id = &name[arrived_prefix(ALTERNATIVES).len()..];
         if id_of(repo, &format!("{ENDED}{id}")).is_some() {
             continue;
@@ -826,7 +839,10 @@ mod tests {
             commit_paths(
                 self.repo(),
                 NOTES_REF,
-                &[(self.vault.path_in_repo(Path::new(rel)), text.as_bytes().to_vec())],
+                &[(
+                    self.vault.path_in_repo(Path::new(rel)),
+                    text.as_bytes().to_vec(),
+                )],
                 "version",
                 &author,
                 &committer,
@@ -1017,11 +1033,16 @@ mod tests {
             }
         );
         assert_eq!(b.tip(), before, "nothing moved");
-        assert_eq!(b.read("manual.md").as_deref(), Some("# Manual\n\nFrom b.\n"));
+        assert_eq!(
+            b.read("manual.md").as_deref(),
+            Some("# Manual\n\nFrom b.\n")
+        );
         let open = open_alternatives(&b);
         assert_eq!(open.len(), 1);
         assert_eq!(
-            crate::alternatives::content(b.repo(), &open[0]).unwrap().unwrap(),
+            crate::alternatives::content(b.repo(), &open[0])
+                .unwrap()
+                .unwrap(),
             b"# Manual\n\nFrom a.\n"
         );
 
@@ -1040,14 +1061,24 @@ mod tests {
         b.save("manual.md", std::str::from_utf8(&chosen).unwrap());
 
         let plan = b.take(&remote);
-        assert!(matches!(plan.notes, Step::Join { .. }), "got {:?}", plan.notes);
+        assert!(
+            matches!(plan.notes, Step::Join { .. }),
+            "got {:?}",
+            plan.notes
+        );
         assert!(matches!(b.apply(&plan), Taken::Done { .. }));
         assert_eq!(b.send(&remote), Sent::Done);
 
         // a takes in b's decision, which is a's own text.
         assert!(matches!(a.apply(&a.take(&remote)), Taken::Done { .. }));
-        assert_eq!(a.read("manual.md").as_deref(), Some("# Manual\n\nFrom a.\n"));
-        assert!(open_alternatives(&a).is_empty(), "the ended alternative is not opened on a");
+        assert_eq!(
+            a.read("manual.md").as_deref(),
+            Some("# Manual\n\nFrom a.\n")
+        );
+        assert!(
+            open_alternatives(&a).is_empty(),
+            "the ended alternative is not opened on a"
+        );
     }
 
     #[test]
@@ -1058,23 +1089,37 @@ mod tests {
         crate::alternatives::end(b.repo(), &id).unwrap();
 
         let plan = b.take(&remote);
-        let Step::Join { commit, incoming, .. } = &plan.notes else {
+        let Step::Join {
+            commit, incoming, ..
+        } = &plan.notes
+        else {
             panic!("expected a join, got {:?}", plan.notes);
         };
-        assert!(incoming.is_empty(), "the decided note is not taken from elsewhere");
+        assert!(
+            incoming.is_empty(),
+            "the decided note is not taken from elsewhere"
+        );
         let joined = b.repo().find_commit(*commit).unwrap();
         assert_eq!(joined.parent_count(), 2, "both histories are kept");
         assert!(matches!(b.apply(&plan), Taken::Done { .. }));
-        assert_eq!(b.read("manual.md").as_deref(), Some("# Manual\n\nFrom b.\n"));
+        assert_eq!(
+            b.read("manual.md").as_deref(),
+            Some("# Manual\n\nFrom b.\n")
+        );
         assert_eq!(b.send(&remote), Sent::Done);
 
         assert!(matches!(a.apply(&a.take(&remote)), Taken::Done { .. }));
-        assert_eq!(a.read("manual.md").as_deref(), Some("# Manual\n\nFrom b.\n"));
+        assert_eq!(
+            a.read("manual.md").as_deref(),
+            Some("# Manual\n\nFrom b.\n")
+        );
         // a's own version is not lost: it is the alternative b set aside, now ended on a too.
         let ended = crate::alternatives::ended(a.repo()).unwrap();
         assert_eq!(ended.len(), 1);
         assert_eq!(
-            crate::alternatives::content(a.repo(), &ended[0]).unwrap().unwrap(),
+            crate::alternatives::content(a.repo(), &ended[0])
+                .unwrap()
+                .unwrap(),
             b"# Manual\n\nFrom a.\n"
         );
     }
@@ -1100,8 +1145,17 @@ mod tests {
         let (_tmp, remote, a, b) = setup();
         a.record("manual.md", "# Manual\n");
         let (author, committer) = commit_identities(a.repo()).unwrap();
-        let id = crate::alternatives::start(a.repo(), Path::new("manual.md"), &author, &committer).unwrap();
-        crate::alternatives::record(a.repo(), &id, b"# Another take\n", "try", &author, &committer).unwrap();
+        let id = crate::alternatives::start(a.repo(), Path::new("manual.md"), &author, &committer)
+            .unwrap();
+        crate::alternatives::record(
+            a.repo(),
+            &id,
+            b"# Another take\n",
+            "try",
+            &author,
+            &committer,
+        )
+        .unwrap();
         a.send(&remote);
 
         b.apply(&b.take(&remote));
@@ -1109,7 +1163,11 @@ mod tests {
         assert_eq!(open.len(), 1);
         assert_eq!(open[0].id, id);
         assert!(crate::alternatives::differs(b.repo(), &open[0]).unwrap());
-        assert_eq!(b.read("manual.md").as_deref(), Some("# Manual\n"), "the note itself is unchanged");
+        assert_eq!(
+            b.read("manual.md").as_deref(),
+            Some("# Manual\n"),
+            "the note itself is unchanged"
+        );
     }
 
     #[test]
@@ -1278,7 +1336,10 @@ mod tests {
         a.send(&remote);
         let mut received = exchange_on(&b).received;
         received.sort();
-        assert_eq!(received, vec!["old.md".to_string(), "sub/manual.md".to_string()]);
+        assert_eq!(
+            received,
+            vec!["old.md".to_string(), "sub/manual.md".to_string()]
+        );
         assert_eq!(b.read("sub/manual.md").as_deref(), Some("# Manual\n"));
 
         b.save("old.md", "# Old\n\nTyped here, not yet a version.\n");
@@ -1319,7 +1380,10 @@ mod tests {
         // Exchanged from the other folder: the note that waits is not one this folder can name,
         // and nothing is sent until it is decided.
         let out = exchange(&by.vault, &by.root, &url, None, &NoteLocks::default()).unwrap();
-        assert!(out.held.is_empty() && out.alternatives.is_empty(), "{out:?}");
+        assert!(
+            out.held.is_empty() && out.alternatives.is_empty(),
+            "{out:?}"
+        );
         assert!(!out.sent);
     }
 
@@ -1609,7 +1673,9 @@ More.
         // Backed up is read from what the remote was last seen to hold.
         a.take(&remote);
         let bare = git2::Repository::open(&remote).unwrap();
-        assert!(bare.find_reference(crate::publish_assembly::PUBLISHED_REF).is_err());
+        assert!(bare
+            .find_reference(crate::publish_assembly::PUBLISHED_REF)
+            .is_err());
         assert!(backed_up(repo).unwrap());
     }
 
@@ -1657,8 +1723,15 @@ More.
         index.remove_path(Path::new("y/n.md")).unwrap();
         let tree = repo.find_tree(index.write_tree_to(repo).unwrap()).unwrap();
         let (author, committer) = commit_identities(repo).unwrap();
-        repo.commit(Some(NOTES_REF), &author, &committer, "remove", &tree, &[&tip])
-            .unwrap();
+        repo.commit(
+            Some(NOTES_REF),
+            &author,
+            &committer,
+            "remove",
+            &tree,
+            &[&tip],
+        )
+        .unwrap();
         a.send(&remote);
         let taken = x.apply(&x.take(&remote));
         assert_eq!(
@@ -1691,11 +1764,21 @@ More.
             }
         );
         assert!(x.read("plan.md").is_none(), "all of it or none of it");
-        assert_eq!(b.read("y/n.md").as_deref(), Some("# Written here, never recorded"));
+        assert_eq!(
+            b.read("y/n.md").as_deref(),
+            Some("# Written here, never recorded")
+        );
         assert!(id_of(b.repo(), NOTES_REF).is_none());
 
         // The folder that was synced says why nothing arrived, though the note is not its own.
-        let out = exchange(&x.vault, &x.root, &Machine::url_of(&remote), None, &NoteLocks::default()).unwrap();
+        let out = exchange(
+            &x.vault,
+            &x.root,
+            &Machine::url_of(&remote),
+            None,
+            &NoteLocks::default(),
+        )
+        .unwrap();
         assert!(out.kept_back.is_empty());
         assert_eq!(out.waiting_elsewhere, vec!["y/n.md".to_string()]);
         assert!(!out.sent);
@@ -1729,11 +1812,24 @@ More.
     #[test]
     fn only_the_repository_storage_and_paths_that_leave_are_refused() {
         let (_tmp, _remote, _a, b) = setup();
-        for refused in ["../x.md", ".git/config", "a/.Git/x", "a/.git. /x", "GIT~1/x", "a:b.md", ""] {
+        for refused in [
+            "../x.md",
+            ".git/config",
+            "a/.Git/x",
+            "a/.git. /x",
+            "GIT~1/x",
+            "a:b.md",
+            "",
+        ] {
             assert!(place_of(&b.vault, &b.root, refused).is_none(), "{refused}");
         }
         // A notes folder may sit in a hidden folder; its notes are named through it.
-        for kept in [".notes/a.md", "a/.hidden.md", "git/x.md", ".github-notes/a.md"] {
+        for kept in [
+            ".notes/a.md",
+            "a/.hidden.md",
+            "git/x.md",
+            ".github-notes/a.md",
+        ] {
             assert!(place_of(&b.vault, &b.root, kept).is_some(), "{kept}");
         }
     }

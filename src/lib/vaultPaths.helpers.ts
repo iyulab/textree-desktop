@@ -24,15 +24,6 @@ export function samePath(a: string, b: string): boolean {
 }
 
 /**
- * Do `a` and `b` name the same vault. Vaults themselves are named by where they are on disk, as
- * Windows names folders: either separator, a trailing one or not, any case.
- */
-export function sameVault(a: string, b: string): boolean {
-  const n = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-  return n(a) === n(b);
-}
-
-/**
  * An absolute path as the vault at `root` names it — `""` for the vault itself — or `null` when it is
  * not inside. For reading what was kept before paths were relative.
  */

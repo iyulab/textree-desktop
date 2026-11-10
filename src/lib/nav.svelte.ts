@@ -1,3 +1,4 @@
+import type { RootId } from "./ipc";
 /*
  * Navigation store — favorites, recent, manual order.
  * Favorites/order are kept with the app per vault; recent lives in localStorage (device-bound).
@@ -26,8 +27,10 @@ class NavStore {
   recent = $state<string[]>([]);
   /** parentPath → child path order. */
   order = $state<Record<string, string[]>>({});
-  /** Current vault root (target of persist IPC). null means not loaded. */
-  private root: string | null = null;
+  /** Current vault (target of persist IPC). null means not loaded. */
+  private root: RootId | null = null;
+  /** Where that vault is on disk: this device remembers its recent notes by it. */
+  private path: string | null = null;
   /** Files not to write this time: saved by a newer release, or unreadable and not set aside. */
   private kept = new Set<string>();
   // Favorites and order are separate files: a failed write of one is retried when the other is
@@ -44,10 +47,11 @@ class NavStore {
    * release saved them; shown as defaults, never written over. Returns the names of files that
    * could not be read and were kept aside.
    */
-  async load(root: string, readOnly = false): Promise<string[]> {
+  async load(root: RootId, path: string, readOnly = false): Promise<string[]> {
     this.writer.reset(); // owed writes belong to the folder being left
     this.root = root;
-    this.recent = readVaultList(storage(), RECENT_KEY, root);
+    this.path = path;
+    this.recent = readVaultList(storage(), RECENT_KEY, path);
     this.kept = new Set();
     const setAside: string[] = [];
     const favorites = readOnly ? null : await readSettings(root, "favorites.json", isStringList);
@@ -77,7 +81,7 @@ class NavStore {
 
   pushRecent(path: string): void {
     this.recent = dedupePushFront(this.recent, path, RECENT_MAX);
-    if (this.root !== null) writeVaultList(storage(), RECENT_KEY, this.root, this.recent);
+    if (this.path !== null) writeVaultList(storage(), RECENT_KEY, this.path, this.recent);
   }
 
   async setOrder(parent: string, paths: string[]): Promise<void> {
@@ -93,7 +97,7 @@ class NavStore {
     const changed = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b);
     if (changed(recent, this.recent)) {
       this.recent = recent;
-      if (this.root !== null) writeVaultList(storage(), RECENT_KEY, this.root, recent);
+      if (this.path !== null) writeVaultList(storage(), RECENT_KEY, this.path, recent);
     }
     const writes: Promise<void>[] = [];
     if (changed(favorites, this.favorites)) {

@@ -1,11 +1,12 @@
 <script lang="ts">
+  import type { RootId } from "./ipc";
   import { backupStore } from "./remoteSync.svelte";
   import { relativeTime, repositoryLabel } from "./remoteSync.helpers";
   import { friendlyError, type FriendlyError } from "./friendlyError.helpers";
 
   interface Props {
     /** Absolute folder root the panel is about. */
-    root: string;
+    root: RootId;
     /** Shown as Cancel / Close when the panel sits in its own dialog. */
     onclose?: () => void;
     /** Put the cursor in the first field when there is one. */

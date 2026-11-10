@@ -1,12 +1,13 @@
+import type { RootId } from "./ipc";
 import { publishChoices, setPublishChoice } from "./ipc";
 import { explicitChoice, isIncluded, type PublishChoice } from "./publishScope.helpers";
 
 /** What goes out when the open notes folder is published, for the sidebar and the Add version dialog. */
 class PublishScope {
-  root = $state<string | null>(null);
+  root = $state<RootId | null>(null);
   choices = $state<PublishChoice[]>([]);
 
-  async load(root: string): Promise<void> {
+  async load(root: RootId): Promise<void> {
     // A reload of the folder already loaded keeps showing its choices until the new ones arrive
     // (and keeps them if reading fails); only a different folder starts empty.
     if (this.root !== root) {

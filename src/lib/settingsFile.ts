@@ -1,3 +1,4 @@
+import type { RootId } from "./ipc";
 /**
  * Reads one of a folder's settings files for the stores that keep them (favorites, order, views).
  *
@@ -19,7 +20,7 @@ export interface SettingsRead<T> {
 }
 
 export async function readSettings<T>(
-  root: string,
+  root: RootId,
   rel: string,
   isShape: (value: unknown) => value is T,
 ): Promise<SettingsRead<T>> {

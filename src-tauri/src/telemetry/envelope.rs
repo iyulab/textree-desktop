@@ -5,7 +5,12 @@
 use crate::telemetry::event::{EnvFacts, LaunchEvent};
 use serde_json::{json, Value};
 
-pub fn launch_envelope(_event: &LaunchEvent, instrumentation_key: &str, facts: &EnvFacts, timestamp: &str) -> Value {
+pub fn launch_envelope(
+    _event: &LaunchEvent,
+    instrumentation_key: &str,
+    facts: &EnvFacts,
+    timestamp: &str,
+) -> Value {
     json!({
         "name": "Microsoft.ApplicationInsights.Event",
         "time": timestamp,
@@ -48,7 +53,11 @@ mod tests {
     use super::*;
 
     fn facts() -> EnvFacts {
-        EnvFacts { app_version: "0.2.4".into(), os: "windows".into(), arch: "x86_64".into() }
+        EnvFacts {
+            app_version: "0.2.4".into(),
+            os: "windows".into(),
+            arch: "x86_64".into(),
+        }
     }
 
     #[test]
@@ -59,7 +68,10 @@ mod tests {
     #[test]
     fn rfc3339_known_instant() {
         // 2001-09-09T01:46:40Z
-        assert_eq!(format_rfc3339_utc(1_000_000_000), "2001-09-09T01:46:40.000Z");
+        assert_eq!(
+            format_rfc3339_utc(1_000_000_000),
+            "2001-09-09T01:46:40.000Z"
+        );
     }
 
     #[test]
@@ -80,8 +92,19 @@ mod tests {
     #[test]
     fn no_forbidden_keys_in_the_envelope() {
         let s = serde_json::to_string(&launch_envelope(&LaunchEvent, "k", &facts(), "t")).unwrap();
-        for forbidden in ["\"path\"", "\"message\"", "\"query\"", "\"title\"", "\"vault\"", "\"fileName\"", "\"content\""] {
-            assert!(!s.contains(forbidden), "launch envelope leaked forbidden key {forbidden}: {s}");
+        for forbidden in [
+            "\"path\"",
+            "\"message\"",
+            "\"query\"",
+            "\"title\"",
+            "\"vault\"",
+            "\"fileName\"",
+            "\"content\"",
+        ] {
+            assert!(
+                !s.contains(forbidden),
+                "launch envelope leaked forbidden key {forbidden}: {s}"
+            );
         }
     }
 }

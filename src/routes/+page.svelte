@@ -5,6 +5,8 @@
   import {
     notesBackedUp,
     openVault,
+    registerRoot,
+    type RootId,
     ensureDefaultVault,
     listTree,
     readNote,
@@ -116,7 +118,10 @@
     samePath,
   } from "$lib/vaultPaths.helpers";
 
-  let root = $state<string | null>(null);
+  // The open folder, named by the id every command that works in it takes; and where it is on
+  // disk, which is what the person is shown and what this device remembers it by.
+  let root = $state<RootId | null>(null);
+  let rootPath = $state<string | null>(null);
   let updateInfo = $state<UpdateInfo | null>(null);
   let tree = $state<TreeNode[]>([]);
   let content = $state("");
@@ -128,7 +133,7 @@
   const save = new NoteSave(saveState, {
     root: () => root,
     activePath: () => activePath,
-    write: writeNote,
+    write: (folder, path, text, expected) => writeNote(folder as RootId, path, text, expected),
     // refresh links from the saved note (relative key, no re-read)
     saved: (path, text) => backlinks.updateSource(path, text),
     edited: () => {
@@ -140,16 +145,16 @@
     // Like putting a note back: never overwrites, and when its folder is gone the copy goes to the
     // top of the vault — the edits matter more than the place.
     keepCopy: (vault, path, text) =>
-      createNoteWithContent(vault, parentDir(path), noteStem(path), text)
-        .catch(() => createNoteWithContent(vault, "", noteStem(path), text))
+      createNoteWithContent(vault as RootId, parentDir(path), noteStem(path), text)
+        .catch(() => createNoteWithContent(vault as RootId, "", noteStem(path), text))
         .then((created) => {
           reloadPublishChoices();
           return created;
         }),
     landedOnOpen: (text) => applyReload(text),
     // Edits to a note left that could not be written yet outlast the app: kept with its settings.
-    keepStranded: (vault, e) => keepStranded(vault, e.path, e.text, e.base),
-    forgetStranded,
+    keepStranded: (vault, e) => keepStranded(vault as RootId, e.path, e.text, e.base),
+    forgetStranded: (vault, id) => forgetStranded(vault as RootId, id),
     moved: (remap) => {
       if (!activePath) return;
       const to = remap(activePath);
@@ -222,7 +227,7 @@
         alternative,
         notePath,
         initial,
-        writer: new DraftWriter(atRoot, alternative.id, writeAlternativeDraft, (e) => {
+        writer: new DraftWriter(atRoot, alternative.id, (folder, id, text) => writeAlternativeDraft(folder as RootId, id, text), (e) => {
           altFailure = `What you typed in the alternative is not kept yet: ${friendlyError(e).summary}`;
         }),
       };
@@ -265,7 +270,7 @@
     altFailure = null;
     try {
       await was.writer.flush();
-      const added = await addAlternativeVersion(was.writer.root, was.alternative.id, altLive, "Alternative version");
+      const added = await addAlternativeVersion(was.writer.root as RootId, was.alternative.id, altLive, "Alternative version");
       versionNotice = added === null ? "The alternative already holds exactly this." : "Version added to the alternative.";
       await refreshAlternatives();
       if (root) void backupStore.syncIfConnected(root);
@@ -476,10 +481,13 @@
     // preserve unsaved edits before switching vault
     if ((await leaveNote()) !== "saved") return false;
     const mine = ++vaultLoads;
-    root = path;
+    const id = await registerRoot(path);
+    if (mine !== vaultLoads) return false; // another folder was chosen while this one was being named
+    root = id;
+    rootPath = path;
     let opened: TreeNode[];
     try {
-      opened = await openVault(path);
+      opened = await openVault(id);
     } catch (e) {
       if (mine !== vaultLoads) return false; // overtaken: what it says is about a folder left behind
       throw e;
@@ -504,7 +512,7 @@
     // Before anything reads settings: they may still be inside the folder from an earlier
     // version, and this is what carries them out. Keeping every file is its own guarantee.
     try {
-      const moved = await moveStateOutOfVault(path);
+      const moved = await moveStateOutOfVault(id);
       if (overtaken()) return false;
       movedOut = worthShowing(moved) ? moved : null;
     } catch (e) {
@@ -515,17 +523,17 @@
     // Settings a newer release saved are shown as defaults and never written over.
     let readOnly = false;
     try {
-      readOnly = (await prepareSidecar(path)).readOnly;
+      readOnly = (await prepareSidecar(id)).readOnly;
     } catch (e) {
       opError = friendlyError(e); // the folder still opens; writing is refused where it must be
     }
     if (overtaken()) return false;
-    const setAside = await nav.load(path, readOnly); // load favorites/order settings
+    const setAside = await nav.load(id, path, readOnly); // load favorites/order settings
     treeView.load(path); // folders collapsed as this device left them
-    const viewsSetAside = await views.load(path, readOnly); // saved folder views (views.json)
+    const viewsSetAside = await views.load(id, readOnly); // saved folder views (views.json)
     if (viewsSetAside) setAside.push(viewsSetAside);
     try {
-      await publishScope.load(path);
+      await publishScope.load(id);
     } catch (e) {
       opError = friendlyError(e); // the folder still opens; the markers stay off
     }
@@ -533,10 +541,10 @@
     settingsNotice = describeSettingsOnOpen(readOnly, setAside);
     // Edits an earlier run could not write to this folder's notes: try them now.
     try {
-      const kept = await listStranded(path);
+      const kept = await listStranded(id);
       if (overtaken()) return false;
       if (kept.length > 0) {
-        save.adopt(path, kept);
+        save.adopt(id, kept);
         void save.flush();
       }
     } catch (e) {
@@ -544,7 +552,7 @@
     }
     dismissedForeignViews = false; // re-evaluate the foreign-views notice for the new vault
     // Take in what other devices sent and send what was recorded here — in the background.
-    void backupStore.syncIfConnected(path);
+    void backupStore.syncIfConnected(id);
     return true;
   }
 
@@ -552,8 +560,8 @@
    *  Shared by startup, the default-vault recovery, and the manual folder picker so every successful
    *  open is remembered and lands on content instead of the "Select a note." empty state. */
   async function finalizeOpenedVault() {
-    if (!root) return;
-    localStorage.setItem(LAST_VAULT_KEY, root);
+    if (!rootPath) return;
+    localStorage.setItem(LAST_VAULT_KEY, rootPath);
     if (!activePath) {
       const first = findFirstOpenableNote(tree, "", nav.order);
       if (first) await handleSelect(first);
@@ -567,7 +575,7 @@
     if (!(await loadVault(dv.path))) return;
     // Documents was unusable → the vault landed elsewhere. Surface where, so the user always
     // knows where their notes live (data sovereignty) instead of a silent relocation.
-    if (dv.fellBack && root) vaultFallbackPath = root;
+    if (dv.fellBack && rootPath) vaultFallbackPath = rootPath;
     await finalizeOpenedVault();
   }
 
@@ -579,6 +587,7 @@
       await openDefaultVault();
     } catch (e) {
       root = null;
+      rootPath = null;
       startupError = String(e);
     }
   }
@@ -601,13 +610,13 @@
   // The question asked before anything is published: what goes out, and where. Non-null while it is
   // on screen — no other publish starts meanwhile. `answer` settles the waiting publish.
   let publishConfirm = $state<{
-    root: string;
+    root: RootId;
     destination: PublishDestination;
     answer: (go: boolean) => void;
   } | null>(null);
 
   /** Asks whether to publish `vault` to `destination`; resolves true only on "Publish". */
-  function confirmPublish(vault: string, destination: PublishDestination): Promise<boolean> {
+  function confirmPublish(vault: RootId, destination: PublishDestination): Promise<boolean> {
     // The executor runs synchronously, so the dialog is claimed before the caller's first await.
     return new Promise((resolve) => {
       publishConfirm = {
@@ -1629,6 +1638,7 @@
           // outage and look like their notes vanished. Surface a recovery prompt instead
           // (open another folder, or start a fresh default vault).
           root = null;
+          rootPath = null;
           staleVaultPath = plan.path;
           startupError = String(e);
         }
@@ -1638,6 +1648,7 @@
         } catch (e) {
           // First run and the default could not be created anywhere — land on the empty state.
           root = null;
+          rootPath = null;
           startupError = String(e);
         }
       }
@@ -1730,7 +1741,7 @@
 
 <div class="shell">
   <TitleBar
-    label={contextLabel(layout.mode, activeName, root ? vaultName(root) : "")}
+    label={contextLabel(layout.mode, activeName, rootPath ? vaultName(rootPath) : "")}
     collapsed={layout.collapsed}
     onToggleSidebar={() => layout.toggleCollapsed()}
     onOpenPalette={() => palette.show()}
@@ -1743,8 +1754,8 @@
         <button
           class="vault-name"
           onclick={chooseVault}
-          title={`Switch vault — current: ${root}`}
-        ><Icon name="folder" /><span class="vault-label">{vaultName(root)}</span></button>
+          title={`Switch vault — current: ${rootPath}`}
+        ><Icon name="folder" /><span class="vault-label">{vaultName(rootPath ?? "")}</span></button>
       {/if}
       <AppMenu {commands} onRunCommand={(c) => c.run()} onOpenPalette={() => palette.show()} />
     </div>
@@ -2253,6 +2264,7 @@
     {#if showSettings}
       <Settings
         {root}
+        {rootPath}
         onOpenVault={() => { showSettings = false; void chooseVault(); }}
         onclose={() => { showSettings = false; }}
       />

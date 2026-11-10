@@ -5,7 +5,6 @@ pub(crate) mod cloud_publish;
 pub(crate) mod commands;
 pub(crate) mod dev_env;
 pub(crate) mod drafts;
-pub(crate) mod host;
 pub(crate) mod fs_ops;
 #[cfg(test)]
 mod gate_deletion_recoverable;
@@ -21,28 +20,42 @@ mod gate_vault_untouched;
 mod gate_write_interrupted;
 pub(crate) mod git_engine;
 pub(crate) mod git_transport;
-pub(crate) mod remote;
+pub(crate) mod host;
+pub(crate) mod note_locks;
+pub(crate) mod note_refs;
 pub(crate) mod pathsafe;
 pub(crate) mod publish;
 pub(crate) mod publish_assembly;
 pub(crate) mod publish_scope;
 pub(crate) mod publish_secret;
+pub(crate) mod remote;
 pub(crate) mod search;
 pub(crate) mod secret_store;
-mod telemetry;
-pub mod vault_paths;
-pub(crate) mod vault;
-pub(crate) mod watcher;
-pub(crate) mod note_locks;
-pub(crate) mod note_refs;
 pub(crate) mod state_dir;
 pub(crate) mod stranded;
+mod telemetry;
 pub(crate) mod tree_commands;
+pub(crate) mod vault;
+pub mod vault_paths;
+pub(crate) mod watcher;
+pub(crate) mod workspace;
 
 use host::HostHandle;
 use search::IndexHandle;
 use std::sync::Arc;
 use watcher::WatcherHandle;
+
+/// Brings the main window back in front of the person: restored if minimized, shown, focused.
+#[cfg(not(debug_assertions))]
+fn show_main_window(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -60,7 +73,15 @@ pub fn run() {
         prev_hook(info);
     }));
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // First, so a second launch stops before anything else starts. Release builds only: a
+    // development or test build shares the installed app's identifier, and would otherwise just
+    // bring an installed copy that happens to be running to the front and quit.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        show_main_window(app);
+    }));
+    builder
         .plugin(
             tauri_plugin_log::Builder::new()
                 .target(tauri_plugin_log::Target::new(
@@ -109,6 +130,7 @@ pub fn run() {
         .manage(Arc::new(HostHandle::default()))
         .invoke_handler(tauri::generate_handler![
             tree_commands::open_vault,
+            tree_commands::register_root,
             commands::list_tree,
             commands::read_note,
             commands::write_note,

@@ -101,7 +101,10 @@ const SHAPES: &[Shape] = &[
         name: "a note in a folder inside someone's repository",
         repo: Repo::Above,
         vault: "docs",
-        files: &[("docs/a.md", b"# before\n"), ("src/main.rs", b"fn main() {}\n")],
+        files: &[
+            ("docs/a.md", b"# before\n"),
+            ("src/main.rs", b"fn main() {}\n"),
+        ],
         target: "docs/a.md",
         new: AFTER,
     },
@@ -125,7 +128,11 @@ fn read_disk(dir: &Path) -> Disk {
             if path.is_dir() {
                 walk(base, &path, out);
             } else {
-                let rel = path.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+                let rel = path
+                    .strip_prefix(base)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
                 out.insert(rel, std::fs::read(&path).unwrap());
             }
         }
@@ -173,7 +180,9 @@ fn is_staged_temp(rel: &str, vault: &str) -> bool {
     if let Some(name) = rel.strip_prefix(&format!(".git/{TEMP_DIR_NAME}/")) {
         return !name.contains('/');
     }
-    let top = if vault.is_empty() { rel.to_string() } else {
+    let top = if vault.is_empty() {
+        rel.to_string()
+    } else {
         match rel.strip_prefix(&format!("{vault}/")) {
             Some(rest) => rest.to_string(),
             None => return false,
@@ -188,16 +197,14 @@ fn is_staged_temp(rel: &str, vault: &str) -> bool {
 ///
 /// `image` is the directory the shape was built in (or a copy of it); `before` is that directory
 /// read before the write began.
-fn check_crash_image(
-    image: &Path,
-    shape: &Shape,
-    before: &Disk,
-    step: Step,
-) -> Result<(), String> {
+fn check_crash_image(image: &Path, shape: &Shape, before: &Disk, step: Step) -> Result<(), String> {
     let now = read_disk(image);
 
     if now.get(shape.target) != before.get(shape.target) {
-        return Err(format!("the note '{}' changed before the write finished", shape.target));
+        return Err(format!(
+            "the note '{}' changed before the write finished",
+            shape.target
+        ));
     }
 
     let mut temps = Vec::new();
@@ -217,10 +224,16 @@ fn check_crash_image(
 
     let expected = if step == Step::CreateTemp { 0 } else { 1 };
     if temps.len() != expected {
-        return Err(format!("{} temp files staged before {step:?}, expected {expected}", temps.len()));
+        return Err(format!(
+            "{} temp files staged before {step:?}, expected {expected}",
+            temps.len()
+        ));
     }
     if matches!(step, Step::Sync | Step::Rename) && temps[0].1 != shape.new {
-        return Err(format!("the temp '{}' does not hold what is being written", temps[0].0));
+        return Err(format!(
+            "the temp '{}' does not hold what is being written",
+            temps[0].0
+        ));
     }
 
     clear_temp_dir(&image.join(shape.vault));
@@ -266,7 +279,11 @@ fn everything_stopping_before_any_step_leaves_the_note_as_it_was() {
 
         let images = images.borrow();
         let seen: Vec<Step> = images.iter().map(|(s, _)| *s).collect();
-        assert_eq!(seen, STEPS, "{}: every step is reached, in order", shape.name);
+        assert_eq!(
+            seen, STEPS,
+            "{}: every step is reached, in order",
+            shape.name
+        );
         for (step, image) in images.iter() {
             check_crash_image(image.path(), shape, &before, *step)
                 .unwrap_or_else(|e| panic!("{}, stopped before {step:?}: {e}", shape.name));
@@ -299,7 +316,11 @@ fn a_step_that_fails_leaves_the_note_as_it_was_and_nothing_behind() {
             let result =
                 atomic_write_bytes(&base.join(shape.vault), &base.join(shape.target), shape.new);
 
-            assert!(result.is_err(), "{}, failing at {failing:?}: the failure is reported", shape.name);
+            assert!(
+                result.is_err(),
+                "{}, failing at {failing:?}: the failure is reported",
+                shape.name
+            );
             let after = read_disk(&base);
             assert_eq!(
                 after.get(shape.target),
@@ -314,7 +335,11 @@ fn a_step_that_fails_leaves_the_note_as_it_was_and_nothing_behind() {
                         || is_staged_temp(rel, shape.vault)
                 })
                 .collect();
-            assert!(left.is_empty(), "{}, failing at {failing:?}: left behind {left:?}", shape.name);
+            assert!(
+                left.is_empty(),
+                "{}, failing at {failing:?}: left behind {left:?}",
+                shape.name
+            );
         }
     }
 }
@@ -361,7 +386,11 @@ fn negative_control_a_temp_beside_the_note_is_caught() {
     let tmp = build(shape);
     let before = read_disk(tmp.path());
 
-    std::fs::write(tmp.path().join(format!("sub/{LOOSE_TEMP_PREFIX}x")), shape.new).unwrap();
+    std::fs::write(
+        tmp.path().join(format!("sub/{LOOSE_TEMP_PREFIX}x")),
+        shape.new,
+    )
+    .unwrap();
 
     let err = check_crash_image(tmp.path(), shape, &before, Step::Sync).unwrap_err();
     assert!(err.contains("where temp files never stage"), "{err}");
@@ -394,7 +423,10 @@ fn negative_control_the_shapes_are_built_where_they_claim() {
 
 /// Makes the first `times` renames of this thread's writes be refused with `code`, then lets them
 /// through. Returns how many renames were tried.
-fn refuse_renames(times: usize, refusal: fn() -> io::Error) -> (write_step::Installed, Rc<RefCell<usize>>) {
+fn refuse_renames(
+    times: usize,
+    refusal: fn() -> io::Error,
+) -> (write_step::Installed, Rc<RefCell<usize>>) {
     let tried = Rc::new(RefCell::new(0usize));
     let hook = write_step::install({
         let tried = Rc::clone(&tried);
@@ -413,8 +445,12 @@ fn refuse_renames(times: usize, refusal: fn() -> io::Error) -> (write_step::Inst
     (hook, tried)
 }
 
+#[cfg(windows)] // only the Windows refusal cases below ask it
 fn nothing_staged_left(base: &Path, shape: &Shape) -> Vec<String> {
-    read_disk(base).into_keys().filter(|rel| is_staged_temp(rel, shape.vault)).collect()
+    read_disk(base)
+        .into_keys()
+        .filter(|rel| is_staged_temp(rel, shape.vault))
+        .collect()
 }
 
 #[cfg(windows)]
@@ -428,9 +464,24 @@ fn a_rename_refused_for_a_moment_still_lands() {
         atomic_write_bytes(&base.join(shape.vault), &base.join(shape.target), shape.new)
             .unwrap_or_else(|e| panic!("{}: a passing refusal failed the write: {e}", shape.name));
 
-        assert_eq!(*tried.borrow(), 4, "{}: tried again until it went through", shape.name);
-        assert_eq!(std::fs::read(base.join(shape.target)).unwrap(), shape.new, "{}", shape.name);
-        assert_eq!(nothing_staged_left(&base, shape), Vec::<String>::new(), "{}", shape.name);
+        assert_eq!(
+            *tried.borrow(),
+            4,
+            "{}: tried again until it went through",
+            shape.name
+        );
+        assert_eq!(
+            std::fs::read(base.join(shape.target)).unwrap(),
+            shape.new,
+            "{}",
+            shape.name
+        );
+        assert_eq!(
+            nothing_staged_left(&base, shape),
+            Vec::<String>::new(),
+            "{}",
+            shape.name
+        );
     }
 }
 
@@ -448,7 +499,10 @@ fn a_rename_refused_for_good_fails_and_leaves_the_note_as_it_was() {
 
     assert!(result.is_err(), "a refusal that lasts is reported");
     assert!(*tried.borrow() > 1, "it was tried again before giving up");
-    assert!(started.elapsed() < std::time::Duration::from_secs(3), "and it gave up");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "and it gave up"
+    );
     assert_eq!(read_disk(&base).get(shape.target), before.get(shape.target));
     assert_eq!(nothing_staged_left(&base, shape), Vec::<String>::new());
 }
@@ -460,7 +514,9 @@ fn any_other_refusal_is_reported_at_once() {
     let base = tmp.path().to_path_buf();
     let (_hook, tried) = refuse_renames(usize::MAX, || io::Error::other("the disk is full"));
 
-    assert!(atomic_write_bytes(&base.join(shape.vault), &base.join(shape.target), shape.new).is_err());
+    assert!(
+        atomic_write_bytes(&base.join(shape.vault), &base.join(shape.target), shape.new).is_err()
+    );
     assert_eq!(*tried.borrow(), 1);
 }
 
@@ -469,7 +525,11 @@ fn any_other_refusal_is_reported_at_once() {
 fn hold_open(path: &Path) -> std::fs::File {
     use std::os::windows::fs::OpenOptionsExt;
     const FILE_SHARE_READ: u32 = 0x1;
-    std::fs::OpenOptions::new().read(true).share_mode(FILE_SHARE_READ).open(path).unwrap()
+    std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(path)
+        .unwrap()
 }
 
 #[cfg(windows)]
@@ -505,6 +565,9 @@ fn negative_control_a_note_held_the_whole_time_is_refused_by_the_system() {
     let err = atomic_write_bytes(&base.join(shape.vault), &base.join(shape.target), shape.new)
         .unwrap_err();
     assert!(matches!(err.raw_os_error(), Some(5 | 32)), "{err:?}");
-    assert_eq!(std::fs::read(base.join(shape.target)).unwrap(), b"# before\n");
+    assert_eq!(
+        std::fs::read(base.join(shape.target)).unwrap(),
+        b"# before\n"
+    );
     assert_eq!(nothing_staged_left(&base, shape), Vec::<String>::new());
 }

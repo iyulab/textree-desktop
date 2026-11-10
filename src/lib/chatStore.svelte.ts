@@ -1,3 +1,4 @@
+import type { RootId } from "./ipc";
 // Runes orchestration store for the multi-turn local AI Chat (workspace shell).
 // NOT imported by tests (runes module — test only pure logic in ask.helpers.ts).
 import { ask, cancelAsk, hostStatus, prepareGeneration, readNote, semanticSearch } from './ipc';
@@ -63,7 +64,7 @@ class ChatStore {
   }
 
   /** Commit the draft as a user turn and run the pipeline. */
-  async send(vault: string) {
+  async send(vault: RootId) {
     const q = this.draft.trim();
     if (!q) return;
     // A prior generation error can leave an orphaned (empty/partial) assistant turn at the tail.
@@ -76,7 +77,7 @@ class ChatStore {
   }
 
   /** Begin a fresh summary conversation pinned to the current scope; seed a synthetic summary turn. */
-  async summarize(vault: string, tree: TreeNode[]) {
+  async summarize(vault: RootId, tree: TreeNode[]) {
     this.summaryTree = tree;
     const label = this.scope.label;
     this.startSession(this.scope); // clears turns + cancels any in-flight stream
@@ -85,14 +86,14 @@ class ChatStore {
   }
 
   /** Re-attempt the latest user turn (used by the 'preparing' retry timer). */
-  async retry(vault: string) {
+  async retry(vault: RootId) {
     await this.run(vault);
   }
 
   /** Save the current summary as a new note in the scope's folder; returns the new note path.
    *  `summaryText` is the summary turn's rendered text (passed by the UI so a follow-up Q&A
    *  turn cannot be mistaken for the summary). Throws if there is no summary to save. */
-  async saveSummaryToNote(vault: string, summaryText: string): Promise<string> {
+  async saveSummaryToNote(vault: RootId, summaryText: string): Promise<string> {
     if (!this.summaryResult) throw new Error('No summary to save');
     const parent = summaryNoteParent(this.scope.kind, this.scope.path);
     const name = summaryNoteBaseName(this.scope.label);
@@ -109,7 +110,7 @@ class ChatStore {
     return createNoteWithContent(vault, parent, name, content);
   }
 
-  private async run(vault: string) {
+  private async run(vault: RootId) {
     const seq = ++this.seq;
     this.errorMessage = '';
     const lastUser = [...this.turns].reverse().find((t) => t.role === 'user');
@@ -214,7 +215,7 @@ class ChatStore {
   }
 
   /** Build summary context for the pinned scope: whole body for a file, budget-concat for folder/vault. */
-  private async retrieveSummaryContext(vault: string): Promise<SemanticHit[]> {
+  private async retrieveSummaryContext(vault: RootId): Promise<SemanticHit[]> {
     if (this.scope.kind === 'file' && this.scope.path) {
       const body = await readNote(vault, this.scope.path);
       const hits = fileToContext(this.scope.path, body);
@@ -232,7 +233,7 @@ class ChatStore {
   /** User-triggered retry after a generation failure (Retry button). Awaiting prepareGeneration
    *  lets the host clear its last error before we re-poll, so the gate does not immediately
    *  re-resolve to 'error' on a stale value. */
-  async retryGeneration(vault: string) {
+  async retryGeneration(vault: RootId) {
     // A mid-stream generation failure already pushed a partial assistant turn; drop it so the
     // retry doesn't stack a second one. (Generator-load failures return at the gate before any
     // assistant turn is pushed, so this is a no-op there.) Reached only from the 'error' state.
@@ -251,7 +252,7 @@ class ChatStore {
    *  retryGeneration() (error-state recovery via prepareGeneration + orphan pruning), this
    *  always drops the trailing assistant turn unconditionally and re-runs — it applies to
    *  'done' answers (complete or Stop-preserved), not generation failures. */
-  async regenerate(vault: string) {
+  async regenerate(vault: RootId) {
     this.turns = dropTrailingAssistantTurn(this.turns);
     this.errorMessage = '';
     await this.run(vault);

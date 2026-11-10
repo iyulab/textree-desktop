@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { RootId } from "./ipc";
   import { theme, type ThemeMode } from "$lib/theme.svelte";
   import {
     getAiConsent, setAiConsent, getGenerationConsent, setGenerationConsent,
@@ -20,11 +21,13 @@
   import BackupPanel from "$lib/BackupPanel.svelte";
 
   interface Props {
-    root: string | null;
+    root: RootId | null;
+    /** Where that folder is on disk — what the person is shown. */
+    rootPath: string | null;
     onOpenVault: () => void;
     onclose: () => void;
   }
-  let { root, onOpenVault, onclose }: Props = $props();
+  let { root, rootPath, onOpenVault, onclose }: Props = $props();
 
   let aiConsent = $state(getAiConsent());
   let genConsent = $state(getGenerationConsent());
@@ -250,7 +253,7 @@
 
     <section aria-label="Vault">
       <h3>Vault</h3>
-      <p class="vault-path" title={root ?? ""}>{root ?? "No vault open"}</p>
+      <p class="vault-path" title={rootPath ?? ""}>{rootPath ?? "No vault open"}</p>
       <button type="button" class="action" onclick={onOpenVault}>Open / switch vault</button>
     </section>
 

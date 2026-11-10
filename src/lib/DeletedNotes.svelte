@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { RootId } from "./ipc";
   import { deletedNotes, restoreDeleted, type DeletedNote, type TreeNode } from "./ipc";
   import { friendlyError, type FriendlyError } from "./friendlyError.helpers";
   import {
@@ -13,7 +14,7 @@
 
   interface Props {
     /** Absolute vault root path. */
-    root: string;
+    root: RootId;
     /**
      * The vault's tree as the sidebar shows it. The list is read again whenever it changes, so a
      * note deleted while the panel is open shows up in it.
@@ -35,7 +36,7 @@
     void load(root);
   });
 
-  async function load(atRoot: string) {
+  async function load(atRoot: RootId) {
     failure = null;
     try {
       notes = sortDeleted(await deletedNotes(atRoot));

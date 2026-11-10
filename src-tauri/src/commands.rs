@@ -5,8 +5,8 @@ use crate::search::{IndexHandle, IndexState, SearchHit};
 use crate::vault::{self, TreeNode};
 use crate::watcher::WatcherHandle;
 use serde::{Deserialize, Serialize};
-use std::io::{self, Write};
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
@@ -55,7 +55,10 @@ pub(crate) fn clear_temp_dir(root: &Path) {
     }
     if let Ok(entries) = std::fs::read_dir(root) {
         for entry in entries.flatten() {
-            let ours = entry.file_name().to_string_lossy().starts_with(LOOSE_TEMP_PREFIX);
+            let ours = entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(LOOSE_TEMP_PREFIX);
             if ours && entry.path().is_file() {
                 let _ = std::fs::remove_file(entry.path());
             }
@@ -77,19 +80,6 @@ fn atomic_write_beside(path: &Path, content: &str) -> io::Result<()> {
 /// old content or the new.
 fn atomic_bytes_beside(path: &Path, content: &[u8]) -> io::Result<()> {
     tauri_kit_fs::write_atomic(path, content)
-}
-
-/// [`atomic_bytes_beside`] for a file that must not exist yet: refuses with
-/// [`io::ErrorKind::AlreadyExists`] rather than replacing one.
-fn atomic_new_beside(path: &Path, content: &[u8]) -> io::Result<()> {
-    let dir = path
-        .parent()
-        .ok_or_else(|| io::Error::other("no parent directory"))?;
-    std::fs::create_dir_all(dir)?;
-    let mut tmp = NamedTempFile::new_in(dir)?;
-    tmp.write_all(content)?;
-    tmp.as_file().sync_all()?;
-    persist(tmp, path, Landing::New)
 }
 
 /// Atomic file write: write to a temp file in repository storage (or beside the target when no
@@ -119,7 +109,12 @@ enum Landing {
     New,
 }
 
-fn atomic_write_in_vault(root: &Path, path: &Path, content: &[u8], landing: Landing) -> io::Result<()> {
+fn atomic_write_in_vault(
+    root: &Path,
+    path: &Path,
+    content: &[u8],
+    landing: Landing,
+) -> io::Result<()> {
     write_step::before(write_step::Step::CreateTemp)?;
     // No repository: stage at the top of the folder, under a name of our own. It exists only
     // until the rename a moment later; one a crash leaves is swept on the next open. The top of
@@ -129,7 +124,9 @@ fn atomic_write_in_vault(root: &Path, path: &Path, content: &[u8], landing: Land
             std::fs::create_dir_all(&dir)?;
             NamedTempFile::new_in(&dir)?
         }
-        None => tempfile::Builder::new().prefix(LOOSE_TEMP_PREFIX).tempfile_in(root)?,
+        None => tempfile::Builder::new()
+            .prefix(LOOSE_TEMP_PREFIX)
+            .tempfile_in(root)?,
     };
     write_step::before(write_step::Step::WriteTemp)?;
     tmp.write_all(content)?;
@@ -243,7 +240,10 @@ const WELCOME_MD: &str = "---\ntitle: Welcome to Textree\nicon: 🌳\n---\n\n# W
 fn has_markdown(dir: &Path) -> bool {
     match std::fs::read_dir(dir) {
         Ok(entries) => entries.flatten().any(|e| {
-            e.path().extension().and_then(|x| x.to_str()).map(|x| x.eq_ignore_ascii_case("md"))
+            e.path()
+                .extension()
+                .and_then(|x| x.to_str())
+                .map(|x| x.eq_ignore_ascii_case("md"))
                 == Some(true)
         }),
         Err(_) => false,
@@ -298,7 +298,10 @@ fn candidate_vault_bases(app: &AppHandle) -> Vec<PathBuf> {
 /// so the user always knows where their notes live (data sovereignty). Errors only when *every*
 /// candidate fails — never silently no-ops into a blank app.
 fn first_creatable_vault(bases: &[PathBuf]) -> Result<(PathBuf, bool), (String, Option<i32>)> {
-    let mut last_err = ("no candidate base directory could be resolved".to_string(), None);
+    let mut last_err = (
+        "no candidate base directory could be resolved".to_string(),
+        None,
+    );
     for (i, base) in bases.iter().enumerate() {
         match ensure_vault_at(base) {
             Ok(vault) => return Ok((vault, i > 0)),
@@ -325,11 +328,17 @@ pub fn ensure_default_vault(app: AppHandle) -> Result<DefaultVault, String> {
     match first_creatable_vault(&bases) {
         Ok((vault, fell_back)) => {
             if fell_back {
-                log::warn!("ensure_default_vault: preferred base unusable, fell back to {}", vault.display());
+                log::warn!(
+                    "ensure_default_vault: preferred base unusable, fell back to {}",
+                    vault.display()
+                );
             } else {
                 log::info!("ensure_default_vault: {}", vault.display());
             }
-            Ok(DefaultVault { path: vault.display().to_string(), fell_back })
+            Ok(DefaultVault {
+                path: vault.display().to_string(),
+                fell_back,
+            })
         }
         Err((msg, os_error_code)) => {
             crate::telemetry::record(crate::telemetry::vault_open_failed_report(os_error_code));
@@ -376,7 +385,9 @@ fn personal_base() -> Option<PathBuf> {
 /// so nothing can address a location outside the directory it is confined to.
 fn sidecar_path(root: &Path, rel: &str) -> Result<PathBuf, String> {
     crate::vault_paths::plain(rel).map_err(|_| "invalid settings path".to_string())?;
-    Ok(rel.split('/').fold(personal_dir(root)?, |p, name| p.join(name)))
+    Ok(rel
+        .split('/')
+        .fold(personal_dir(root)?, |p, name| p.join(name)))
 }
 
 /// The same file as it was kept before settings moved out of the notes folder.
@@ -450,7 +461,9 @@ pub fn prepare_sidecar(root: String) -> Result<SidecarState, String> {
     let dir = personal_dir(Path::new(&root))?;
     let current = crate::state_dir::bring_up_to_date(&dir, &root, atomic_bytes_beside)
         .map_err(|e| e.to_string())?;
-    Ok(SidecarState { read_only: !current })
+    Ok(SidecarState {
+        read_only: !current,
+    })
 }
 
 /// Moves one of this folder's settings files that could not be read out of the way, keeping it.
@@ -467,8 +480,14 @@ pub fn set_aside_sidecar(root: String, rel: String) -> Result<String, String> {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let to = crate::state_dir::set_aside(&dir, &rel, now).map_err(|e| e.to_string())?;
-    log::warn!("set_aside_sidecar: {rel} could not be read; kept as {}", to.display());
-    Ok(to.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+    log::warn!(
+        "set_aside_sidecar: {rel} could not be read; kept as {}",
+        to.display()
+    );
+    Ok(to
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default())
 }
 
 /// An edit kept because it could not be written to its note yet (see `stranded`).
@@ -489,11 +508,12 @@ fn stranded_dir(root: &Path) -> Result<PathBuf, String> {
 /// Keeps an edit that could not be written to its note yet, until it is. Returns its id.
 #[tauri::command]
 pub async fn keep_stranded(
-    root: String,
+    root_id: String,
     rel: String,
     text: String,
     base: String,
 ) -> Result<String, String> {
+    let root = crate::workspace::path_of(&root_id)?;
     off_main(move || {
         // From the text alone: the folder may be the very one that stopped answering.
         crate::vault_paths::plain(&rel)?;
@@ -502,8 +522,13 @@ pub async fn keep_stranded(
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-        let kept = crate::stranded::Kept { rel, text, base, at };
-        crate::stranded::keep(&stranded_dir(&root)?, &kept, atomic_new_beside)
+        let kept = crate::stranded::Kept {
+            rel,
+            text,
+            base,
+            at,
+        };
+        crate::stranded::keep(&stranded_dir(&root)?, &kept, tauri_kit_fs::write_atomic_new)
             .map_err(|e| e.to_string())
     })
     .await
@@ -511,7 +536,8 @@ pub async fn keep_stranded(
 
 /// Lets go of a kept edit once it has landed.
 #[tauri::command]
-pub async fn forget_stranded(root: String, id: String) -> Result<(), String> {
+pub async fn forget_stranded(root_id: String, id: String) -> Result<(), String> {
+    let root = crate::workspace::path_of(&root_id)?;
     off_main(move || {
         crate::stranded::forget(&stranded_dir(Path::new(&root))?, &id).map_err(|e| e.to_string())
     })
@@ -520,7 +546,8 @@ pub async fn forget_stranded(root: String, id: String) -> Result<(), String> {
 
 /// Every edit kept for this folder, oldest first, to be tried again now that it is open.
 #[tauri::command]
-pub async fn list_stranded(root: String) -> Result<Vec<StrandedEdit>, String> {
+pub async fn list_stranded(root_id: String) -> Result<Vec<StrandedEdit>, String> {
+    let root = crate::workspace::path_of(&root_id)?;
     off_main(move || stranded_edits(Path::new(&root))).await
 }
 
@@ -542,11 +569,14 @@ fn stranded_edits(root: &Path) -> Result<Vec<StrandedEdit>, String> {
 pub(crate) async fn off_main<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(work).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn list_tree(root: String) -> Result<Vec<TreeItem>, String> {
+pub async fn list_tree(root_id: String) -> Result<Vec<TreeItem>, String> {
+    let root = crate::workspace::path_of(&root_id)?;
     off_main(move || tree_of(root.clone()).and_then(|tree| tree_out(&root, tree))).await
 }
 
@@ -581,9 +611,17 @@ pub(crate) fn tree_out(root: &str, tree: Vec<TreeNode>) -> Result<Vec<TreeItem>,
 /// A change to a note, as the screen is told about it: which folder, and where in it.
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub struct FsEvent {
-    pub root: String,
+    #[serde(rename = "rootId")]
+    pub root_id: String,
     pub kind: crate::watcher::ChangeKind,
     pub rel: String,
+}
+
+/// The folder's whole tree has to be read again: said with the folder it is about.
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
+pub struct RescanEvent {
+    #[serde(rename = "rootId")]
+    pub root_id: String,
 }
 
 pub(crate) fn tree_of(root: String) -> Result<Vec<TreeNode>, String> {
@@ -591,7 +629,8 @@ pub(crate) fn tree_of(root: String) -> Result<Vec<TreeNode>, String> {
 }
 
 #[tauri::command]
-pub async fn read_note(root: String, rel: String) -> Result<String, String> {
+pub async fn read_note(root_id: String, rel: String) -> Result<String, String> {
+    let root = crate::workspace::path_of(&root_id)?;
     off_main(move || {
         let path = crate::vault_paths::resolve(&root, &rel)?;
         note_text(root, path.to_string_lossy().into_owned())
@@ -638,7 +677,7 @@ fn stale_base(path: &Path, expected: &str) -> io::Result<Option<WriteOutcome>> {
 /// drive) holds up this save, not the window or the other notes.
 #[tauri::command]
 pub async fn write_note(
-    root: String,
+    root_id: String,
     rel: String,
     content: String,
     expected: String,
@@ -646,6 +685,7 @@ pub async fn write_note(
     locks: State<'_, Arc<NoteLocks>>,
     app: AppHandle,
 ) -> Result<WriteOutcome, String> {
+    let root = crate::workspace::path_of(&root_id)?;
     let (own, locks) = (own.inner().clone(), locks.inner().clone());
     off_main(move || {
         let path = crate::vault_paths::resolve(&root, &rel)?;
@@ -671,14 +711,20 @@ pub(crate) fn save_note(
 ) -> Result<WriteOutcome, String> {
     // The whole folder is gone — the note with it. Nothing can be written, nothing is.
     if !root.is_dir() {
-        log::info!("write_note: the folder {} is gone; not written", root.display());
+        log::info!(
+            "write_note: the folder {} is gone; not written",
+            root.display()
+        );
         return Ok(WriteOutcome::Conflict { disk: None });
     }
     // `path` was resolved inside the vault by the command (`vault_paths` — a note deleted outside
     // the app resolves too, and comes back as "gone" below).
     let _turn = locks.turn(path);
     if let Some(conflict) = stale_base(path, expected).map_err(|e| e.to_string())? {
-        log::info!("write_note: {} changed since it was loaded; not written", path.display());
+        log::info!(
+            "write_note: {} changed since it was loaded; not written",
+            path.display()
+        );
         return Ok(conflict);
     }
     // Recorded before writing: the watch can hear about the write before it returns, and would
@@ -709,7 +755,9 @@ fn refresh_indexes(app: &AppHandle, root: PathBuf, path: PathBuf) {
     let index = app.state::<Arc<IndexHandle>>().inner().clone();
     let host = app.state::<Arc<host::HostHandle>>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let Ok(content) = std::fs::read_to_string(&path) else { return };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            return;
+        };
         if let Some(state) = index.0.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
             let _ = state.index_note(&root, &path, &content);
         }
@@ -737,7 +785,9 @@ pub(crate) const SUPERSEDED: &str = "another folder was opened meanwhile";
 /// folder stop answering when it is opened.
 #[cfg(all(not(test), debug_assertions))]
 fn stall_opening(root: &str) {
-    let Some(flag) = std::env::var_os("TEXTREE_E2E_OPEN_STALL_FLAG") else { return };
+    let Some(flag) = std::env::var_os("TEXTREE_E2E_OPEN_STALL_FLAG") else {
+        return;
+    };
     while std::fs::read_to_string(&flag).is_ok_and(|named| named.trim() == root) {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
@@ -756,7 +806,12 @@ pub(crate) fn begin_open() -> u64 {
 /// watches it. Everything that reads the folder runs first, where it may take as long as the
 /// folder takes; only then, briefly and one opening at a time, is the folder put in place — and
 /// only if no later opening started meanwhile.
-pub fn open_vault(root: String, app: AppHandle, ticket: u64) -> Result<Vec<TreeNode>, String> {
+pub fn open_vault(
+    root: String,
+    root_id: String,
+    app: AppHandle,
+    ticket: u64,
+) -> Result<Vec<TreeNode>, String> {
     stall_opening(&root);
     let root_path = PathBuf::from(&root);
     // Sweep orphaned atomic-write temps (crash/power-loss leftovers) so they don't linger and sync.
@@ -770,20 +825,43 @@ pub fn open_vault(root: String, app: AppHandle, ticket: u64) -> Result<Vec<TreeN
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let emitter = app.clone();
     let watched = root.clone();
+    let watched_id = root_id.clone();
     use tauri::Emitter as _;
-    let watcher = crate::watcher::watch_vault(&root_path, &own, index.clone(), move |surface| match surface {
-        crate::watcher::Surface::Changed(batch) => {
-            for change in batch {
-                // Said with the folder it happened in: one that arrives after another folder was
-                // opened is not mistaken for a note of the same name there.
-                let Some(rel) = crate::vault_paths::rel_of(&watched, Path::new(&change.path)) else { continue };
-                let _ = emitter.emit("fs_changed", FsEvent { root: watched.clone(), kind: change.kind, rel });
-            }
-        }
-        crate::watcher::Surface::Rescan => {
-            let _ = emitter.emit("fs_rescan", ());
-        }
-    })?;
+    let watcher =
+        crate::watcher::watch_vault(
+            &root_path,
+            &own,
+            index.clone(),
+            move |surface| match surface {
+                crate::watcher::Surface::Changed(batch) => {
+                    for change in batch {
+                        // Said with the folder it happened in: one that arrives after another folder was
+                        // opened is not mistaken for a note of the same name there.
+                        let Some(rel) =
+                            crate::vault_paths::rel_of(&watched, Path::new(&change.path))
+                        else {
+                            continue;
+                        };
+                        let _ = emitter.emit(
+                            "fs_changed",
+                            FsEvent {
+                                root_id: watched_id.clone(),
+                                kind: change.kind,
+                                rel,
+                            },
+                        );
+                    }
+                }
+                crate::watcher::Surface::Rescan => {
+                    let _ = emitter.emit(
+                        "fs_rescan",
+                        RescanEvent {
+                            root_id: watched_id.clone(),
+                        },
+                    );
+                }
+            },
+        )?;
 
     let _installing = INSTALLING.lock().unwrap_or_else(|e| e.into_inner());
     if OPENS.load(std::sync::atomic::Ordering::SeqCst) != ticket {
@@ -803,7 +881,12 @@ pub fn open_vault(root: String, app: AppHandle, ticket: u64) -> Result<Vec<TreeN
                 let index_arc = index.clone();
                 let root_for_build = root_path.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    if let Some(st) = index_arc.0.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+                    if let Some(st) = index_arc
+                        .0
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .as_mut()
+                    {
                         let _ = st.rebuild(&root_for_build);
                     }
                 });
@@ -826,7 +909,11 @@ pub fn open_vault(root: String, app: AppHandle, ticket: u64) -> Result<Vec<TreeN
     // The previous watch stops as it is replaced, so leftover changes from the old vault don't
     // bleed into the new.
     let watcher_handle = app.state::<WatcherHandle>();
-    let previous = watcher_handle.0.lock().unwrap_or_else(|e| e.into_inner()).replace(watcher);
+    let previous = watcher_handle
+        .0
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .replace(watcher);
     drop(previous);
 
     Ok(tree)
@@ -846,13 +933,22 @@ fn forget_choices(root: &Path, rels: &[String]) {
         Ok(Some(p)) => p,
         Ok(None) => return,
         Err(e) => {
-            log::warn!("forget_choices: cannot open the repository: {}", e.message());
+            log::warn!(
+                "forget_choices: cannot open the repository: {}",
+                e.message()
+            );
             return;
         }
     };
-    let paths: Vec<PathBuf> = rels.iter().map(|r| prepared.path_in_repo(Path::new(r))).collect();
+    let paths: Vec<PathBuf> = rels
+        .iter()
+        .map(|r| prepared.path_in_repo(Path::new(r)))
+        .collect();
     if let Err(e) = crate::publish_scope::vacate(prepared.repo(), &paths) {
-        log::warn!("forget_choices: publish choices not cleared: {}", e.message());
+        log::warn!(
+            "forget_choices: publish choices not cleared: {}",
+            e.message()
+        );
     }
 }
 
@@ -865,16 +961,15 @@ fn forget_choices_at(root: &Path, created: &Path) {
 }
 
 pub fn create_note(root: String, parent: String, name: String) -> Result<String, String> {
-    let path = crate::fs_ops::create_note(Path::new(&parent), &name)
-        .map_err(|e| e.to_string())?;
+    let path = crate::fs_ops::create_note(Path::new(&parent), &name).map_err(|e| e.to_string())?;
     log::info!("create_note: {}", path.display());
     forget_choices_at(Path::new(&root), &path);
     Ok(path.display().to_string())
 }
 
 pub fn create_untitled_note(root: String, parent: String) -> Result<String, String> {
-    let path = crate::fs_ops::create_untitled_note(Path::new(&parent))
-        .map_err(|e| e.to_string())?;
+    let path =
+        crate::fs_ops::create_untitled_note(Path::new(&parent)).map_err(|e| e.to_string())?;
     log::info!("create_untitled_note: {}", path.display());
     forget_choices_at(Path::new(&root), &path);
     Ok(path.display().to_string())
@@ -886,11 +981,8 @@ pub fn create_note_with_content(
     name: String,
     content: String,
 ) -> Result<String, String> {
-    let path = crate::fs_ops::create_note_with_content(Path::new(&parent),
-        &name,
-        &content,
-    )
-    .map_err(|e| e.to_string())?;
+    let path = crate::fs_ops::create_note_with_content(Path::new(&parent), &name, &content)
+        .map_err(|e| e.to_string())?;
     log::info!("create_note_with_content: {}", path.display());
     forget_choices_at(Path::new(&root), &path);
     Ok(path.display().to_string())
@@ -899,8 +991,8 @@ pub fn create_note_with_content(
 pub fn rename_note_unique(root: String, path: String, name: String) -> Result<String, String> {
     let root_p = Path::new(&root);
     let from_rel = crate::vault_paths::rel_out(root_p, Path::new(&path)).ok();
-    let p = crate::fs_ops::rename_note_unique(Path::new(&path), &name)
-        .map_err(|e| e.to_string())?;
+    let p =
+        crate::fs_ops::rename_note_unique(Path::new(&path), &name).map_err(|e| e.to_string())?;
     log::info!("rename_note_unique: {} -> {}", path, p.display());
     // A rename like any other: what was recorded and chosen for the note goes with it.
     if let (Some(from), Ok(to)) = (from_rel, crate::vault_paths::rel_out(root_p, &p)) {
@@ -910,8 +1002,7 @@ pub fn rename_note_unique(root: String, path: String, name: String) -> Result<St
 }
 
 pub fn create_folder(root: String, parent: String, name: String) -> Result<String, String> {
-    let dir = crate::fs_ops::create_folder(Path::new(&parent), &name)
-        .map_err(|e| e.to_string())?;
+    let dir = crate::fs_ops::create_folder(Path::new(&parent), &name).map_err(|e| e.to_string())?;
     log::info!("create_folder: {}", dir.display());
     forget_choices_at(Path::new(&root), &dir);
     Ok(dir.display().to_string())
@@ -1132,7 +1223,10 @@ fn record_moves(root: &Path, pairs: &[(String, String)]) {
     // Both references are carried over. What was kept when a note was deleted describes the
     // same note, so leaving it at the old name would make a note that came back and was then
     // renamed look deleted all over again.
-    for reference in [crate::git_engine::NOTES_REF, crate::git_engine::SNAPSHOT_REF] {
+    for reference in [
+        crate::git_engine::NOTES_REF,
+        crate::git_engine::SNAPSHOT_REF,
+    ] {
         match crate::git_engine::move_recorded(repo, reference, &moves, &author, &committer) {
             Ok(Some(_)) => log::info!("record_moves: {} pair(s) in {reference}", pairs.len()),
             Ok(None) => {}
@@ -1155,7 +1249,12 @@ pub fn rename_node(root: String, path: String, name: String) -> Result<String, S
     // destination name holds (a different note of that name inside the folder).
     let folder_note = target
         .is_dir()
-        .then(|| target.file_name().and_then(|s| s.to_str()).map(str::to_string))
+        .then(|| {
+            target
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(str::to_string)
+        })
         .flatten()
         .filter(|old| target.join(format!("{old}.md")).is_file());
 
@@ -1175,8 +1274,8 @@ pub fn rename_node(root: String, path: String, name: String) -> Result<String, S
 pub fn move_node(root: String, path: String, dest: String) -> Result<String, String> {
     let root_p = Path::new(&root);
     let from_rel = crate::vault_paths::rel_out(root_p, Path::new(&path)).ok();
-    let p = crate::fs_ops::move_node(Path::new(&path), Path::new(&dest))
-        .map_err(|e| e.to_string())?;
+    let p =
+        crate::fs_ops::move_node(Path::new(&path), Path::new(&dest)).map_err(|e| e.to_string())?;
     log::info!("move_node: {} -> {}", path, dest);
     if let (Some(from), Ok(to)) = (from_rel, crate::vault_paths::rel_out(root_p, &p)) {
         record_moves(root_p, &[(from, to)]);
@@ -1191,8 +1290,7 @@ pub fn adopt_node(root: String, path: String, leaf: String) -> Result<String, St
     // The leaf is resolved before it is promoted, because promoting replaces the file it names.
     let leaf_before = crate::vault_paths::rel_out(root_p, leaf_p).ok();
 
-    let p = crate::fs_ops::adopt_into_leaf(Path::new(&path), leaf_p)
-        .map_err(|e| e.to_string())?;
+    let p = crate::fs_ops::adopt_into_leaf(Path::new(&path), leaf_p).map_err(|e| e.to_string())?;
     // The folder the promotion made is new: it inherits no include left at its name. Cleared
     // before the moves are carried, so the choices they bring in are kept.
     if let Some(dir) = p.parent() {
@@ -1201,9 +1299,10 @@ pub fn adopt_node(root: String, path: String, leaf: String) -> Result<String, St
 
     // Adopting is a promotion followed by a move, and both have to be carried over.
     let mut pairs = Vec::new();
-    if let (Some(before), Some(after)) =
-        (leaf_before, p.parent().and_then(|d| folder_note_rel(root_p, d)))
-    {
+    if let (Some(before), Some(after)) = (
+        leaf_before,
+        p.parent().and_then(|d| folder_note_rel(root_p, d)),
+    ) {
         pairs.push((before, after));
     }
     if let (Some(from), Ok(to)) = (from_rel, crate::vault_paths::rel_out(root_p, &p)) {
@@ -1283,7 +1382,10 @@ fn resolve_canopy(app: &AppHandle) -> Result<crate::publish::CanopyInvocation, S
                 prefix_args: vec![path.into_os_string()],
             });
         }
-        return Ok(CanopyInvocation { program: path.into_os_string(), prefix_args: vec![] });
+        return Ok(CanopyInvocation {
+            program: path.into_os_string(),
+            prefix_args: vec![],
+        });
     }
     let resource = app.path().resource_dir().map_err(|e| e.to_string())?;
     if let Some(inv) = crate::publish::canopy_from_resource_dir(&resource) {
@@ -1316,7 +1418,12 @@ fn stage(vault: &Path) -> Result<Staged, String> {
     let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
     let source = dir.path().join("site-source");
     crate::publish_assembly::write_out(&assembly, &source).map_err(|e| e.to_string())?;
-    Ok(Staged { _dir: dir, source, assembly, prepared })
+    Ok(Staged {
+        _dir: dir,
+        source,
+        assembly,
+        prepared,
+    })
 }
 
 /// The renderer would name the site after the staged folder; name it after the notes folder.
@@ -1366,7 +1473,11 @@ pub fn publish_site(
             crate::publish::RENDER_TIMEOUT,
         )
     })?;
-    log::info!("publish_site: {} ({} pages)", result.out_dir, result.page_count);
+    log::info!(
+        "publish_site: {} ({} pages)",
+        result.out_dir,
+        result.page_count
+    );
     Ok(result)
 }
 
@@ -1387,7 +1498,11 @@ pub fn publish_to_cloud(
     let result = publish_staged(&staged, |source| {
         crate::cloud_publish::publish_to_cloud(&vault, source, &options, &canopy, &token)
     })?;
-    log::info!("publish_to_cloud: {} ({} pages)", result.url, result.page_count);
+    log::info!(
+        "publish_to_cloud: {} ({} pages)",
+        result.url,
+        result.page_count
+    );
     Ok(result)
 }
 
@@ -1424,7 +1539,10 @@ pub fn publish_choices(root: String) -> Result<Vec<crate::publish_scope::Choice>
     let all = crate::publish_scope::read(prepared.repo(), crate::publish_scope::PUBLIC_REF)
         .map_err(|e| e.message().to_string())?;
     let vault = crate::git_engine::slashed(&prepared.path_in_repo(Path::new("")));
-    Ok(crate::publish_scope::for_vault(&all, vault.trim_end_matches('/')))
+    Ok(crate::publish_scope::for_vault(
+        &all,
+        vault.trim_end_matches('/'),
+    ))
 }
 
 /// Records that `rel` (relative to `root`, `""` = the whole folder) is included, left out, or
@@ -1454,7 +1572,10 @@ pub fn publish_preview(vault_path: String) -> Result<PublishPreview, String> {
         return Err("the vault path is not a directory".into());
     }
     let Some(prepared) = history_repo(&root)? else {
-        return Ok(PublishPreview { nothing_chosen: true, ..PublishPreview::default() });
+        return Ok(PublishPreview {
+            nothing_chosen: true,
+            ..PublishPreview::default()
+        });
     };
     let a = crate::publish_assembly::assemble(&prepared, &root)?;
     let mut unrecorded = Vec::new();
@@ -1495,7 +1616,12 @@ pub fn remote_connection(root: String) -> Result<Option<crate::remote::Connectio
 /// Connects this folder to a remote. The remote is reached with the secret first, and remembered
 /// only when that worked — a connection that was saved but cannot be used would fail later, far
 /// from where it was set up.
-pub fn connect_remote(root: String, url: String, username: String, secret: String) -> Result<(), String> {
+pub fn connect_remote(
+    root: String,
+    url: String,
+    username: String,
+    secret: String,
+) -> Result<(), String> {
     let root_p = Path::new(&root);
     let url = url.trim().to_string();
     crate::git_transport::check_url(&url).map_err(|e| e.message().to_string())?;
@@ -1508,8 +1634,12 @@ pub fn connect_remote(root: String, url: String, username: String, secret: Strin
         return Err(NEWER_SETTINGS.into());
     }
     let prepared = crate::git_engine::prepare(root_p).map_err(|e| e.message().to_string())?;
-    let credentials = crate::git_transport::Credentials { username: username.clone(), secret: secret.clone() };
-    crate::remote::fetch(prepared.repo(), &url, Some(credentials)).map_err(|e| e.message().to_string())?;
+    let credentials = crate::git_transport::Credentials {
+        username: username.clone(),
+        secret: secret.clone(),
+    };
+    crate::remote::fetch(prepared.repo(), &url, Some(credentials))
+        .map_err(|e| e.message().to_string())?;
 
     let connection = crate::remote::Connection { url, username };
     let text = serde_json::to_string_pretty(&connection).map_err(|e| e.to_string())?;
@@ -1525,7 +1655,9 @@ pub fn notes_backed_up(root: String) -> Result<bool, String> {
         return Ok(false);
     }
     match history_repo(Path::new(&root))? {
-        Some(prepared) => crate::remote::backed_up(prepared.repo()).map_err(|e| e.message().to_string()),
+        Some(prepared) => {
+            crate::remote::backed_up(prepared.repo()).map_err(|e| e.message().to_string())
+        }
         // Nothing recorded yet: nothing that could be lost.
         None => Ok(true),
     }
@@ -1550,7 +1682,10 @@ pub fn sync_remote(root: String, locks: &NoteLocks) -> Result<crate::remote::Exc
     let connection = remote_connection(root.clone())?
         .ok_or_else(|| "this folder is not connected to a remote".to_string())?;
     let credentials = crate::remote::secret(&folder_key(root_p)).map(|secret| {
-        crate::git_transport::Credentials { username: connection.username.clone(), secret }
+        crate::git_transport::Credentials {
+            username: connection.username.clone(),
+            secret,
+        }
     });
     let prepared = crate::git_engine::prepare(root_p).map_err(|e| e.message().to_string())?;
     crate::remote::exchange(&prepared, root_p, &connection.url, credentials, locks)
@@ -1579,7 +1714,11 @@ fn linked_files(root: &Path, note_rel: &str, body: &[u8]) -> Vec<String> {
         let Some(rel) = crate::note_refs::resolve(note_rel, &t) else {
             continue;
         };
-        if is_note_path(&rel) || rel.split('/').any(|s| s.starts_with('.')) || out.iter().any(|seen: &String| seen.eq_ignore_ascii_case(&rel))
+        if is_note_path(&rel)
+            || rel.split('/').any(|s| s.starts_with('.'))
+            || out
+                .iter()
+                .any(|seen: &String| seen.eq_ignore_ascii_case(&rel))
         {
             continue;
         }
@@ -1767,9 +1906,8 @@ pub fn note_versions(root: String, path: String) -> Result<Vec<NoteVersion>, Str
         return Ok(Vec::new());
     };
     let in_repo = prepared.path_in_repo(Path::new(&rel));
-    let found =
-        crate::git_engine::history(prepared.repo(), crate::git_engine::NOTES_REF, &in_repo)
-            .map_err(|e| e.message().to_string())?;
+    let found = crate::git_engine::history(prepared.repo(), crate::git_engine::NOTES_REF, &in_repo)
+        .map_err(|e| e.message().to_string())?;
     Ok(found
         .into_iter()
         .map(|v| NoteVersion {
@@ -1863,7 +2001,11 @@ pub fn deleted_notes(root: String) -> Result<Vec<DeletedNote>, String> {
             .unwrap_or(0);
         seen.insert(
             rel.clone(),
-            DeletedNote { rel, seconds, recorded: recorded_paths.contains(&in_repo) },
+            DeletedNote {
+                rel,
+                seconds,
+                recorded: recorded_paths.contains(&in_repo),
+            },
         );
     }
 
@@ -1981,7 +2123,10 @@ fn earlier_copy_name(
 ) -> String {
     let path = Path::new(rel);
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
     let (stem, ext) = match name.rsplit_once('.') {
         Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
         _ => (name.clone(), String::new()),
@@ -1990,10 +2135,17 @@ fn earlier_copy_name(
     loop {
         let candidate_name = format!("{stem} ({n}){ext}");
         let candidate = match parent {
-            Some(p) => format!("{}/{}", p.to_string_lossy().replace('\\', "/"), candidate_name),
+            Some(p) => format!(
+                "{}/{}",
+                p.to_string_lossy().replace('\\', "/"),
+                candidate_name
+            ),
             None => candidate_name,
         };
-        if !root.join(&candidate).exists() && !occupied(&candidate) && given.insert(candidate.to_lowercase()) {
+        if !root.join(&candidate).exists()
+            && !occupied(&candidate)
+            && given.insert(candidate.to_lowercase())
+        {
             return candidate;
         }
         n += 1;
@@ -2099,7 +2251,11 @@ fn carry_over_set_aside(root: &Path, prepared: &crate::git_engine::VaultRepo) ->
         .map(|p| p.to_lowercase())
         .collect();
     let occupied = |rel: &str| {
-        let in_repo = prepared.path_in_repo(Path::new(rel)).to_string_lossy().replace('\\', "/").to_lowercase();
+        let in_repo = prepared
+            .path_in_repo(Path::new(rel))
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_lowercase();
         let beneath = format!("{in_repo}/");
         held.contains(&in_repo) || held.iter().any(|p| p.starts_with(&beneath))
     };
@@ -2177,14 +2333,21 @@ fn carry_over_set_aside(root: &Path, prepared: &crate::git_engine::VaultRepo) ->
                 // Held by the history now, file by file — and only the files that were read.
                 for on_disk in &read_from {
                     if let Err(e) = crate::fs_ops::patiently(|| std::fs::remove_file(on_disk)) {
-                        log::warn!("carry_over_set_aside: {} carried but not removed: {e}", on_disk.display());
+                        log::warn!(
+                            "carry_over_set_aside: {} carried but not removed: {e}",
+                            on_disk.display()
+                        );
                     }
                 }
                 if item.is_dir {
                     prune_empty_dirs(&put_aside);
                 }
             }
-            Err(e) => log::warn!("carry_over_set_aside: {} not carried: {}", item.original_rel, e.message()),
+            Err(e) => log::warn!(
+                "carry_over_set_aside: {} not carried: {}",
+                item.original_rel,
+                e.message()
+            ),
         }
     }
 
@@ -2207,7 +2370,11 @@ struct CarriedOver {
 /// and every directory whose contents could not be listed. Never empty while `dir` exists — a
 /// directory that is still there is itself something left behind.
 fn still_inside(root: &Path, dir: &Path) -> Vec<String> {
-    let rel = |abs: &Path| abs.strip_prefix(root).ok().map(|r| r.to_string_lossy().replace('\\', "/"));
+    let rel = |abs: &Path| {
+        abs.strip_prefix(root)
+            .ok()
+            .map(|r| r.to_string_lossy().replace('\\', "/"))
+    };
     let found = walk_beneath(dir);
     let mut left: Vec<String> = found
         .files
@@ -2383,8 +2550,8 @@ fn note_alternative(
 
 /// The repository of a folder something has been recorded in, refusing while it is busy.
 fn writable_history(root: &Path) -> Result<crate::git_engine::VaultRepo, String> {
-    let prepared = history_repo(root)?
-        .ok_or_else(|| "add a version of this note first".to_string())?;
+    let prepared =
+        history_repo(root)?.ok_or_else(|| "add a version of this note first".to_string())?;
     if let Some(state) = crate::git_engine::operation_in_progress(prepared.repo()) {
         return Err(format!(
             "the repository is in the middle of another operation ({state:?})"
@@ -2417,16 +2584,23 @@ pub fn start_alternative(root: String, path: String) -> Result<NoteAlternative, 
     let repo = prepared.repo();
     let (author, committer) =
         crate::git_engine::commit_identities(repo).map_err(|e| e.message().to_string())?;
-    let id = crate::alternatives::start(repo, &prepared.path_in_repo(Path::new(&rel)), &author, &committer)
-        .map_err(|e| e.message().to_string())?;
+    let id = crate::alternatives::start(
+        repo,
+        &prepared.path_in_repo(Path::new(&rel)),
+        &author,
+        &committer,
+    )
+    .map_err(|e| e.message().to_string())?;
     let alternative = crate::alternatives::get(repo, &id).map_err(|e| e.message().to_string())?;
     log::info!("start_alternative: {rel} as {id}");
-    note_alternative(&prepared, &alternative)?.ok_or_else(|| "the note is not in this folder".into())
+    note_alternative(&prepared, &alternative)?
+        .ok_or_else(|| "the note is not in this folder".into())
 }
 
 /// What an alternative holds for its note.
 pub fn alternative_text(root: String, id: String) -> Result<String, String> {
-    let prepared = history_repo(Path::new(&root))?.ok_or_else(|| "no such alternative".to_string())?;
+    let prepared =
+        history_repo(Path::new(&root))?.ok_or_else(|| "no such alternative".to_string())?;
     let repo = prepared.repo();
     let alternative = crate::alternatives::get(repo, &id).map_err(|e| e.message().to_string())?;
     let bytes = crate::alternatives::content(repo, &alternative)
@@ -2446,13 +2620,20 @@ pub fn add_alternative_version(
     let repo = prepared.repo();
     let (author, committer) =
         crate::git_engine::commit_identities(repo).map_err(|e| e.message().to_string())?;
-    let _turn = crate::drafts::TURN.lock().unwrap_or_else(|e| e.into_inner());
-    let oid = crate::alternatives::record(repo, &id, text.as_bytes(), &message, &author, &committer)
-        .map_err(|e| e.message().to_string())?;
+    let _turn = crate::drafts::TURN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let oid =
+        crate::alternatives::record(repo, &id, text.as_bytes(), &message, &author, &committer)
+            .map_err(|e| e.message().to_string())?;
     // The draft is now a version — unless something newer was typed since this text was taken.
     let alternative = crate::alternatives::get(repo, &id).map_err(|e| e.message().to_string())?;
     let file = draft_file(&drafts_dir(Path::new(&root))?, &alternative)?;
-    if crate::drafts::read(&file).map_err(|e| e.to_string())?.as_deref() == Some(text.as_str()) {
+    if crate::drafts::read(&file)
+        .map_err(|e| e.to_string())?
+        .as_deref()
+        == Some(text.as_str())
+    {
         forget_draft(&drafts_dir(Path::new(&root))?, &id);
     }
     Ok(oid.map(|o| o.to_string()))
@@ -2473,7 +2654,9 @@ pub fn use_alternative(root: String, path: String, id: String) -> Result<(), Str
     if alternative.path != crate::git_engine::slashed(&prepared.path_in_repo(Path::new(&rel))) {
         return Err("that alternative belongs to another note".into());
     }
-    let _turn = crate::drafts::TURN.lock().unwrap_or_else(|e| e.into_inner());
+    let _turn = crate::drafts::TURN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let drafts = drafts_dir(root_p)?;
     add_draft_as_version(repo, &drafts, &alternative)?;
     let alternative = crate::alternatives::get(repo, &id).map_err(|e| e.message().to_string())?;
@@ -2485,7 +2668,8 @@ pub fn use_alternative(root: String, path: String, id: String) -> Result<(), Str
     atomic_write_bytes(root_p, target, &chosen).map_err(|e| e.to_string())?;
     let (author, committer) =
         crate::git_engine::commit_identities(repo).map_err(|e| e.message().to_string())?;
-    crate::alternatives::pick(repo, &id, &author, &committer).map_err(|e| e.message().to_string())?;
+    crate::alternatives::pick(repo, &id, &author, &committer)
+        .map_err(|e| e.message().to_string())?;
     forget_draft(&drafts, &id);
     log::info!("use_alternative: {rel} from {id}");
     Ok(())
@@ -2499,7 +2683,9 @@ pub fn set_aside_alternative(root: String, id: String) -> Result<(), String> {
     let root_p = Path::new(&root);
     let prepared = writable_history(root_p)?;
     let repo = prepared.repo();
-    let _turn = crate::drafts::TURN.lock().unwrap_or_else(|e| e.into_inner());
+    let _turn = crate::drafts::TURN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let drafts = drafts_dir(root_p)?;
     let alternative = crate::alternatives::get(repo, &id).map_err(|e| e.message().to_string())?;
     add_draft_as_version(repo, &drafts, &alternative)?;
@@ -2513,7 +2699,10 @@ fn drafts_dir(root: &Path) -> Result<PathBuf, String> {
     Ok(personal_dir(root)?.join(crate::drafts::DIR))
 }
 
-fn draft_file(drafts: &Path, alternative: &crate::alternatives::Alternative) -> Result<PathBuf, String> {
+fn draft_file(
+    drafts: &Path,
+    alternative: &crate::alternatives::Alternative,
+) -> Result<PathBuf, String> {
     crate::drafts::file(drafts, &alternative.id, &alternative.path)
         .ok_or_else(|| "that alternative's note cannot be kept here".to_string())
 }
@@ -2524,13 +2713,22 @@ fn add_draft_as_version(
     drafts: &Path,
     alternative: &crate::alternatives::Alternative,
 ) -> Result<(), String> {
-    let Some(text) = crate::drafts::read(&draft_file(drafts, alternative)?).map_err(|e| e.to_string())? else {
+    let Some(text) =
+        crate::drafts::read(&draft_file(drafts, alternative)?).map_err(|e| e.to_string())?
+    else {
         return Ok(());
     };
     let (author, committer) =
         crate::git_engine::commit_identities(repo).map_err(|e| e.message().to_string())?;
-    crate::alternatives::record(repo, &alternative.id, text.as_bytes(), "Alternative version", &author, &committer)
-        .map_err(|e| e.message().to_string())?;
+    crate::alternatives::record(
+        repo,
+        &alternative.id,
+        text.as_bytes(),
+        "Alternative version",
+        &author,
+        &committer,
+    )
+    .map_err(|e| e.message().to_string())?;
     Ok(())
 }
 
@@ -2546,7 +2744,8 @@ fn forget_draft(drafts: &Path, id: &str) {
 pub fn alternative_draft(root: String, id: String) -> Result<Option<String>, String> {
     let root_p = Path::new(&root);
     let prepared = history_repo(root_p)?.ok_or_else(|| "no such alternative".to_string())?;
-    let alternative = crate::alternatives::get(prepared.repo(), &id).map_err(|e| e.message().to_string())?;
+    let alternative =
+        crate::alternatives::get(prepared.repo(), &id).map_err(|e| e.message().to_string())?;
     crate::drafts::read(&draft_file(&drafts_dir(root_p)?, &alternative)?).map_err(|e| e.to_string())
 }
 
@@ -2557,9 +2756,13 @@ pub fn write_alternative_draft(root: String, id: String, text: String) -> Result
     if !crate::state_dir::writable(&personal_dir(root_p)?).map_err(|e| e.to_string())? {
         return Err(NEWER_SETTINGS.into());
     }
-    let _turn = crate::drafts::TURN.lock().unwrap_or_else(|e| e.into_inner());
-    let alternative = crate::alternatives::get(prepared.repo(), &id).map_err(|e| e.message().to_string())?;
-    atomic_write_beside(&draft_file(&drafts_dir(root_p)?, &alternative)?, &text).map_err(|e| e.to_string())
+    let _turn = crate::drafts::TURN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let alternative =
+        crate::alternatives::get(prepared.repo(), &id).map_err(|e| e.message().to_string())?;
+    atomic_write_beside(&draft_file(&drafts_dir(root_p)?, &alternative)?, &text)
+        .map_err(|e| e.to_string())
 }
 
 /// Brings a deleted note back into the folder.
@@ -2612,20 +2815,30 @@ pub fn restore_deleted(root: String, rel: String) -> Result<RestoredNote, String
     let first = crate::fs_ops::place_restored(root_p, &rel).map_err(|e| e.to_string())?;
     let (dir, name) = (
         first.parent().ok_or("no parent directory")?,
-        Path::new(&rel).file_name().and_then(|n| n.to_str()).ok_or("cannot read name")?,
+        Path::new(&rel)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or("cannot read name")?,
     );
-    let (dest, ()) = tauri_kit_fs::claim_free_path(dir, name, tauri_kit_fs::NameKind::File, |dest| {
-        atomic_create_bytes(root_p, dest, &content)
-    })
-    .map_err(|e| e.to_string())?;
-    log::info!("restore_deleted: {} (as deleted: {as_deleted})", dest.display());
+    let (dest, ()) =
+        tauri_kit_fs::claim_free_path(dir, name, tauri_kit_fs::NameKind::File, |dest| {
+            atomic_create_bytes(root_p, dest, &content)
+        })
+        .map_err(|e| e.to_string())?;
+    log::info!(
+        "restore_deleted: {} (as deleted: {as_deleted})",
+        dest.display()
+    );
     let landed = crate::vault_paths::rel_out(root_p, &dest)?;
     // Back as a note made there now: no include left there applies to it or to a folder made to
     // hold it; a leave-out still does.
     let mut made = vec![landed.clone()];
     made.extend(made_folder.and_then(|d| crate::vault_paths::rel_out(root_p, &d).ok()));
     forget_choices(root_p, &made);
-    Ok(RestoredNote { rel: landed, as_deleted })
+    Ok(RestoredNote {
+        rel: landed,
+        as_deleted,
+    })
 }
 
 #[cfg(test)]
@@ -2645,19 +2858,35 @@ mod tests {
         let blog = tree.iter().find(|n| n.name == "blog").unwrap();
         assert_eq!(blog.path, "blog");
         assert_eq!(blog.body_path.as_deref(), Some("blog/blog.md"));
-        assert_eq!(blog.children.iter().map(|c| c.path.as_str()).collect::<Vec<_>>(), ["blog/post.md"]);
-        assert!(tree.iter().any(|n| n.path == "top.md" && n.body_path.as_deref() == Some("top.md")));
+        assert_eq!(
+            blog.children
+                .iter()
+                .map(|c| c.path.as_str())
+                .collect::<Vec<_>>(),
+            ["blog/post.md"]
+        );
+        assert!(tree
+            .iter()
+            .any(|n| n.path == "top.md" && n.body_path.as_deref() == Some("top.md")));
     }
 
     #[test]
     fn a_site_without_a_title_is_named_after_the_notes_folder() {
-        let none = crate::publish::PublishOptions { site_title: None, tokens_css: Some("x".into()) };
+        let none = crate::publish::PublishOptions {
+            site_title: None,
+            tokens_css: Some("x".into()),
+        };
         let named = with_default_title(none, Path::new("/some/where/My Notes"));
         assert_eq!(named.site_title.as_deref(), Some("My Notes"));
         assert_eq!(named.tokens_css.as_deref(), Some("x"));
-        let given = crate::publish::PublishOptions { site_title: Some("Mine".into()), tokens_css: None };
+        let given = crate::publish::PublishOptions {
+            site_title: Some("Mine".into()),
+            tokens_css: None,
+        };
         assert_eq!(
-            with_default_title(given, Path::new("/some/where/My Notes")).site_title.as_deref(),
+            with_default_title(given, Path::new("/some/where/My Notes"))
+                .site_title
+                .as_deref(),
             Some("Mine")
         );
     }
@@ -2666,10 +2895,19 @@ mod tests {
     fn stale_base_allows_a_save_while_the_note_still_holds_its_base() {
         let tmp = TempDir::new().unwrap();
         let note = tmp.path().join("a.md");
-        std::fs::write(&note, "loaded
-").unwrap();
-        assert_eq!(stale_base(&note, "loaded
-").unwrap(), None);
+        std::fs::write(
+            &note, "loaded
+",
+        )
+        .unwrap();
+        assert_eq!(
+            stale_base(
+                &note, "loaded
+"
+            )
+            .unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -2679,7 +2917,9 @@ mod tests {
         std::fs::write(&note, "changed elsewhere").unwrap();
         assert_eq!(
             stale_base(&note, "loaded").unwrap(),
-            Some(WriteOutcome::Conflict { disk: Some("changed elsewhere".into()) })
+            Some(WriteOutcome::Conflict {
+                disk: Some("changed elsewhere".into())
+            })
         );
     }
 
@@ -2710,7 +2950,10 @@ mod tests {
         expected: &'static str,
         own: &tauri_kit_watch::OwnWrites,
         locks: &Arc<NoteLocks>,
-    ) -> (std::sync::mpsc::Sender<()>, std::thread::JoinHandle<Result<WriteOutcome, String>>) {
+    ) -> (
+        std::sync::mpsc::Sender<()>,
+        std::thread::JoinHandle<Result<WriteOutcome, String>>,
+    ) {
         use std::sync::mpsc;
         let (reached_tx, reached) = mpsc::channel();
         let (release, release_rx) = mpsc::channel::<()>();
@@ -2726,7 +2969,9 @@ mod tests {
             });
             save_note(&root, &path, text, expected, &own, &locks)
         });
-        reached.recv_timeout(std::time::Duration::from_secs(5)).expect("the held save starts");
+        reached
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the held save starts");
         (release, handle)
     }
 
@@ -2738,7 +2983,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (root, note) = (tmp.path(), tmp.path().join("a.md"));
         std::fs::write(&note, "0").unwrap();
-        let (own, locks) = (tauri_kit_watch::OwnWrites::new(), Arc::new(NoteLocks::default()));
+        let (own, locks) = (
+            tauri_kit_watch::OwnWrites::new(),
+            Arc::new(NoteLocks::default()),
+        );
 
         let (release, older) = save_held_before_rename(root, &note, "older", "0", &own, &locks);
 
@@ -2748,13 +2996,20 @@ mod tests {
             std::thread::spawn(move || save_note(&root, &note, "newer", "older", &own, &locks))
         };
         std::thread::sleep(std::time::Duration::from_millis(200));
-        assert!(!newer.is_finished(), "the newer save waits while the older one is still writing");
+        assert!(
+            !newer.is_finished(),
+            "the newer save waits while the older one is still writing"
+        );
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "0");
 
         release.send(()).unwrap();
         assert_eq!(older.join().unwrap(), Ok(WriteOutcome::Written));
         assert_eq!(newer.join().unwrap(), Ok(WriteOutcome::Written));
-        assert_eq!(std::fs::read_to_string(&note).unwrap(), "newer", "the newest text is what stays");
+        assert_eq!(
+            std::fs::read_to_string(&note).unwrap(),
+            "newer",
+            "the newest text is what stays"
+        );
     }
 
     /// Renames `a.md` to `b.md` on another thread the way the command does: holding a turn over
@@ -2767,7 +3022,11 @@ mod tests {
         std::thread::spawn(move || {
             let note = root.join("a.md");
             let _turn = locks.subtree(&[note.as_path()]);
-            rename_node(root.to_string_lossy().into(), note.to_string_lossy().into(), "b".into())
+            rename_node(
+                root.to_string_lossy().into(),
+                note.to_string_lossy().into(),
+                "b".into(),
+            )
         })
     }
 
@@ -2776,18 +3035,27 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (root, note) = (tmp.path(), tmp.path().join("a.md"));
         std::fs::write(&note, "0").unwrap();
-        let (own, locks) = (tauri_kit_watch::OwnWrites::new(), Arc::new(NoteLocks::default()));
+        let (own, locks) = (
+            tauri_kit_watch::OwnWrites::new(),
+            Arc::new(NoteLocks::default()),
+        );
 
         let (release, save) = save_held_before_rename(root, &note, "newest", "0", &own, &locks);
         let rename = rename_in_turn(root, &locks);
         std::thread::sleep(std::time::Duration::from_millis(200));
-        assert!(!rename.is_finished(), "the rename waits while a save to the note is still writing");
+        assert!(
+            !rename.is_finished(),
+            "the rename waits while a save to the note is still writing"
+        );
 
         release.send(()).unwrap();
         assert_eq!(save.join().unwrap(), Ok(WriteOutcome::Written));
         rename.join().unwrap().unwrap();
         assert!(!note.exists(), "the old name must not come back");
-        assert_eq!(std::fs::read_to_string(root.join("b.md")).unwrap(), "newest");
+        assert_eq!(
+            std::fs::read_to_string(root.join("b.md")).unwrap(),
+            "newest"
+        );
     }
 
     #[test]
@@ -2795,7 +3063,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (root, note) = (tmp.path(), tmp.path().join("a.md"));
         std::fs::write(&note, "0").unwrap();
-        let (own, locks) = (tauri_kit_watch::OwnWrites::new(), Arc::new(NoteLocks::default()));
+        let (own, locks) = (
+            tauri_kit_watch::OwnWrites::new(),
+            Arc::new(NoteLocks::default()),
+        );
 
         let (release, save) = save_held_before_rename(root, &note, "newest", "0", &own, &locks);
         let root_s = root.to_string_lossy().to_string();
@@ -2803,8 +3074,16 @@ mod tests {
         release.send(()).unwrap();
         assert_eq!(save.join().unwrap(), Ok(WriteOutcome::Written));
 
-        assert_eq!(std::fs::read_to_string(&note).unwrap(), "newest", "the old name came back");
-        assert_eq!(std::fs::read_to_string(root.join("b.md")).unwrap(), "0", "without the edit");
+        assert_eq!(
+            std::fs::read_to_string(&note).unwrap(),
+            "newest",
+            "the old name came back"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("b.md")).unwrap(),
+            "0",
+            "without the edit"
+        );
     }
 
     #[test]
@@ -2814,7 +3093,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (root, note) = (tmp.path(), tmp.path().join("a.md"));
         std::fs::write(&note, "0").unwrap();
-        let (own, locks) = (tauri_kit_watch::OwnWrites::new(), Arc::new(NoteLocks::default()));
+        let (own, locks) = (
+            tauri_kit_watch::OwnWrites::new(),
+            Arc::new(NoteLocks::default()),
+        );
 
         let turn = locks.subtree(&[note.as_path()]);
         let late = {
@@ -2823,12 +3105,18 @@ mod tests {
             std::thread::spawn(move || save_note(&root, &note, "late", "0", &own, &locks))
         };
         std::thread::sleep(std::time::Duration::from_millis(200));
-        assert!(!late.is_finished(), "a save to a note being renamed waits for the rename");
+        assert!(
+            !late.is_finished(),
+            "a save to a note being renamed waits for the rename"
+        );
         let root_s = root.to_string_lossy().to_string();
         rename_node(root_s, note.to_string_lossy().into(), "b".into()).unwrap();
         drop(turn);
 
-        assert_eq!(late.join().unwrap(), Ok(WriteOutcome::Conflict { disk: None }));
+        assert_eq!(
+            late.join().unwrap(),
+            Ok(WriteOutcome::Conflict { disk: None })
+        );
         assert!(!note.exists());
         assert_eq!(std::fs::read_to_string(root.join("b.md")).unwrap(), "0");
     }
@@ -2839,7 +3127,10 @@ mod tests {
         let root = tmp.path();
         std::fs::write(root.join("a.md"), "a").unwrap();
         std::fs::write(root.join("b.md"), "b").unwrap();
-        let (own, locks) = (tauri_kit_watch::OwnWrites::new(), Arc::new(NoteLocks::default()));
+        let (own, locks) = (
+            tauri_kit_watch::OwnWrites::new(),
+            Arc::new(NoteLocks::default()),
+        );
 
         let (release, stalled) =
             save_held_before_rename(root, &root.join("a.md"), "a2", "a", &own, &locks);
@@ -2862,10 +3153,19 @@ mod tests {
         std::fs::write(&note, "0").unwrap();
         let own = tauri_kit_watch::OwnWrites::new();
         // A fresh set of locks per save is no locking at all.
-        let (release, older) =
-            save_held_before_rename(root, &note, "older", "0", &own, &Arc::new(NoteLocks::default()));
+        let (release, older) = save_held_before_rename(
+            root,
+            &note,
+            "older",
+            "0",
+            &own,
+            &Arc::new(NoteLocks::default()),
+        );
         let newer = save_note(root, &note, "newer", "older", &own, &NoteLocks::default());
-        assert!(matches!(newer, Ok(WriteOutcome::Conflict { .. })), "{newer:?}");
+        assert!(
+            matches!(newer, Ok(WriteOutcome::Conflict { .. })),
+            "{newer:?}"
+        );
         release.send(()).unwrap();
         older.join().unwrap().unwrap();
     }
@@ -2874,8 +3174,13 @@ mod tests {
     fn opening_a_folder_marks_its_settings_with_the_current_format() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
-        assert_eq!(prepare_sidecar(root.clone()).unwrap(), SidecarState { read_only: false });
-        let marker = personal_dir(tmp.path()).unwrap().join(crate::state_dir::FORMAT_FILE);
+        assert_eq!(
+            prepare_sidecar(root.clone()).unwrap(),
+            SidecarState { read_only: false }
+        );
+        let marker = personal_dir(tmp.path())
+            .unwrap()
+            .join(crate::state_dir::FORMAT_FILE);
         assert_eq!(
             std::fs::read_to_string(marker).unwrap(),
             crate::state_dir::CURRENT.to_string()
@@ -2893,15 +3198,24 @@ mod tests {
         std::fs::write(dir.join("order.json"), b"{\"another\":\"shape\"}").unwrap();
 
         for _ in 0..2 {
-            assert_eq!(prepare_sidecar(root.clone()).unwrap(), SidecarState { read_only: true });
+            assert_eq!(
+                prepare_sidecar(root.clone()).unwrap(),
+                SidecarState { read_only: true }
+            );
         }
         assert!(write_sidecar(root.clone(), "order.json".into(), "{}".into()).is_err());
         assert!(write_sidecar(root.clone(), "favorites.json".into(), "[]".into()).is_err());
         assert!(set_aside_sidecar(root.clone(), "order.json".into()).is_err());
 
-        assert_eq!(std::fs::read(dir.join("order.json")).unwrap(), b"{\"another\":\"shape\"}");
+        assert_eq!(
+            std::fs::read(dir.join("order.json")).unwrap(),
+            b"{\"another\":\"shape\"}"
+        );
         assert!(!dir.join("favorites.json").exists());
-        assert_eq!(std::fs::read_to_string(dir.join(crate::state_dir::FORMAT_FILE)).unwrap(), "99");
+        assert_eq!(
+            std::fs::read_to_string(dir.join(crate::state_dir::FORMAT_FILE)).unwrap(),
+            "99"
+        );
     }
 
     #[test]
@@ -2919,7 +3233,14 @@ mod tests {
 
         assert!(!dir.join("favorites.json").exists());
         assert_eq!(std::fs::read_to_string(&legacy).unwrap(), "[\"old.md\"]");
-        assert!(moved.left_behind.iter().any(|p| p.ends_with("favorites.json")), "{:?}", moved.left_behind);
+        assert!(
+            moved
+                .left_behind
+                .iter()
+                .any(|p| p.ends_with("favorites.json")),
+            "{:?}",
+            moved.left_behind
+        );
     }
 
     #[test]
@@ -2952,7 +3273,8 @@ mod tests {
 
         assert!(move_state_out_of_vault(root.clone()).unwrap().happened());
 
-        let carried = std::fs::read(personal_dir(tmp.path()).unwrap().join("favorites.json")).unwrap();
+        let carried =
+            std::fs::read(personal_dir(tmp.path()).unwrap().join("favorites.json")).unwrap();
         let names: Vec<String> = serde_json::from_slice(&carried).unwrap();
         assert_eq!(names, vec!["a.md".to_string()]);
     }
@@ -2969,7 +3291,10 @@ mod tests {
         assert!(name.starts_with("favorites.json.unreadable-"), "{name}");
         let dir = personal_dir(tmp.path()).unwrap();
         assert_eq!(std::fs::read_to_string(dir.join(&name)).unwrap(), "{half");
-        assert_eq!(read_sidecar(root.clone(), "favorites.json".into()).unwrap(), None);
+        assert_eq!(
+            read_sidecar(root.clone(), "favorites.json".into()).unwrap(),
+            None
+        );
         assert!(set_aside_sidecar(root, "../elsewhere".into()).is_err());
     }
 
@@ -2989,7 +3314,7 @@ mod tests {
                         at: 7,
                     };
                     start.wait();
-                    crate::stranded::keep(&dir, &kept, atomic_new_beside).unwrap()
+                    crate::stranded::keep(&dir, &kept, tauri_kit_fs::write_atomic_new).unwrap()
                 })
             })
             .collect();
@@ -3002,7 +3327,10 @@ mod tests {
             .map(|(_, k)| k.text)
             .collect();
         texts.sort();
-        assert_eq!(texts, (0..8).map(|i| format!("typed {i}")).collect::<Vec<_>>());
+        assert_eq!(
+            texts,
+            (0..8).map(|i| format!("typed {i}")).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -3015,7 +3343,7 @@ mod tests {
             base: "before".into(),
             at: 1,
         };
-        let id = crate::stranded::keep(&dir, &kept, atomic_new_beside).unwrap();
+        let id = crate::stranded::keep(&dir, &kept, tauri_kit_fs::write_atomic_new).unwrap();
 
         let back = stranded_edits(tmp.path()).unwrap();
         assert_eq!(
@@ -3027,7 +3355,10 @@ mod tests {
                 base: "before".into(),
             }]
         );
-        assert!(!tmp.path().join("stranded").exists(), "kept outside the folder, not in it");
+        assert!(
+            !tmp.path().join("stranded").exists(),
+            "kept outside the folder, not in it"
+        );
         crate::stranded::forget(&dir, &id).unwrap();
         assert!(stranded_edits(tmp.path()).unwrap().is_empty());
     }
@@ -3067,7 +3398,9 @@ mod tests {
             "![](assets/Pasted-1.png) [x](.env) [web](https://example.com/a.png)",
         );
         commit_notes(root.clone(), vec![note], "v".into()).unwrap();
-        let prepared = crate::git_engine::open_existing(tmp.path()).unwrap().unwrap();
+        let prepared = crate::git_engine::open_existing(tmp.path())
+            .unwrap()
+            .unwrap();
         let mut recorded =
             crate::git_engine::tip_paths(prepared.repo(), crate::git_engine::NOTES_REF).unwrap();
         recorded.sort();
@@ -3078,11 +3411,13 @@ mod tests {
     fn a_missing_linked_file_does_not_stop_the_version() {
         let tmp = tempfile::TempDir::new().unwrap();
         let note = seed_note(tmp.path(), "a.md", "![](gone.png)");
-        assert!(
-            commit_notes(tmp.path().to_string_lossy().to_string(), vec![note], "v".into())
-                .unwrap()
-                .is_some()
-        );
+        assert!(commit_notes(
+            tmp.path().to_string_lossy().to_string(),
+            vec![note],
+            "v".into()
+        )
+        .unwrap()
+        .is_some());
     }
 
     fn recorded_paths(root: &Path) -> Vec<String> {
@@ -3256,7 +3591,8 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let root_s = root.to_string_lossy().to_string();
 
-        let err = connect_remote(root_s.clone(), url, "someone".into(), "wrong".into()).unwrap_err();
+        let err =
+            connect_remote(root_s.clone(), url, "someone".into(), "wrong".into()).unwrap_err();
         assert!(err.contains("refused these credentials"), "{err}");
         assert_eq!(remote_connection(root_s.clone()).unwrap(), None);
         assert!(crate::remote::secret(&folder_key(&root)).is_none());
@@ -3266,8 +3602,13 @@ mod tests {
     fn plain_http_to_another_machine_is_refused_before_anything_is_sent() {
         let tmp = TempDir::new().unwrap();
         let root_s = tmp.path().to_string_lossy().to_string();
-        let err = connect_remote(root_s.clone(), "http://example.com/notes.git".into(), "".into(), "t".into())
-            .unwrap_err();
+        let err = connect_remote(
+            root_s.clone(),
+            "http://example.com/notes.git".into(),
+            "".into(),
+            "t".into(),
+        )
+        .unwrap_err();
         assert!(err.contains("https"), "{err}");
         assert!(!tmp.path().join(".git").exists());
     }
@@ -3279,9 +3620,10 @@ mod tests {
     #[test]
     #[ignore = "needs a real hosted repository and a token"]
     fn a_hosted_repository_carries_notes_between_two_folders() {
-        let (Ok(url), Ok(token)) =
-            (std::env::var("TEXTREE_CHECK_REPO"), std::env::var("TEXTREE_CHECK_TOKEN"))
-        else {
+        let (Ok(url), Ok(token)) = (
+            std::env::var("TEXTREE_CHECK_REPO"),
+            std::env::var("TEXTREE_CHECK_TOKEN"),
+        ) else {
             panic!("set TEXTREE_CHECK_REPO and TEXTREE_CHECK_TOKEN");
         };
         let tmp = TempDir::new().unwrap();
@@ -3290,12 +3632,19 @@ mod tests {
         let there = tmp.path().join("there");
         std::fs::create_dir_all(&here).unwrap();
         std::fs::create_dir_all(&there).unwrap();
-        let (here_s, there_s) = (here.to_string_lossy().to_string(), there.to_string_lossy().to_string());
+        let (here_s, there_s) = (
+            here.to_string_lossy().to_string(),
+            there.to_string_lossy().to_string(),
+        );
 
         let stamp = format!("# Check\n\n{}\n", std::process::id());
         seed_note(&here, "check.md", &stamp);
-        commit_notes(here_s.clone(), vec![here.join("check.md").to_string_lossy().to_string()], "check".into())
-            .unwrap();
+        commit_notes(
+            here_s.clone(),
+            vec![here.join("check.md").to_string_lossy().to_string()],
+            "check".into(),
+        )
+        .unwrap();
         connect_remote(here_s.clone(), url.clone(), "".into(), token.clone()).unwrap();
         let sent = sync_remote(here_s.clone(), &locks).unwrap();
         assert!(sent.sent, "{sent:?}");
@@ -3304,7 +3653,10 @@ mod tests {
         connect_remote(there_s.clone(), url, "".into(), token).unwrap();
         let got = sync_remote(there_s.clone(), &locks).unwrap();
         assert!(got.received.contains(&"check.md".to_string()), "{got:?}");
-        assert_eq!(std::fs::read_to_string(there.join("check.md")).unwrap(), stamp);
+        assert_eq!(
+            std::fs::read_to_string(there.join("check.md")).unwrap(),
+            stamp
+        );
 
         disconnect_remote(here_s).unwrap();
         disconnect_remote(there_s).unwrap();
@@ -3323,24 +3675,44 @@ mod tests {
         let there = tmp.path().join("there");
         std::fs::create_dir_all(&here).unwrap();
         std::fs::create_dir_all(&there).unwrap();
-        let (here_s, there_s) = (here.to_string_lossy().to_string(), there.to_string_lossy().to_string());
+        let (here_s, there_s) = (
+            here.to_string_lossy().to_string(),
+            there.to_string_lossy().to_string(),
+        );
 
         seed_note(&here, "manual.md", "# Manual\n");
-        commit_notes(here_s.clone(), vec![here.join("manual.md").to_string_lossy().to_string()], "first".into())
-            .unwrap();
+        commit_notes(
+            here_s.clone(),
+            vec![here.join("manual.md").to_string_lossy().to_string()],
+            "first".into(),
+        )
+        .unwrap();
         connect_remote(here_s.clone(), url.clone(), USER.into(), SECRET.into()).unwrap();
         assert_eq!(
             remote_connection(here_s.clone()).unwrap(),
-            Some(crate::remote::Connection { url: url.clone(), username: USER.into() })
+            Some(crate::remote::Connection {
+                url: url.clone(),
+                username: USER.into()
+            })
         );
         let sent = sync_remote(here_s.clone(), &locks).unwrap();
         assert!(sent.sent, "{sent:?}");
 
-        assert!(notes_backed_up(here_s.clone()).unwrap(), "sent, so kept on the remote");
+        assert!(
+            notes_backed_up(here_s.clone()).unwrap(),
+            "sent, so kept on the remote"
+        );
         seed_note(&here, "faq.md", "# FAQ\n");
-        commit_notes(here_s.clone(), vec![here.join("faq.md").to_string_lossy().to_string()], "second".into())
-            .unwrap();
-        assert!(!notes_backed_up(here_s.clone()).unwrap(), "recorded since, only here");
+        commit_notes(
+            here_s.clone(),
+            vec![here.join("faq.md").to_string_lossy().to_string()],
+            "second".into(),
+        )
+        .unwrap();
+        assert!(
+            !notes_backed_up(here_s.clone()).unwrap(),
+            "recorded since, only here"
+        );
         assert!(sync_remote(here_s.clone(), &locks).unwrap().sent);
         assert!(notes_backed_up(here_s.clone()).unwrap());
 
@@ -3348,9 +3720,18 @@ mod tests {
         assert!(!notes_backed_up(there_s.clone()).unwrap(), "not connected");
         connect_remote(there_s.clone(), url, USER.into(), SECRET.into()).unwrap();
         let got = sync_remote(there_s.clone(), &locks).unwrap();
-        assert_eq!(got.received, vec!["faq.md".to_string(), "manual.md".to_string()]);
-        assert!(notes_backed_up(there_s.clone()).unwrap(), "what arrived is on the remote already");
-        assert_eq!(std::fs::read_to_string(there.join("manual.md")).unwrap(), "# Manual\n");
+        assert_eq!(
+            got.received,
+            vec!["faq.md".to_string(), "manual.md".to_string()]
+        );
+        assert!(
+            notes_backed_up(there_s.clone()).unwrap(),
+            "what arrived is on the remote already"
+        );
+        assert_eq!(
+            std::fs::read_to_string(there.join("manual.md")).unwrap(),
+            "# Manual\n"
+        );
 
         disconnect_remote(here_s.clone()).unwrap();
         disconnect_remote(there_s.clone()).unwrap();
@@ -3363,12 +3744,22 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
         seed_note(tmp.path(), "a.md", "# A\n");
-        let mut before: Vec<_> =
-            std::fs::read_dir(tmp.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        let mut before: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
         let after_set = set_publish_choice(root.clone(), "a.md".into(), Some(true)).unwrap();
-        assert_eq!(after_set, vec![crate::publish_scope::Choice { path: "a.md".into(), include: true }]);
-        let mut after: Vec<_> =
-            std::fs::read_dir(tmp.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(
+            after_set,
+            vec![crate::publish_scope::Choice {
+                path: "a.md".into(),
+                include: true
+            }]
+        );
+        let mut after: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
         after.retain(|n| n != ".git");
         before.sort();
         after.sort();
@@ -3383,13 +3774,28 @@ mod tests {
         seed_note(tmp.path(), "sub/a.md", "# A");
         // Paths arrive as the tree names them; another spelling of one is refused, as everywhere.
         for odd in ["sub/./a.md", "sub/gone/", "sub\\a.md"] {
-            assert!(set_publish_choice(root.clone(), odd.into(), Some(true)).is_err(), "{odd}");
+            assert!(
+                set_publish_choice(root.clone(), odd.into(), Some(true)).is_err(),
+                "{odd}"
+            );
         }
         let got = set_publish_choice(root.clone(), "sub/a.md".into(), Some(true)).unwrap();
-        assert_eq!(got, vec![crate::publish_scope::Choice { path: "sub/a.md".into(), include: true }]);
+        assert_eq!(
+            got,
+            vec![crate::publish_scope::Choice {
+                path: "sub/a.md".into(),
+                include: true
+            }]
+        );
         // A note gone by now can still be chosen for.
         let got = set_publish_choice(root, "sub/gone".into(), Some(false)).unwrap();
-        assert!(got.contains(&crate::publish_scope::Choice { path: "sub/gone".into(), include: false }), "{got:?}");
+        assert!(
+            got.contains(&crate::publish_scope::Choice {
+                path: "sub/gone".into(),
+                include: false
+            }),
+            "{got:?}"
+        );
     }
 
     #[test]
@@ -3402,16 +3808,30 @@ mod tests {
             record_note(tmp.path(), &format!("{moved}/diary.md"), "# Diary");
             set_publish_choice(root.clone(), deleted.into(), Some(true)).unwrap();
             set_publish_choice(root.clone(), moved.into(), Some(false)).unwrap();
-            delete_node(root.clone(), tmp.path().join(deleted).to_string_lossy().to_string()).unwrap();
-            rename_node(root.clone(), tmp.path().join(moved).to_string_lossy().to_string(), deleted.into())
-                .unwrap();
+            delete_node(
+                root.clone(),
+                tmp.path().join(deleted).to_string_lossy().to_string(),
+            )
+            .unwrap();
+            rename_node(
+                root.clone(),
+                tmp.path().join(moved).to_string_lossy().to_string(),
+                deleted.into(),
+            )
+            .unwrap();
             assert_eq!(
                 publish_choices(root.clone()).unwrap(),
-                vec![crate::publish_scope::Choice { path: deleted.into(), include: false }],
+                vec![crate::publish_scope::Choice {
+                    path: deleted.into(),
+                    include: false
+                }],
                 "{moved} -> {deleted}"
             );
             let preview = publish_preview(root).unwrap();
-            assert!(preview.notes.is_empty(), "{moved} -> {deleted}: {preview:?}");
+            assert!(
+                preview.notes.is_empty(),
+                "{moved} -> {deleted}: {preview:?}"
+            );
         }
     }
 
@@ -3422,7 +3842,10 @@ mod tests {
         let note = record_note(tmp.path(), "a.md", "# A");
         set_publish_choice(root.clone(), "a.md".into(), Some(true)).unwrap();
         delete_node(root.clone(), note).unwrap();
-        assert!(publish_choices(root.clone()).unwrap().is_empty(), "the choice went with the note");
+        assert!(
+            publish_choices(root.clone()).unwrap().is_empty(),
+            "the choice went with the note"
+        );
         create_note(root.clone(), root.clone(), "a".into()).unwrap();
         record_note(tmp.path(), "a.md", "# Another A");
         assert!(publish_choices(root.clone()).unwrap().is_empty());
@@ -3433,23 +3856,40 @@ mod tests {
     fn gate_l2_8_a_folder_renamed_to_the_name_of_a_note_inside_keeps_that_note_left_out() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
-        record_note(tmp.path(), "drafts/blog.md", "# Not a folder note of drafts");
+        record_note(
+            tmp.path(),
+            "drafts/blog.md",
+            "# Not a folder note of drafts",
+        );
         set_publish_choice(root.clone(), "".into(), Some(true)).unwrap();
         set_publish_choice(root.clone(), "drafts/blog.md".into(), Some(false)).unwrap();
-        rename_node(root.clone(), tmp.path().join("drafts").to_string_lossy().to_string(), "blog".into())
-            .unwrap();
+        rename_node(
+            root.clone(),
+            tmp.path().join("drafts").to_string_lossy().to_string(),
+            "blog".into(),
+        )
+        .unwrap();
         let mut got = publish_choices(root.clone()).unwrap();
         got.sort_by(|a, b| a.path.cmp(&b.path));
         assert_eq!(
             got,
             vec![
-                crate::publish_scope::Choice { path: "".into(), include: true },
-                crate::publish_scope::Choice { path: "blog/blog.md".into(), include: false },
+                crate::publish_scope::Choice {
+                    path: "".into(),
+                    include: true
+                },
+                crate::publish_scope::Choice {
+                    path: "blog/blog.md".into(),
+                    include: false
+                },
             ]
         );
         let p = publish_preview(root).unwrap();
         assert!(!p.notes.contains(&"blog/blog.md".to_string()), "{p:?}");
-        assert!(!p.never_recorded.contains(&"blog/blog.md".to_string()), "{p:?}");
+        assert!(
+            !p.never_recorded.contains(&"blog/blog.md".to_string()),
+            "{p:?}"
+        );
     }
 
     #[test]
@@ -3460,11 +3900,21 @@ mod tests {
         record_note(tmp.path(), "drafts/a.md", "# A");
         set_publish_choice(root.clone(), "".into(), Some(true)).unwrap();
         set_publish_choice(root.clone(), "drafts/drafts.md".into(), Some(false)).unwrap();
-        rename_node(root.clone(), tmp.path().join("drafts").to_string_lossy().to_string(), "blog".into())
-            .unwrap();
+        rename_node(
+            root.clone(),
+            tmp.path().join("drafts").to_string_lossy().to_string(),
+            "blog".into(),
+        )
+        .unwrap();
         assert!(tmp.path().join("blog/blog.md").is_file());
         let got = publish_choices(root.clone()).unwrap();
-        assert!(got.contains(&crate::publish_scope::Choice { path: "blog/blog.md".into(), include: false }), "{got:?}");
+        assert!(
+            got.contains(&crate::publish_scope::Choice {
+                path: "blog/blog.md".into(),
+                include: false
+            }),
+            "{got:?}"
+        );
         assert_eq!(publish_preview(root).unwrap().notes, vec!["blog/a.md"]);
     }
 
@@ -3515,7 +3965,10 @@ mod tests {
         std::fs::remove_dir_all(tmp.path().join("gone")).unwrap();
         restore_deleted(root.clone(), "gone/n.md".into()).unwrap();
         let left = publish_choices(root).unwrap();
-        assert!(left.is_empty(), "each came into existence with no choice: {left:?}");
+        assert!(
+            left.is_empty(),
+            "each came into existence with no choice: {left:?}"
+        );
     }
 
     #[test]
@@ -3539,8 +3992,14 @@ mod tests {
         assert_eq!(
             got,
             vec![
-                Choice { path: "bar/src.md".into(), include: false },
-                Choice { path: "foo/foo.md".into(), include: false },
+                Choice {
+                    path: "bar/src.md".into(),
+                    include: false
+                },
+                Choice {
+                    path: "foo/foo.md".into(),
+                    include: false
+                },
             ]
         );
         assert!(!crate::publish_scope::is_included("foo/Untitled.md", &got));
@@ -3565,7 +4024,10 @@ mod tests {
         rename_note_unique(root.clone(), note, "Trip".into()).unwrap();
         assert_eq!(
             publish_choices(root.clone()).unwrap(),
-            vec![crate::publish_scope::Choice { path: "Trip.md".into(), include: true }]
+            vec![crate::publish_scope::Choice {
+                path: "Trip.md".into(),
+                include: true
+            }]
         );
         assert_eq!(publish_preview(root).unwrap().notes, vec!["Trip.md"]);
     }
@@ -3599,8 +4061,12 @@ mod tests {
         seed_note(tmp.path(), "small.png", "png");
         record_note(tmp.path(), "a.md", "[b](big.bin) ![s](small.png)");
         let prepared = crate::git_engine::prepare(tmp.path()).unwrap();
-        let recorded = crate::git_engine::tip_paths(prepared.repo(), crate::git_engine::NOTES_REF).unwrap();
-        assert!(recorded.iter().any(|p| p == "a.md") && recorded.iter().any(|p| p == "small.png"), "{recorded:?}");
+        let recorded =
+            crate::git_engine::tip_paths(prepared.repo(), crate::git_engine::NOTES_REF).unwrap();
+        assert!(
+            recorded.iter().any(|p| p == "a.md") && recorded.iter().any(|p| p == "small.png"),
+            "{recorded:?}"
+        );
         assert!(!recorded.iter().any(|p| p == "big.bin"), "{recorded:?}");
 
         set_publish_choice(root.clone(), "".into(), Some(true)).unwrap();
@@ -3608,7 +4074,10 @@ mod tests {
         assert_eq!(p.notes, vec!["a.md"]);
         assert_eq!(p.files, vec!["small.png"]);
         assert_eq!(p.too_large, vec!["big.bin"]);
-        assert!(p.missing.is_empty() && p.unpublished_links.is_empty(), "{p:?}");
+        assert!(
+            p.missing.is_empty() && p.unpublished_links.is_empty(),
+            "{p:?}"
+        );
     }
 
     #[test]
@@ -3618,13 +4087,20 @@ mod tests {
         record_note(tmp.path(), "a.md", "# A");
         set_publish_choice(root, "".into(), Some(true)).unwrap();
         let published = |p: &crate::git_engine::VaultRepo| {
-            p.repo().refname_to_id(crate::publish_assembly::PUBLISHED_REF).ok()
+            p.repo()
+                .refname_to_id(crate::publish_assembly::PUBLISHED_REF)
+                .ok()
         };
 
         let staged = stage(tmp.path()).unwrap();
-        let failed: Result<(), String> = publish_staged(&staged, |_| Err("the host refused".into()));
+        let failed: Result<(), String> =
+            publish_staged(&staged, |_| Err("the host refused".into()));
         assert!(failed.is_err());
-        assert_eq!(published(&staged.prepared), None, "nothing went out, so nothing is recorded");
+        assert_eq!(
+            published(&staged.prepared),
+            None,
+            "nothing went out, so nothing is recorded"
+        );
 
         let mut rendered_from = None;
         publish_staged(&staged, |source| {
@@ -3634,7 +4110,13 @@ mod tests {
         .unwrap();
         assert_eq!(rendered_from.as_deref(), Some("# A"));
         let tip = published(&staged.prepared).expect("recorded after it went out");
-        let tree = staged.prepared.repo().find_commit(tip).unwrap().tree().unwrap();
+        let tree = staged
+            .prepared
+            .repo()
+            .find_commit(tip)
+            .unwrap()
+            .tree()
+            .unwrap();
         assert!(tree.get_name("a.md").is_some());
     }
 
@@ -3701,7 +4183,10 @@ mod tests {
 
         let deleted = deleted_notes(root_s.clone()).unwrap();
         let names: Vec<&str> = deleted.iter().map(|d| d.rel.as_str()).collect();
-        assert!(names.contains(&"kept.md"), "a recorded note that was deleted");
+        assert!(
+            names.contains(&"kept.md"),
+            "a recorded note that was deleted"
+        );
         assert!(
             names.contains(&"sub/scratch.md"),
             "and one that was only ever kept when it went"
@@ -3710,12 +4195,20 @@ mod tests {
             !names.contains(&"staying.md"),
             "a note still in the folder is not deleted"
         );
-        assert!(deleted.iter().find(|d| d.rel == "kept.md").unwrap().recorded);
-        assert!(!deleted
-            .iter()
-            .find(|d| d.rel == "sub/scratch.md")
-            .unwrap()
-            .recorded);
+        assert!(
+            deleted
+                .iter()
+                .find(|d| d.rel == "kept.md")
+                .unwrap()
+                .recorded
+        );
+        assert!(
+            !deleted
+                .iter()
+                .find(|d| d.rel == "sub/scratch.md")
+                .unwrap()
+                .recorded
+        );
 
         // Trash holds the moved files, so nothing above depended on them still being in place.
         assert!(!root.join("kept.md").exists());
@@ -3731,7 +4224,11 @@ mod tests {
         let root_s = root.to_string_lossy().to_string();
         let note = seed_note(root, "sub/held.md", "held a moment");
         // Open the way a scanner does: others may read, not delete.
-        let held = std::fs::OpenOptions::new().read(true).share_mode(0x1).open(&note).unwrap();
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x1)
+            .open(&note)
+            .unwrap();
         let release = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(150));
             drop(held);
@@ -3754,9 +4251,16 @@ mod tests {
         git2::Repository::init(root).unwrap();
         let root_s = root.to_string_lossy().to_string();
         let note = seed_note(root, "sub/held.md", "held");
-        let _held = std::fs::OpenOptions::new().read(true).share_mode(0x1).open(&note).unwrap();
+        let _held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x1)
+            .open(&note)
+            .unwrap();
 
-        assert!(delete_node(root_s, note.clone()).is_err(), "the system refuses while it is held");
+        assert!(
+            delete_node(root_s, note.clone()).is_err(),
+            "the system refuses while it is held"
+        );
         assert!(Path::new(&note).exists());
     }
 
@@ -3784,7 +4288,10 @@ mod tests {
         std::fs::write(root.join(".git"), "gitdir: ./moved-away\n").unwrap();
         let root_s = root.to_string_lossy().to_string();
         let note = seed_note(root, "only-copy.md", "nowhere else");
-        assert!(crate::git_engine::prepare(root).is_err(), "precondition: no repository");
+        assert!(
+            crate::git_engine::prepare(root).is_err(),
+            "precondition: no repository"
+        );
 
         assert!(delete_node(root_s, note.clone()).is_err());
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "nowhere else");
@@ -3822,7 +4329,9 @@ mod tests {
         let note = seed_note(root, "a.md", "body");
 
         assert!(deleted_notes(root_s.clone()).unwrap().is_empty());
-        assert!(note_versions(root_s.clone(), note.clone()).unwrap().is_empty());
+        assert!(note_versions(root_s.clone(), note.clone())
+            .unwrap()
+            .is_empty());
         assert!(note_version_text(root_s.clone(), note, "0".repeat(40)).is_err());
         assert!(restore_deleted(root_s, "a.md".into()).is_err());
 
@@ -3856,12 +4365,14 @@ mod tests {
         let outside = TempDir::new().unwrap();
         assert!(note_versions(
             root_s,
-            outside.path().join("elsewhere.md").to_string_lossy().to_string()
+            outside
+                .path()
+                .join("elsewhere.md")
+                .to_string_lossy()
+                .to_string()
         )
         .is_err());
     }
-
-
 
     /// Puts a folder into the shape an earlier version of the application left behind.
     fn as_an_earlier_version_left_it(root: &Path, deleted: &[(&str, &str, u64)]) {
@@ -3893,7 +4404,13 @@ mod tests {
         let root = tmp.path();
         git2::Repository::init(root).unwrap();
         let root_s = root.to_string_lossy().to_string();
-        as_an_earlier_version_left_it(root, &[("one.md", "first", 1_700_000_000), ("two.md", "second", 1_700_000_500)]);
+        as_an_earlier_version_left_it(
+            root,
+            &[
+                ("one.md", "first", 1_700_000_000),
+                ("two.md", "second", 1_700_000_500),
+            ],
+        );
 
         let moved = move_state_out_of_vault(root_s.clone()).unwrap();
 
@@ -3915,7 +4432,10 @@ mod tests {
 
         // And the contents came with them.
         restore_deleted(root_s, "one.md".into()).unwrap();
-        assert_eq!(std::fs::read_to_string(root.join("one.md")).unwrap(), "first");
+        assert_eq!(
+            std::fs::read_to_string(root.join("one.md")).unwrap(),
+            "first"
+        );
     }
 
     #[test]
@@ -3928,7 +4448,10 @@ mod tests {
         let root_s = root.to_string_lossy().to_string();
         as_an_earlier_version_left_it(
             root,
-            &[("older.md", "a", 1_600_000_000), ("newer.md", "b", 1_700_000_000)],
+            &[
+                ("older.md", "a", 1_600_000_000),
+                ("newer.md", "b", 1_700_000_000),
+            ],
         );
 
         move_state_out_of_vault(root_s.clone()).unwrap();
@@ -3952,7 +4475,11 @@ mod tests {
         assert!(move_state_out_of_vault(root_s.clone()).unwrap().happened());
         let again = move_state_out_of_vault(root_s.clone()).unwrap();
         assert_eq!(again, MoveOut::default(), "there is nothing left to move");
-        assert_eq!(deleted_notes(root_s).unwrap().len(), 1, "and nothing was doubled");
+        assert_eq!(
+            deleted_notes(root_s).unwrap().len(),
+            1,
+            "and nothing was doubled"
+        );
     }
 
     /// How many states the deleted-content history holds.
@@ -3976,17 +4503,38 @@ mod tests {
         git2::Repository::init(root).unwrap();
         let root_s = root.to_string_lossy().to_string();
         as_an_earlier_version_left_it(root, &[("listed.md", "a", 1_700_000_000)]);
-        std::fs::write(root.join(".textree").join("trash").join("stray.md"), "only copy").unwrap();
+        std::fs::write(
+            root.join(".textree").join("trash").join("stray.md"),
+            "only copy",
+        )
+        .unwrap();
 
         let moved = move_state_out_of_vault(root_s.clone()).unwrap();
 
         assert_eq!(moved.notes, 2);
-        assert!(moved.left_behind.is_empty(), "left: {:?}", moved.left_behind);
-        assert!(!root.join(".textree").exists(), "the folder holds only notes afterwards");
-        let listed: Vec<String> = deleted_notes(root_s.clone()).unwrap().into_iter().map(|d| d.rel).collect();
-        assert!(listed.contains(&"stray.md".to_string()), "listed: {listed:?}");
+        assert!(
+            moved.left_behind.is_empty(),
+            "left: {:?}",
+            moved.left_behind
+        );
+        assert!(
+            !root.join(".textree").exists(),
+            "the folder holds only notes afterwards"
+        );
+        let listed: Vec<String> = deleted_notes(root_s.clone())
+            .unwrap()
+            .into_iter()
+            .map(|d| d.rel)
+            .collect();
+        assert!(
+            listed.contains(&"stray.md".to_string()),
+            "listed: {listed:?}"
+        );
         restore_deleted(root_s, "stray.md".into()).unwrap();
-        assert_eq!(std::fs::read_to_string(root.join("stray.md")).unwrap(), "only copy");
+        assert_eq!(
+            std::fs::read_to_string(root.join("stray.md")).unwrap(),
+            "only copy"
+        );
     }
 
     #[test]
@@ -3995,7 +4543,13 @@ mod tests {
         let root = tmp.path();
         git2::Repository::init(root).unwrap();
         let root_s = root.to_string_lossy().to_string();
-        as_an_earlier_version_left_it(root, &[("one.md", "first", 1_700_000_000), ("two.md", "second", 1_700_000_500)]);
+        as_an_earlier_version_left_it(
+            root,
+            &[
+                ("one.md", "first", 1_700_000_000),
+                ("two.md", "second", 1_700_000_500),
+            ],
+        );
         std::fs::write(root.join(".textree").join(TRASH_MANIFEST), "{not json").unwrap();
 
         let moved = move_state_out_of_vault(root_s.clone()).unwrap();
@@ -4022,7 +4576,11 @@ mod tests {
             deleted_at: 1_700_000_000,
             is_dir: true,
         }];
-        std::fs::write(root.join(".textree").join(TRASH_MANIFEST), serde_json::to_string(&items).unwrap()).unwrap();
+        std::fs::write(
+            root.join(".textree").join(TRASH_MANIFEST),
+            serde_json::to_string(&items).unwrap(),
+        )
+        .unwrap();
 
         let moved = move_state_out_of_vault(root_s).unwrap();
 
@@ -4046,17 +4604,35 @@ mod tests {
         let recorded = snapshots_recorded(root);
         let second = move_state_out_of_vault(root_s.clone()).unwrap();
 
-        let expected: Vec<String> = [".textree/db.json", ".textree/trash.json", ".textree/trash/.odd"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let expected: Vec<String> = [
+            ".textree/db.json",
+            ".textree/trash.json",
+            ".textree/trash/.odd",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         assert_eq!(first.notes, 1);
         assert_eq!(first.left_behind, expected);
-        assert_eq!((second.notes, second.files, second.settings), (0, 0, false), "carried once only");
-        assert_eq!(second.left_behind, expected, "still said, every time it is still true");
-        assert_eq!(snapshots_recorded(root), recorded, "no state recorded twice");
+        assert_eq!(
+            (second.notes, second.files, second.settings),
+            (0, 0, false),
+            "carried once only"
+        );
+        assert_eq!(
+            second.left_behind, expected,
+            "still said, every time it is still true"
+        );
+        assert_eq!(
+            snapshots_recorded(root),
+            recorded,
+            "no state recorded twice"
+        );
         assert_eq!(deleted_notes(root_s).unwrap().len(), 1);
-        assert_eq!(std::fs::read_to_string(root.join(".textree").join("trash").join(".odd")).unwrap(), "kept");
+        assert_eq!(
+            std::fs::read_to_string(root.join(".textree").join("trash").join(".odd")).unwrap(),
+            "kept"
+        );
     }
 
     /// Writes the trash list an earlier version kept, exactly as given.
@@ -4070,7 +4646,11 @@ mod tests {
                 is_dir: *is_dir,
             })
             .collect();
-        std::fs::write(root.join(".textree").join(TRASH_MANIFEST), serde_json::to_string(&items).unwrap()).unwrap();
+        std::fs::write(
+            root.join(".textree").join(TRASH_MANIFEST),
+            serde_json::to_string(&items).unwrap(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -4085,7 +4665,13 @@ mod tests {
         let trash = root.join(".textree").join("trash");
         std::fs::write(trash.join("note.md"), "first draft").unwrap();
         std::fs::write(trash.join("note (1).md"), "second draft").unwrap();
-        listing(root, &[("note.md", "note.md", 1_600_000_000, false), ("note (1).md", "note.md", 1_700_000_000, false)]);
+        listing(
+            root,
+            &[
+                ("note.md", "note.md", 1_600_000_000, false),
+                ("note (1).md", "note.md", 1_700_000_000, false),
+            ],
+        );
 
         let moved = move_state_out_of_vault(root_s.clone()).unwrap();
 
@@ -4093,8 +4679,16 @@ mod tests {
         assert!(!root.join(".textree").exists());
         restore_deleted(root_s.clone(), "note.md".into()).unwrap();
         restore_deleted(root_s, "note (1).md".into()).unwrap();
-        assert_eq!(std::fs::read_to_string(root.join("note.md")).unwrap(), "second draft", "the latest keeps the path");
-        assert_eq!(std::fs::read_to_string(root.join("note (1).md")).unwrap(), "first draft", "the earlier one is still there");
+        assert_eq!(
+            std::fs::read_to_string(root.join("note.md")).unwrap(),
+            "second draft",
+            "the latest keeps the path"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("note (1).md")).unwrap(),
+            "first draft",
+            "the earlier one is still there"
+        );
     }
 
     #[cfg(windows)]
@@ -4112,8 +4706,18 @@ mod tests {
         let trash = root.join(".textree").join("trash");
         std::fs::write(trash.join("note.md"), "first draft").unwrap();
         std::fs::write(trash.join("note (1).md"), "second draft").unwrap();
-        listing(root, &[("note.md", "note.md", 1_600_000_000, false), ("note (1).md", "note.md", 1_700_000_000, false)]);
-        let held = std::fs::OpenOptions::new().read(true).share_mode(0x4).open(trash.join("note.md")).unwrap();
+        listing(
+            root,
+            &[
+                ("note.md", "note.md", 1_600_000_000, false),
+                ("note (1).md", "note.md", 1_700_000_000, false),
+            ],
+        );
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0x4)
+            .open(trash.join("note.md"))
+            .unwrap();
 
         let first = move_state_out_of_vault(root_s.clone()).unwrap();
         drop(held);
@@ -4123,8 +4727,15 @@ mod tests {
         assert!(!root.join(".textree").exists());
         restore_deleted(root_s.clone(), "note.md".into()).unwrap();
         restore_deleted(root_s, "note (1).md".into()).unwrap();
-        assert_eq!(std::fs::read_to_string(root.join("note.md")).unwrap(), "second draft", "the one carried first keeps its path");
-        assert_eq!(std::fs::read_to_string(root.join("note (1).md")).unwrap(), "first draft");
+        assert_eq!(
+            std::fs::read_to_string(root.join("note.md")).unwrap(),
+            "second draft",
+            "the one carried first keeps its path"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("note (1).md")).unwrap(),
+            "first draft"
+        );
     }
 
     #[test]
@@ -4134,13 +4745,26 @@ mod tests {
         git2::Repository::init(root).unwrap();
         let root_s = root.to_string_lossy().to_string();
         as_an_earlier_version_left_it(root, &[]);
-        std::fs::create_dir_all(root.join(".textree").join("trash").join("empty").join("inner")).unwrap();
+        std::fs::create_dir_all(
+            root.join(".textree")
+                .join("trash")
+                .join("empty")
+                .join("inner"),
+        )
+        .unwrap();
         listing(root, &[("empty", "empty", 1_700_000_000, true)]);
 
         let moved = move_state_out_of_vault(root_s).unwrap();
 
-        assert!(moved.left_behind.is_empty(), "left: {:?}", moved.left_behind);
-        assert!(!root.join(".textree").exists(), "nothing was in it, so nothing keeps the folder");
+        assert!(
+            moved.left_behind.is_empty(),
+            "left: {:?}",
+            moved.left_behind
+        );
+        assert!(
+            !root.join(".textree").exists(),
+            "nothing was in it, so nothing keeps the folder"
+        );
     }
 
     #[test]
@@ -4154,7 +4778,10 @@ mod tests {
 
         assert_eq!(moved, MoveOut::default());
         assert!(!root.join(".textree").exists());
-        assert!(!root.join(".git").exists(), "and no repository is made for it");
+        assert!(
+            !root.join(".git").exists(),
+            "and no repository is made for it"
+        );
     }
 
     #[test]
@@ -4198,9 +4825,18 @@ mod tests {
         drop(held);
 
         assert_eq!(first.notes, 1);
-        assert_eq!(first.left_behind, vec![".textree/trash.json".to_string(), ".textree/trash/proj/deep/held.md".to_string()]);
+        assert_eq!(
+            first.left_behind,
+            vec![
+                ".textree/trash.json".to_string(),
+                ".textree/trash/proj/deep/held.md".to_string()
+            ]
+        );
         assert!(!proj.join("plan.md").exists(), "the carried file left");
-        assert_eq!(std::fs::read_to_string(proj.join("deep").join("held.md")).unwrap(), "only copy");
+        assert_eq!(
+            std::fs::read_to_string(proj.join("deep").join("held.md")).unwrap(),
+            "only copy"
+        );
         assert_eq!((second.notes, second.files), (0, 0));
         assert_eq!(snapshots_recorded(root), recorded, "nothing recorded twice");
 
@@ -4217,7 +4853,10 @@ mod tests {
         seed_note(root, "a.md", "body");
         let moved = move_state_out_of_vault(root.to_string_lossy().to_string()).unwrap();
         assert_eq!(moved, MoveOut::default());
-        assert!(!root.join(".git").exists(), "and no repository is made for it");
+        assert!(
+            !root.join(".git").exists(),
+            "and no repository is made for it"
+        );
     }
 
     #[test]
@@ -4233,7 +4872,9 @@ mod tests {
         let note = record_note(root, "a.md", "first");
         std::fs::write(&note, "worked on since, never recorded").unwrap();
 
-        let first = note_versions(root_s.clone(), note.clone()).unwrap()[0].id.clone();
+        let first = note_versions(root_s.clone(), note.clone()).unwrap()[0]
+            .id
+            .clone();
         restore_version(root_s.clone(), note.clone(), first).unwrap();
 
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "first");
@@ -4280,12 +4921,20 @@ mod tests {
         let started = start_alternative(root_s.clone(), note.clone()).unwrap();
         assert_eq!(started.rel, "a.md");
         assert!(!started.differs);
-        add_alternative_version(root_s.clone(), started.id.clone(), "other take".into(), "try".into())
-            .unwrap();
+        add_alternative_version(
+            root_s.clone(),
+            started.id.clone(),
+            "other take".into(),
+            "try".into(),
+        )
+        .unwrap();
         let listed = list_alternatives(root_s.clone()).unwrap();
         assert_eq!(listed.len(), 1);
         assert!(listed[0].differs);
-        assert_eq!(alternative_text(root_s.clone(), started.id.clone()).unwrap(), "other take");
+        assert_eq!(
+            alternative_text(root_s.clone(), started.id.clone()).unwrap(),
+            "other take"
+        );
 
         // Edits never recorded are on disk when the alternative is picked.
         std::fs::write(&note, "worked on since, never recorded").unwrap();
@@ -4294,7 +4943,10 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "other take");
         assert!(list_alternatives(root_s.clone()).unwrap().is_empty());
         let versions = note_versions(root_s.clone(), note.clone()).unwrap();
-        assert_eq!(versions[0].message.lines().next(), Some("Used an alternative"));
+        assert_eq!(
+            versions[0].message.lines().next(),
+            Some("Used an alternative")
+        );
         // What it replaced is reachable, as when going back to an earlier version.
         delete_node(root_s.clone(), note).unwrap();
         assert!(restore_deleted(root_s, "a.md".into()).unwrap().as_deleted);
@@ -4315,7 +4967,8 @@ mod tests {
         let a = record_note(root, "a.md", "mine");
         let b = record_note(root, "b.md", "bee");
         let alt = start_alternative(root_s.clone(), a.clone()).unwrap();
-        add_alternative_version(root_s.clone(), alt.id.clone(), "take".into(), "try".into()).unwrap();
+        add_alternative_version(root_s.clone(), alt.id.clone(), "take".into(), "try".into())
+            .unwrap();
 
         assert!(use_alternative(root_s.clone(), b.clone(), alt.id.clone()).is_err());
         assert_eq!(std::fs::read_to_string(&b).unwrap(), "bee");
@@ -4323,7 +4976,10 @@ mod tests {
         set_aside_alternative(root_s.clone(), alt.id.clone()).unwrap();
         assert_eq!(std::fs::read_to_string(&a).unwrap(), "mine");
         assert!(list_alternatives(root_s.clone()).unwrap().is_empty());
-        assert!(use_alternative(root_s, a, alt.id).is_err(), "one that ended cannot be used");
+        assert!(
+            use_alternative(root_s, a, alt.id).is_err(),
+            "one that ended cannot be used"
+        );
     }
 
     #[test]
@@ -4335,27 +4991,64 @@ mod tests {
 
         let note = record_note(root, "a.md", "mine");
         let alt = start_alternative(root_s.clone(), note.clone()).unwrap();
-        assert_eq!(alternative_draft(root_s.clone(), alt.id.clone()).unwrap(), None);
+        assert_eq!(
+            alternative_draft(root_s.clone(), alt.id.clone()).unwrap(),
+            None
+        );
 
         write_alternative_draft(root_s.clone(), alt.id.clone(), "half a thought".into()).unwrap();
         assert_eq!(
-            alternative_draft(root_s.clone(), alt.id.clone()).unwrap().as_deref(),
+            alternative_draft(root_s.clone(), alt.id.clone())
+                .unwrap()
+                .as_deref(),
             Some("half a thought")
         );
-        assert_eq!(std::fs::read_to_string(&note).unwrap(), "mine", "the note is the other side");
-        assert_eq!(alternative_text(root_s.clone(), alt.id.clone()).unwrap(), "mine");
-        let in_folder: Vec<_> = std::fs::read_dir(root).unwrap().flatten().map(|e| e.file_name()).collect();
-        assert_eq!(in_folder.len(), 2, "only the note and the repository: {in_folder:?}");
+        assert_eq!(
+            std::fs::read_to_string(&note).unwrap(),
+            "mine",
+            "the note is the other side"
+        );
+        assert_eq!(
+            alternative_text(root_s.clone(), alt.id.clone()).unwrap(),
+            "mine"
+        );
+        let in_folder: Vec<_> = std::fs::read_dir(root)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(
+            in_folder.len(),
+            2,
+            "only the note and the repository: {in_folder:?}"
+        );
 
         // Adding exactly what was typed makes it a version and lets the draft go.
-        add_alternative_version(root_s.clone(), alt.id.clone(), "half a thought".into(), "v".into()).unwrap();
-        assert_eq!(alternative_text(root_s.clone(), alt.id.clone()).unwrap(), "half a thought");
-        assert_eq!(alternative_draft(root_s.clone(), alt.id.clone()).unwrap(), None);
+        add_alternative_version(
+            root_s.clone(),
+            alt.id.clone(),
+            "half a thought".into(),
+            "v".into(),
+        )
+        .unwrap();
+        assert_eq!(
+            alternative_text(root_s.clone(), alt.id.clone()).unwrap(),
+            "half a thought"
+        );
+        assert_eq!(
+            alternative_draft(root_s.clone(), alt.id.clone()).unwrap(),
+            None
+        );
 
         // Typed on after the text was taken: the newer draft is kept.
         write_alternative_draft(root_s.clone(), alt.id.clone(), "a whole thought".into()).unwrap();
-        add_alternative_version(root_s.clone(), alt.id.clone(), "half a thought, then".into(), "v".into())
-            .unwrap();
+        add_alternative_version(
+            root_s.clone(),
+            alt.id.clone(),
+            "half a thought, then".into(),
+            "v".into(),
+        )
+        .unwrap();
         assert_eq!(
             alternative_draft(root_s, alt.id).unwrap().as_deref(),
             Some("a whole thought")
@@ -4372,22 +5065,32 @@ mod tests {
         // Used: the note gets what was last typed, not the last version.
         let a = record_note(root, "a.md", "mine");
         let used = start_alternative(root_s.clone(), a.clone()).unwrap();
-        write_alternative_draft(root_s.clone(), used.id.clone(), "typed, never added".into()).unwrap();
+        write_alternative_draft(root_s.clone(), used.id.clone(), "typed, never added".into())
+            .unwrap();
         use_alternative(root_s.clone(), a.clone(), used.id.clone()).unwrap();
         assert_eq!(std::fs::read_to_string(&a).unwrap(), "typed, never added");
-        assert!(alternative_draft(root_s.clone(), used.id.clone()).is_err(), "it has ended");
+        assert!(
+            alternative_draft(root_s.clone(), used.id.clone()).is_err(),
+            "it has ended"
+        );
 
         // Set aside: the note stays, and the ended alternative holds what was typed.
         let b = record_note(root, "b.md", "bee");
         let aside = start_alternative(root_s.clone(), b.clone()).unwrap();
-        write_alternative_draft(root_s.clone(), aside.id.clone(), "an idea for later".into()).unwrap();
+        write_alternative_draft(root_s.clone(), aside.id.clone(), "an idea for later".into())
+            .unwrap();
         set_aside_alternative(root_s.clone(), aside.id.clone()).unwrap();
         assert_eq!(std::fs::read_to_string(&b).unwrap(), "bee");
         let repo = git2::Repository::open(root).unwrap();
         let ended = crate::alternatives::ended(&repo).unwrap();
-        let kept = ended.iter().find(|e| e.id == aside.id).expect("kept as ended");
+        let kept = ended
+            .iter()
+            .find(|e| e.id == aside.id)
+            .expect("kept as ended");
         assert_eq!(
-            crate::alternatives::content(&repo, kept).unwrap().as_deref(),
+            crate::alternatives::content(&repo, kept)
+                .unwrap()
+                .as_deref(),
             Some("an idea for later".as_bytes())
         );
         // Nothing is left behind for either.
@@ -4405,7 +5108,9 @@ mod tests {
         seed_note(root, "a.md", "body");
         let root_s = root.to_string_lossy().to_string();
         assert!(list_alternatives(root_s.clone()).unwrap().is_empty());
-        assert!(start_alternative(root_s, root.join("a.md").to_string_lossy().to_string()).is_err());
+        assert!(
+            start_alternative(root_s, root.join("a.md").to_string_lossy().to_string()).is_err()
+        );
         assert!(!root.join(".git").exists(), "looking made no repository");
     }
 
@@ -4501,7 +5206,10 @@ mod tests {
         assert_eq!(
             note_versions(
                 root_s,
-                root.join("dest").join("src").join("deep").join("b.md")
+                root.join("dest")
+                    .join("src")
+                    .join("deep")
+                    .join("b.md")
                     .to_string_lossy()
                     .to_string(),
             )
@@ -4538,7 +5246,10 @@ mod tests {
         assert_eq!(
             note_versions(
                 root_s,
-                root.join("subject").join("subject.md").to_string_lossy().to_string(),
+                root.join("subject")
+                    .join("subject.md")
+                    .to_string_lossy()
+                    .to_string(),
             )
             .unwrap()
             .len(),
@@ -4564,7 +5275,10 @@ mod tests {
         assert_eq!(
             note_versions(
                 root_s,
-                root.join("topic").join("topic.md").to_string_lossy().to_string(),
+                root.join("topic")
+                    .join("topic.md")
+                    .to_string_lossy()
+                    .to_string(),
             )
             .unwrap()
             .len(),
@@ -4921,7 +5635,9 @@ mod tests {
             "a preference is not a note and does not belong in the notes folder"
         );
         assert!(settings.ends_with("favorites.json"));
-        assert!(sidecar_path(root, "views/board.json").unwrap().ends_with("board.json"));
+        assert!(sidecar_path(root, "views/board.json")
+            .unwrap()
+            .ends_with("board.json"));
 
         // Two folders that end with the same name still get their own place.
         let same_name = TempDir::new().unwrap();
@@ -4943,14 +5659,20 @@ mod tests {
     fn sidecar_write_then_read_roundtrips() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
-        assert_eq!(read_sidecar(root.clone(), "favorites.json".into()).unwrap(), None);
+        assert_eq!(
+            read_sidecar(root.clone(), "favorites.json".into()).unwrap(),
+            None
+        );
         write_sidecar(root.clone(), "favorites.json".into(), "[\"a.md\"]".into()).unwrap();
         assert_eq!(
             read_sidecar(root.clone(), "favorites.json".into()).unwrap(),
             Some("[\"a.md\"]".to_string())
         );
         write_sidecar(root.clone(), "views/b.json".into(), "{}".into()).unwrap();
-        assert_eq!(read_sidecar(root.clone(), "views/b.json".into()).unwrap(), Some("{}".to_string()));
+        assert_eq!(
+            read_sidecar(root.clone(), "views/b.json".into()).unwrap(),
+            Some("{}".to_string())
+        );
         assert!(write_sidecar(root.clone(), "../x".into(), "{}".into()).is_err());
     }
 
@@ -5013,13 +5735,21 @@ mod tests {
             .flatten()
             .map(|e| e.file_name().to_string_lossy().to_string())
             .collect();
-        assert_eq!(names, vec!["welcome.md".to_string()], "no directory, no temp, no repository");
+        assert_eq!(
+            names,
+            vec!["welcome.md".to_string()],
+            "no directory, no temp, no repository"
+        );
     }
 
     #[test]
     fn a_temp_a_crash_left_at_the_top_of_the_folder_is_swept_and_nothing_else_is() {
         let root = TempDir::new().unwrap();
-        std::fs::write(root.path().join(format!("{LOOSE_TEMP_PREFIX}abc123")), "half written").unwrap();
+        std::fs::write(
+            root.path().join(format!("{LOOSE_TEMP_PREFIX}abc123")),
+            "half written",
+        )
+        .unwrap();
         std::fs::write(root.path().join(".tmpNotOurs"), "someone else's").unwrap();
         std::fs::write(root.path().join("note.md"), "note").unwrap();
 
@@ -5031,7 +5761,10 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().to_string())
             .collect();
         names.sort();
-        assert_eq!(names, vec![".tmpNotOurs".to_string(), "note.md".to_string()]);
+        assert_eq!(
+            names,
+            vec![".tmpNotOurs".to_string(), "note.md".to_string()]
+        );
     }
 
     #[test]
@@ -5079,7 +5812,6 @@ mod tests {
         clear_temp_dir(root.path());
         assert_eq!(std::fs::read_dir(&tmp).unwrap().flatten().count(), 0);
     }
-
 }
 
 #[cfg(test)]
@@ -5093,7 +5825,10 @@ mod onboarding_tests {
         let vault = ensure_vault_at(base.path()).unwrap();
         assert_eq!(vault, base.path().join("Textree"));
         let welcome = vault.join("welcome.md");
-        assert!(welcome.is_file(), "welcome.md should be seeded in a fresh vault");
+        assert!(
+            welcome.is_file(),
+            "welcome.md should be seeded in a fresh vault"
+        );
         let body = std::fs::read_to_string(&welcome).unwrap();
         assert!(body.contains("Welcome to Textree"));
     }
@@ -5105,9 +5840,15 @@ mod onboarding_tests {
         std::fs::create_dir_all(&vault_dir).unwrap();
         std::fs::write(vault_dir.join("note.md"), "my own note").unwrap();
         let vault = ensure_vault_at(base.path()).unwrap();
-        assert!(!vault.join("welcome.md").exists(), "must not seed into a non-empty vault");
+        assert!(
+            !vault.join("welcome.md").exists(),
+            "must not seed into a non-empty vault"
+        );
         // existing file untouched (non-destructive)
-        assert_eq!(std::fs::read_to_string(vault_dir.join("note.md")).unwrap(), "my own note");
+        assert_eq!(
+            std::fs::read_to_string(vault_dir.join("note.md")).unwrap(),
+            "my own note"
+        );
     }
 
     #[test]
@@ -5151,7 +5892,10 @@ mod onboarding_tests {
         let good = tempdir().unwrap();
         let bases = vec![good.path().to_path_buf()];
         let (vault, fell_back) = first_creatable_vault(&bases).unwrap();
-        assert!(!fell_back, "a working primary base must not report a fallback");
+        assert!(
+            !fell_back,
+            "a working primary base must not report a fallback"
+        );
         assert_eq!(vault, good.path().join("Textree"));
         assert!(vault.join("welcome.md").is_file());
     }
@@ -5163,9 +5907,15 @@ mod onboarding_tests {
         // Primary (invalid) fails create_dir_all → must land on the second candidate and flag it.
         let bases = vec![invalid, good.path().to_path_buf()];
         let (vault, fell_back) = first_creatable_vault(&bases).unwrap();
-        assert!(fell_back, "must report falling back away from the unusable primary base");
+        assert!(
+            fell_back,
+            "must report falling back away from the unusable primary base"
+        );
         assert_eq!(vault, good.path().join("Textree"));
-        assert!(vault.join("welcome.md").is_file(), "the fallback vault is fully seeded");
+        assert!(
+            vault.join("welcome.md").is_file(),
+            "the fallback vault is fully seeded"
+        );
     }
 
     #[test]
@@ -5175,6 +5925,9 @@ mod onboarding_tests {
         let err = first_creatable_vault(&bases)
             .expect_err("with no creatable base, resolution must error (never silently no-op)");
         // The os error code is preserved (not stringified away) so telemetry can carry it.
-        assert!(err.1.is_some(), "the failing candidate's raw os error code must be captured");
+        assert!(
+            err.1.is_some(),
+            "the failing candidate's raw os error code must be captured"
+        );
     }
 }

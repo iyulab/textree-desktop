@@ -1,3 +1,4 @@
+import type { RootId } from "./ipc";
 /*
  * Saved-views store — folder → named views, persisted to views.json (kept with the app, per vault).
  *
@@ -33,7 +34,7 @@ class ViewsStore {
   /** folderPath → that folder's saved views. */
   private all = $state<Record<string, ViewDefinition[]>>({});
   /** Current vault root (target of persist IPC). null means not loaded. */
-  private root: string | null = null;
+  private root: RootId | null = null;
   /** Not to be written this time: saved by a newer release, or unreadable and not set aside. */
   private kept = false;
   /**
@@ -48,7 +49,7 @@ class ViewsStore {
    * saved them; shown as none, never written over. Returns the name the file was kept under if it
    * could not be read.
    */
-  async load(root: string, readOnly = false): Promise<string | null> {
+  async load(root: RootId, readOnly = false): Promise<string | null> {
     this.root = root;
     const read = readOnly ? null : await readSettings(root, VIEWS_FILE, isViewsMap);
     this.kept = !read || !read.writable;

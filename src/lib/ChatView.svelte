@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { RootId } from "$lib/ipc";
   import { onDestroy } from 'svelte';
   import { chatStore } from './chatStore.svelte';
   import { getGenerationConsent, setGenerationConsent, setAiConsent } from './aiConsent';
@@ -20,7 +21,7 @@
     onBack,
     onSaved,
   }: {
-    vault: string;
+    vault: RootId;
     tree: TreeNode[];
     onOpenNote: (path: string) => void;
     onNewChat: () => void;

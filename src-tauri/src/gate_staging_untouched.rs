@@ -45,7 +45,11 @@ fn capture(repo: &Repository, root: &Path) -> TheirState {
 
     TheirState {
         index: entries,
-        head: repo.head().ok().and_then(|h| h.target()).map(|o| o.to_string()),
+        head: repo
+            .head()
+            .ok()
+            .and_then(|h| h.target())
+            .map(|o| o.to_string()),
         worktree,
     }
 }
@@ -101,7 +105,9 @@ fn their_repository() -> (TempDir, Repository) {
     // Work in progress, staged but not recorded — the state most easily destroyed.
     std::fs::write(root.join("src/app.rs"), "fn main() { /* half done */ }").unwrap();
     let mut index = repo.index().unwrap();
-    index.add_path(&PathBuf::from("src").join("app.rs")).unwrap();
+    index
+        .add_path(&PathBuf::from("src").join("app.rs"))
+        .unwrap();
     index.write().unwrap();
 
     (tmp, repo)
@@ -131,11 +137,11 @@ fn recording_notes_repeatedly_leaves_their_state_identical() {
     }
 
     let after = capture(&repo, root);
+    assert_eq!(after.index, before.index, "not one staged entry may change");
     assert_eq!(
-        after.index, before.index,
-        "not one staged entry may change"
+        after.head, before.head,
+        "the checked-out branch may not move"
     );
-    assert_eq!(after.head, before.head, "the checked-out branch may not move");
     assert_eq!(
         after.worktree,
         {

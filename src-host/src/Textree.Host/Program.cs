@@ -5,7 +5,7 @@ using LMSupply.Embedder;
 using Textree.Host;
 using Textree.Host.Contracts;
 using Textree.Host.Rag;
-using Textree.Host.Telemetry;
+using Textree.Host.Diagnostics;
 using TauriKit.Sidecar.Loopback;
 // Program.cs also constructs Textree.Host.Rag.ChatMessage below (the /chat DTO mapping); alias
 // M.E.AI's IChatClient explicitly rather than `using Microsoft.Extensions.AI;`, which would make
@@ -49,20 +49,15 @@ builder.Services.AddLoopbackAuthentication(credentials);
 builder.Services.AddSingleton(opts);
 builder.Services.AddSingleton(status);
 builder.Services.AddSingleton(embedder);
-// Telemetry: disabled (no-op) unless TEXTREE_TELEMETRY_CONNECTION holds both a key and an endpoint.
-// TelemetryEmitter writes each envelope field by field and posts it to the ingestion endpoint.
 // This dictionary is also reused below to decide the ITextGenerator backend (TEXTREE_BYO_PRESET),
 // so Environment.GetEnvironmentVariables() is only ever materialized once.
 var envDict = Environment.GetEnvironmentVariables()
     .Cast<System.Collections.DictionaryEntry>()
     .ToDictionary(e => (string)e.Key, e => (string?)(e.Value?.ToString()));
-var telemetryOptions = TelemetryOptions.Read(envDict);
-builder.Services.AddSingleton(telemetryOptions);
-builder.Services.AddSingleton<ITelemetryEmitter>(sp =>
-    TelemetryEmitter.Create(
-        telemetryOptions,
-        sp.GetRequiredService<ILoggerFactory>().CreateLogger("Textree.Host.Telemetry"),
-        EnvFacts.Current()));
+// Failures go to the reports folder the shell names, as one more segment of the shell's own stream;
+// the shell verifies and sends them. Without the variable nothing is written.
+envDict.TryGetValue(FailureReports.ReportsDirVar, out var reportsDir);
+builder.Services.AddSingleton(FailureReports.Open(reportsDir));
 builder.Services.AddSingleton<IEmbedderLoader, DefaultEmbedderLoader>();
 builder.Services.AddSingleton<VaultManager>();
 // Local CPU text generator for /chat, OR a user-configured BYO OpenAI-compatible server
@@ -140,8 +135,8 @@ _ = Task.Run(async () =>
     {
         var phaseAtFailure = status.Embedder.Phase; // Downloading/Loading/... before we flip to Error
         status.SetEmbedderError(ex.Message);        // local-only; message keeps the path (data sovereignty OK locally)
-        app.Services.GetRequiredService<ITelemetryEmitter>()
-            .ReportError(TelemetryPayload.EventForModelFailure(phaseAtFailure), "embedder", phaseAtFailure, ex);
+        app.Services.GetRequiredService<IFailureReports>()
+            .ReportError(HostEvent.ForModelFailure(phaseAtFailure), "embedder", phaseAtFailure, ex);
     }
 });
 
@@ -191,8 +186,8 @@ app.MapPost("/prepare-generation", (ITextGenerator gen) =>
         catch (Exception ex)
         {
             genLog.LogError(ex, "Generation model PrepareAsync failed");
-            app.Services.GetRequiredService<ITelemetryEmitter>()
-                .ReportError(TelemetryEventName.GenerationPrepareFailed, "generator", ModelPhase.Error, ex);
+            app.Services.GetRequiredService<IFailureReports>()
+                .ReportError(HostEvent.GenerationPrepareFailed, "generator", ModelPhase.Error, ex);
         }
     });
     return Results.Accepted();
@@ -234,8 +229,8 @@ app.MapPost("/index", async (IndexRequest req, CancellationToken ct) =>
                 // A real failure must not vanish into an unhandled 500: the caller indexes in the
                 // background and never reads the result, so this is the only place it is visible.
                 indexLog.LogError(ex, "Index failed");
-                app.Services.GetRequiredService<ITelemetryEmitter>()
-                    .ReportError(TelemetryEventName.IndexFailed, "embedder", ModelPhase.Error, ex);
+                app.Services.GetRequiredService<IFailureReports>()
+                    .ReportError(HostEvent.IndexFailed, "embedder", ModelPhase.Error, ex);
                 throw;
         }
     }
@@ -257,8 +252,8 @@ app.MapPost("/reindex", (ReindexRequest req) =>
         catch (Exception ex)
         {
             reindexLog.LogError(ex, "Reindex failed for {Vault}", req.VaultPath);
-            app.Services.GetRequiredService<ITelemetryEmitter>()
-                .ReportError(TelemetryEventName.ReindexFailed, "embedder", ModelPhase.Error, ex);
+            app.Services.GetRequiredService<IFailureReports>()
+                .ReportError(HostEvent.ReindexFailed, "embedder", ModelPhase.Error, ex);
         }
     });
     return Results.Accepted();
@@ -295,8 +290,8 @@ app.MapPost("/chat", async (ChatRequestDto req, ITextGenerator gen, HttpContext 
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            app.Services.GetRequiredService<ITelemetryEmitter>()
-                .ReportError(TelemetryEventName.GenerationPrepareFailed, "generator", ModelPhase.Error, ex);
+            app.Services.GetRequiredService<IFailureReports>()
+                .ReportError(HostEvent.GenerationPrepareFailed, "generator", ModelPhase.Error, ex);
             throw;
         }
     }

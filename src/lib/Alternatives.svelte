@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { RootId } from "./ipc";
   import {
     alternativeDraft,
     alternativeText,
@@ -13,7 +14,7 @@
 
   interface Props {
     /** Absolute vault root path. */
-    root: string;
+    root: RootId;
     /** Absolute path of the note. */
     path: string;
     alternative: NoteAlternative;
@@ -51,7 +52,7 @@
     if (shown === null) void load(root, alternative.id);
   });
 
-  async function load(atRoot: string, id: string) {
+  async function load(atRoot: RootId, id: string) {
     failure = null;
     try {
       const [recorded, draft] = await Promise.all([alternativeText(atRoot, id), alternativeDraft(atRoot, id)]);

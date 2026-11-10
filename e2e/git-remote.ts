@@ -37,11 +37,18 @@ export async function startTestRemote(token = "right-token"): Promise<TestRemote
   run(["init", "--bare", bare]);
   run(["-C", bare, "config", "http.receivepack", "true"]);
 
+  // Requests being answered. Closing the sockets does not stop the `git` program a request started
+  // — it runs on in the repository's folder until it finishes, and a folder some program still has
+  // open cannot be deleted on Windows (EPERM).
+  const inFlight = new Set<Promise<void>>();
   const server = createServer((req, res) => {
-    void answer(req, res, root, token).catch(() => {
-      if (!res.headersSent) res.writeHead(500);
-      res.end();
-    });
+    const handled: Promise<void> = answer(req, res, root, token)
+      .catch(() => {
+        if (!res.headersSent) res.writeHead(500);
+        res.end();
+      })
+      .finally(() => inFlight.delete(handled));
+    inFlight.add(handled);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
@@ -54,7 +61,11 @@ export async function startTestRemote(token = "right-token"): Promise<TestRemote
       const out = spawnSync("git", [`--git-dir=${bare}`, ...args], { encoding: "utf8" });
       return out.status === 0 ? out.stdout.trim() : "";
     },
-    close: () => closeServer(server).then(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })),
+    close: async () => {
+      await closeServer(server);
+      await Promise.allSettled([...inFlight]); // every `git` a request started has exited
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    },
   };
 }
 

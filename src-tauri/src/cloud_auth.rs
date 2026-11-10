@@ -16,7 +16,8 @@ const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(180);
 /// Bounds the token exchange request so a stalled server can't hang the flow.
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(30);
 
-const SUCCESS_HTML: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Textree</title></head>\
+const SUCCESS_HTML: &str =
+    "<!doctype html><html><head><meta charset=\"utf-8\"><title>Textree</title></head>\
 <body style=\"font-family:sans-serif;text-align:center;padding:3rem\"><h2>Connected to Textree</h2>\
 <p>You can close this tab and return to the app.</p></body></html>";
 
@@ -39,7 +40,9 @@ pub fn client_id() -> String {
 fn client_for(issuer: &str, client_id: &str) -> NativeClient {
     // `openid` only: the person is identified by the access token's subject, and no refresh token
     // is asked for — nothing here outlives the one exchange.
-    let config = Config::new(issuer, client_id).scopes(["openid"]).pages(SUCCESS_HTML, FAILURE_HTML);
+    let config = Config::new(issuer, client_id)
+        .scopes(["openid"])
+        .pages(SUCCESS_HTML, FAILURE_HTML);
     NativeClient::new(config, MemoryStore::default())
 }
 
@@ -89,7 +92,10 @@ fn exchange_token(api_base: &str, access_token: &str) -> Result<String, String> 
         .send_empty()
     {
         Ok(mut resp) if resp.status().is_success() => {
-            let body = resp.body_mut().read_to_string().map_err(|e| e.to_string())?;
+            let body = resp
+                .body_mut()
+                .read_to_string()
+                .map_err(|e| e.to_string())?;
             parse_exchange_response(&body)
         }
         Ok(mut resp) => {
@@ -97,7 +103,9 @@ fn exchange_token(api_base: &str, access_token: &str) -> Result<String, String> 
             let body = resp.body_mut().read_to_string().unwrap_or_default();
             Err(map_exchange_error(status, &body))
         }
-        Err(e) => Err(format!("couldn't reach the publishing service ({e}) — check your connection and try again")),
+        Err(e) => Err(format!(
+            "couldn't reach the publishing service ({e}) — check your connection and try again"
+        )),
     }
 }
 
@@ -107,8 +115,11 @@ fn exchange_token(api_base: &str, access_token: &str) -> Result<String, String> 
 pub fn connect() -> Result<(), String> {
     let client = client_for(&issuer(), &client_id());
     let pending = client.begin_sign_in().map_err(|e| sign_in_error(&e))?;
-    tauri_plugin_opener::open_url(pending.url(), None::<&str>).map_err(|e| format!("couldn't open the browser ({e})"))?;
-    pending.wait(SIGN_IN_TIMEOUT).map_err(|e| sign_in_error(&e))?;
+    tauri_plugin_opener::open_url(pending.url(), None::<&str>)
+        .map_err(|e| format!("couldn't open the browser ({e})"))?;
+    pending
+        .wait(SIGN_IN_TIMEOUT)
+        .map_err(|e| sign_in_error(&e))?;
 
     let access_token = client
         .access_token()
@@ -138,7 +149,10 @@ mod tests {
 
     #[test]
     fn parse_exchange_response_extracts_token_and_rejects_garbage() {
-        assert_eq!(parse_exchange_response(r#"{"token":"tk_abc"}"#).unwrap(), "tk_abc");
+        assert_eq!(
+            parse_exchange_response(r#"{"token":"tk_abc"}"#).unwrap(),
+            "tk_abc"
+        );
         assert!(parse_exchange_response("nope").is_err());
         assert!(parse_exchange_response(r#"{"nottoken":1}"#).is_err());
     }
@@ -151,7 +165,10 @@ mod tests {
 
     #[test]
     fn sign_in_errors_read_as_sentences_without_the_providers_text() {
-        let denied = SignInError::Denied { error: "access_denied".into(), description: Some("secret detail".into()) };
+        let denied = SignInError::Denied {
+            error: "access_denied".into(),
+            description: Some("secret detail".into()),
+        };
         let msg = sign_in_error(&denied);
         assert!(msg.contains("declined"));
         assert!(!msg.contains("secret detail") && !msg.contains("access_denied"));
@@ -161,7 +178,10 @@ mod tests {
     }
 
     /// One-shot fake API: answers a single request and hands back what the client sent.
-    fn fake_api(status_line: &'static str, body: &'static str) -> (String, std::thread::JoinHandle<(String, String)>) {
+    fn fake_api(
+        status_line: &'static str,
+        body: &'static str,
+    ) -> (String, std::thread::JoinHandle<(String, String)>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let server = std::thread::spawn(move || {
@@ -207,7 +227,10 @@ mod tests {
         let token = exchange_token(&base, "the-access-token").unwrap();
         assert_eq!(token, "tk_exchanged");
         let (request_line, authorization) = server.join().unwrap();
-        assert!(request_line.starts_with("POST /tokens/desktop "), "{request_line}");
+        assert!(
+            request_line.starts_with("POST /tokens/desktop "),
+            "{request_line}"
+        );
         assert_eq!(authorization, "Bearer the-access-token");
     }
 

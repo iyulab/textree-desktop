@@ -30,9 +30,7 @@ pub fn build_tree(root: &Path) -> io::Result<Vec<TreeNode>> {
 fn build_children(dir: &Path, skip_note: Option<&str>) -> io::Result<Vec<TreeNode>> {
     // Per-entry errors (e.g. permission denied on a specific file) are intentionally ignored —
     // if one note is inaccessible we build a partial tree rather than aborting the whole tree.
-    let mut entries: Vec<_> = fs::read_dir(dir)?
-        .filter_map(|r| r.ok())
-        .collect();
+    let mut entries: Vec<_> = fs::read_dir(dir)?.filter_map(|r| r.ok()).collect();
     entries.sort_by_key(|e| e.file_name());
 
     let mut nodes = Vec::new();
@@ -151,7 +149,10 @@ mod tests {
         let diary = &tree[0];
         assert_eq!(diary.name, "journal");
         assert_eq!(diary.kind, NodeKind::Container);
-        assert!(diary.body_path.is_some(), "folder note should be picked up as the body");
+        assert!(
+            diary.body_path.is_some(),
+            "folder note should be picked up as the body"
+        );
         assert_eq!(diary.children.len(), 1);
         assert_eq!(diary.children[0].name, "2026-06-13");
     }
@@ -210,7 +211,11 @@ mod tests {
         let root_name = root.file_name().unwrap().to_string_lossy().to_string();
         touch(&root, &format!("{root_name}.md"));
         let tree = build_tree(&root).unwrap();
-        assert_eq!(tree.len(), 1, "a note sharing the root's name must not be dropped");
+        assert_eq!(
+            tree.len(),
+            1,
+            "a note sharing the root's name must not be dropped"
+        );
         assert_eq!(tree[0].name, root_name);
         assert_eq!(tree[0].kind, NodeKind::Leaf);
     }

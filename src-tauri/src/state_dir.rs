@@ -102,7 +102,8 @@ fn relative_names(
         // folder again).
         serde_json::Value::Object(map) => {
             let mut changed = false;
-            let entries: Vec<(String, serde_json::Value)> = std::mem::take(map).into_iter().collect();
+            let entries: Vec<(String, serde_json::Value)> =
+                std::mem::take(map).into_iter().collect();
             for (key, mut entry) in entries {
                 let to = rel(&key);
                 changed |= to != key;
@@ -169,7 +170,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let dir = tmp.path().join("settings");
         assert!(bring_up_to_date(&dir, "C:/notes", plain_write).unwrap());
-        assert_eq!(std::fs::read_to_string(dir.join(FORMAT_FILE)).unwrap(), CURRENT.to_string());
+        assert_eq!(
+            std::fs::read_to_string(dir.join(FORMAT_FILE)).unwrap(),
+            CURRENT.to_string()
+        );
     }
 
     fn json(path: &Path) -> serde_json::Value {
@@ -223,7 +227,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         std::fs::write(tmp.path().join("favorites.json"), "not json [").unwrap();
         assert!(bring_up_to_date(tmp.path(), "C:/notes", plain_write).unwrap());
-        assert_eq!(std::fs::read_to_string(tmp.path().join("favorites.json")).unwrap(), "not json [");
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("favorites.json")).unwrap(),
+            "not json ["
+        );
 
         let newer = TempDir::new().unwrap();
         std::fs::write(newer.path().join(FORMAT_FILE), (CURRENT + 1).to_string()).unwrap();
@@ -238,9 +245,15 @@ mod tests {
     #[test]
     fn a_name_that_only_begins_like_the_folder_is_not_under_it() {
         assert_eq!(relative_to("C:/notes", "C:/notes2/a.md"), None);
-        assert_eq!(relative_to("C:/notes", "C:/NOTES/a.md").as_deref(), Some("a.md"));
-        // public-text: allow — a name in a script without case is what this line is about
-        assert_eq!(relative_to("C:/노트", "C:/노트/a.md").as_deref(), Some("a.md"));
+        assert_eq!(
+            relative_to("C:/notes", "C:/NOTES/a.md").as_deref(),
+            Some("a.md")
+        );
+        assert_eq!(
+            // public-text: allow — a name in a script without case is what this line is about
+            relative_to("C:/노트", "C:/노트/a.md").as_deref(),
+            Some("a.md")
+        );
     }
 
     #[test]
