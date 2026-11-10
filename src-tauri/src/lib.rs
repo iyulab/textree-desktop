@@ -45,6 +45,18 @@ use search::IndexHandle;
 use std::sync::Arc;
 use watcher::WatcherHandle;
 
+/// Brings the main window back in front of the person: restored if minimized, shown, focused.
+#[cfg(not(debug_assertions))]
+fn show_main_window(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Content-free crash signal: capture only our own source location, never the panic payload
@@ -61,7 +73,15 @@ pub fn run() {
         prev_hook(info);
     }));
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // First, so a second launch stops before anything else starts. Release builds only: a
+    // development or test build shares the installed app's identifier, and would otherwise just
+    // bring an installed copy that happens to be running to the front and quit.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        show_main_window(app);
+    }));
+    builder
         .plugin(
             tauri_plugin_log::Builder::new()
                 .target(tauri_plugin_log::Target::new(

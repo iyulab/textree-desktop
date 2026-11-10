@@ -41,6 +41,9 @@ sha2 = "0.10"
 # In-app web-publish auth (slice 2c): CSPRNG for the PKCE code_verifier + loopback state nonce.
 getrandom = "0.2"
 tauri-plugin-process = "2.3.1"
+# A second launch hands over to the first window instead of opening the same notes in a second
+# process, where the per-process write turns (`note_locks`) would not see each other.
+tauri-plugin-single-instance = "2.5.5"
 # Lightweight blocking HTTP for loopback sidecar health-check; no TLS needed.
 ureq = { version = "3", features = ["json"] }
 # Secrets (BYO API key, publish token, remote credentials) in the OS credential store, never on
