@@ -5,7 +5,7 @@
   "description": "A local Markdown notes app: your notes stay plain files on your own disk, versioned underneath.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/iyulab/textree"
+    "url": "https://github.com/iyulab/textree-desktop"
   },
   "engines": {
     "node": ">=22"

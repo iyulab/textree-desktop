@@ -121,8 +121,8 @@ Requirements: Windows 10/11 (WebView2), Node 22+, Rust (stable), PowerShell 7, a
 SDK (for the AI helper).
 
 ```bash
-git clone https://github.com/iyulab/textree.git
-cd textree
+git clone https://github.com/iyulab/textree-desktop.git
+cd textree-desktop
 npm install
 
 # The app bundles two helpers; build them once before the first run.
@@ -137,7 +137,7 @@ Under the hood: [Tauri 2](https://tauri.app) (Rust) with a Svelte 5 + TypeScript
 [CodeMirror 6](https://codemirror.net) for editing, `libgit2` for versions, `tantivy` for
 search, and a small .NET helper for the optional AI.
 
-Installers are published on the [releases page](https://github.com/iyulab/textree/releases).
+Installers are published on the [releases page](https://github.com/iyulab/textree-desktop/releases).
 
 ---
 
