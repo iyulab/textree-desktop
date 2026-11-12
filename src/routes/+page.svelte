@@ -358,17 +358,23 @@
   let backupAsks = 0;
   // Whether each notes folder the sidebar shows is backed up, said on its row when several are
   // shown — the one in the title bar speaks only for the open folder, and a missing backup is not
-  // to be hidden (D-61). Asked without the network, so it is cheap to ask again whenever the open
-  // folder's answer is asked for.
+  // to be hidden. Asked without the network, so it is cheap to ask again whenever the open folder's
+  // answer is asked for. Each folder's answer lands on its own, and one that cannot be had counts
+  // as not backed up — unknown is shown as the risk it may be, as in the title bar.
   let backedUpOf = $state<Record<string, boolean>>({});
   let backupOfAsks = 0;
   async function refreshBackupOfShown() {
     const mine = ++backupOfAsks;
     const folders = shown.length > 1 ? shown.map((f) => f.root) : [];
-    const answers = await Promise.all(
-      folders.map(async (id) => [id, await notesBackedUp(id as RootId).catch(() => false)] as const),
-    );
-    if (mine === backupOfAsks) backedUpOf = Object.fromEntries(answers);
+    // Unknown until answered: shown as not backed up, never as backed up.
+    backedUpOf = Object.fromEntries(folders.map((id) => [id, backedUpOf[id] ?? false]));
+    for (const id of folders) {
+      void notesBackedUp(id as RootId)
+        .catch(() => false)
+        .then((answer) => {
+          if (mine === backupOfAsks) backedUpOf = { ...backedUpOf, [id]: answer };
+        });
+    }
   }
   $effect(() => {
     void shown.map((f) => f.root).join("\n");

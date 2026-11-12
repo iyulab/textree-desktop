@@ -38,9 +38,18 @@ fn remote_place(root: &Path) -> Result<(PathBuf, String), String> {
     Ok((dir.join(crate::remote::CONNECTION_FILE), key))
 }
 
+/// Held while a repository's connection file and secret change together, so the address kept
+/// never ends up beside another connection's secret — two folders of one repository are looked
+/// up at the same moment, and either may be the one that takes its earlier connection over.
+fn connection_change() -> std::sync::MutexGuard<'static, ()> {
+    static CHANGE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    CHANGE.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 /// Moves a folder's own remote connection (file and secret) to its repository's place, when the
-/// repository has none. The secret is written under the new key before it is forgotten under the
-/// old one.
+/// repository has none. The file moves first and the secret after it, under
+/// [`connection_change`]: a repository place another folder filled first is left as it is, with
+/// its own secret.
 fn adopt_folder_connection(
     folder_dir: &Path,
     repo_dir: &Path,
@@ -52,19 +61,25 @@ fn adopt_folder_connection(
     if !old.is_file() || new.symlink_metadata().is_ok() {
         return Ok(());
     }
+    let _change = connection_change();
+    if !old.is_file() || new.symlink_metadata().is_ok() {
+        return Ok(());
+    }
     if !crate::state_dir::writable(repo_dir).map_err(|e| e.to_string())? {
         return Ok(());
     }
-    if let Some(secret) = crate::remote::secret(folder_key) {
-        crate::remote::set_secret(repo_key, &secret)?;
-    }
     std::fs::create_dir_all(repo_dir).map_err(|e| e.to_string())?;
     match crate::fs_ops::rename(&old, &new) {
-        Ok(()) => crate::remote::clear_secret(folder_key),
-        // Another folder of the repository got there first: its connection stands.
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
-        Err(e) => Err(e.to_string()),
+        Ok(()) => {}
+        // Filled meanwhile from outside this process: that connection stands, with its secret.
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(e) => return Err(e.to_string()),
     }
+    if let Some(secret) = crate::remote::secret(folder_key) {
+        crate::remote::set_secret(repo_key, &secret)?;
+        crate::remote::clear_secret(folder_key)?;
+    }
+    Ok(())
 }
 
 /// The remote this folder exchanges notes with, as this machine remembers it — the one of the
@@ -114,6 +129,7 @@ pub fn connect_remote(
 
     let connection = crate::remote::Connection { url, username };
     let text = serde_json::to_string_pretty(&connection).map_err(|e| e.to_string())?;
+    let _change = connection_change();
     crate::remote::set_secret(&key, &secret)?;
     atomic_write_beside(&path, &text).map_err(|e| e.to_string())
 }
@@ -376,6 +392,55 @@ mod tests {
 
         disconnect_remote(a_s).unwrap();
         crate::remote::clear_secret(&folder_key(&b)).unwrap();
+    }
+
+    #[test]
+    fn folders_looked_up_together_keep_one_connection_with_its_own_secret() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path().join("work");
+        git2::Repository::init(&repo).unwrap();
+        let folders: Vec<_> = (0..4).map(|i| repo.join(format!("f{i}"))).collect();
+        for (i, folder) in folders.iter().enumerate() {
+            std::fs::create_dir_all(folder).unwrap();
+            let dir = personal_dir(folder).unwrap();
+            std::fs::create_dir_all(&dir).unwrap();
+            let url = format!("https://f{i}.example/notes.git");
+            let c = crate::remote::Connection {
+                url: url.clone(),
+                username: "me".into(),
+            };
+            std::fs::write(
+                dir.join(crate::remote::CONNECTION_FILE),
+                serde_json::to_string(&c).unwrap(),
+            )
+            .unwrap();
+            // Each folder's secret names its own address, so a mismatch shows.
+            crate::remote::set_secret(&folder_key(folder), &url).unwrap();
+        }
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(folders.len()));
+        let handles: Vec<_> = folders
+            .iter()
+            .map(|f| {
+                let (f, b) = (f.to_string_lossy().to_string(), barrier.clone());
+                std::thread::spawn(move || {
+                    b.wait();
+                    remote_connection(f).unwrap()
+                })
+            })
+            .collect();
+        let seen: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let kept = seen[0].clone().unwrap();
+        assert!(seen.iter().all(|c| c.as_ref() == Some(&kept)), "{seen:?}");
+        assert_eq!(
+            crate::remote::secret(&folder_key(&repo)).as_deref(),
+            Some(kept.url.as_str()),
+            "the secret kept is the one of the address kept"
+        );
+
+        crate::remote::clear_secret(&folder_key(&repo)).unwrap();
+        for folder in &folders {
+            crate::remote::clear_secret(&folder_key(folder)).unwrap();
+        }
     }
 
     #[test]

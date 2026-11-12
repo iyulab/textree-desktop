@@ -642,6 +642,6 @@ pub async fn ensure_default_vault(app: AppHandle) -> Result<DefaultVault, String
 /// Shows the folder dialog titled `title` and gives the folder picked — `None` when it was closed
 /// without one. Off the main thread: the dialog waits for the person there.
 #[tauri::command]
-pub async fn choose_folder(app: AppHandle, title: String) -> Result<Option<String>, String> {
-    off_main(move || crate::dialogs::folder(&app, &title)).await
+pub async fn choose_folder(window: tauri::Window, title: String) -> Result<Option<String>, String> {
+    off_main(move || crate::dialogs::folder(&window, &title)).await
 }

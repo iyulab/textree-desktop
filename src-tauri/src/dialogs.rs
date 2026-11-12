@@ -1,13 +1,13 @@
 //! The app's dialogs, through one route a build made for end-to-end runs can answer
 //! ([`tauri_kit_dialog`], the `e2e` feature).
 
-use tauri::AppHandle;
+use tauri::Window;
 use tauri_kit_dialog::{answer_or, Answer, Ask, Kind};
 use tauri_plugin_dialog::DialogExt;
 
-/// The folder the person picks in a dialog titled `title`, or `None` when they close it without
-/// one. Blocks until then, so it is never called on the main thread.
-pub fn folder(app: &AppHandle, title: &str) -> Result<Option<String>, String> {
+/// The folder the person picks in a dialog titled `title`, over `window`, or `None` when they
+/// close it without one. Blocks until then, so it is never called on the main thread.
+pub fn folder(window: &Window, title: &str) -> Result<Option<String>, String> {
     let ask = Ask {
         kind: Kind::Folder,
         title,
@@ -15,7 +15,12 @@ pub fn folder(app: &AppHandle, title: &str) -> Result<Option<String>, String> {
         filters: &[],
     };
     let answer = answer_or(&ask, || {
-        let mut dialog = app.dialog().file();
+        let mut dialog = window.dialog().file();
+        // Over the window that asked: modal to it, and never left behind it.
+        #[cfg(any(windows, target_os = "macos"))]
+        {
+            dialog = dialog.set_parent(window);
+        }
         if !title.is_empty() {
             dialog = dialog.set_title(title);
         }
