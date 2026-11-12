@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RootId } from "./ipc";
-import { folderName, movedRoot, sidebarName } from "./workspace.helpers";
+import { folderName, isNestingRefusal, movedRoot, sidebarName } from "./workspace.helpers";
 
 const id = (s: string) => s as RootId;
 
@@ -30,5 +30,13 @@ describe("moving a folder in the sidebar", () => {
     expect(movedRoot(ids, id("a"), -1)).toBe(ids);
     expect(movedRoot(ids, id("c"), 1)).toBe(ids);
     expect(movedRoot(ids, id("z"), 1)).toBe(ids);
+  });
+});
+
+describe("adding a folder the sidebar refuses", () => {
+  it("is told apart from other failures by what the sidebar says", () => {
+    expect(isNestingRefusal("This folder is already in the sidebar inside Work.")).toBe(true);
+    expect(isNestingRefusal("Work is inside this folder.")).toBe(true);
+    expect(isNestingRefusal("Access is denied. (os error 5)")).toBe(false);
   });
 });

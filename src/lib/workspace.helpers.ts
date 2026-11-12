@@ -29,3 +29,14 @@ export function movedRoot(ids: readonly RootId[], id: RootId, delta: number): re
   next.splice(to, 0, id);
   return next;
 }
+
+/**
+ * Whether adding a folder to the sidebar was refused because it is inside a folder the sidebar
+ * shows, or holds one (the backend's wording, which the person reads as it is).
+ */
+export function isNestingRefusal(message: string): boolean {
+  return (
+    message.startsWith("This folder is already in the sidebar inside ") ||
+    message.endsWith(" is inside this folder.")
+  );
+}

@@ -11,6 +11,8 @@
     ensureDefaultVault,
     workspaceAdd,
     workspaceList,
+    workspaceRemove,
+    type Workspace,
     listTree,
     readNote,
     writeNote,
@@ -64,6 +66,7 @@
   import { layout } from "$lib/layout.svelte";
   import TreeView, { DRAG_MIME } from "$lib/TreeView.svelte";
   import { decodePicked, NOT_ACROSS_FOLDERS } from "$lib/treeDrag.helpers";
+  import { isNestingRefusal, sidebarName } from "$lib/workspace.helpers";
   import Editor from "$lib/Editor.svelte";
   import Backlinks from "$lib/Backlinks.svelte";
   import RelatedNotes from "$lib/RelatedNotes.svelte";
@@ -483,11 +486,41 @@
   // another one — the same folder opened again must stay open for the later opening.
   let latestOpening: string | null = null;
 
-  /** A folder this window opened but does not show (an opening overtaken, or the folder left): its
-   *  index and watch are let go, and so is what the window kept for it. */
+  // The notes folders the sidebar shows, each open, in the order the device's list keeps them.
+  let shown = $state<FolderState[]>([]);
+  // That order, as the ids of the device's list (`workspaceList` / `workspaceAdd`).
+  let listOrder = $state<RootId[]>([]);
+  // The names the person gave folders in the sidebar, by id.
+  let listLabels = $state<Record<string, string | undefined>>({});
+  // Counts the times the window was set to one folder alone (the test bridge): a folder opening in
+  // the background from before then is not wanted in the sidebar.
+  let aloneLoads = 0;
+
+  function takeList(ws: Workspace): void {
+    listOrder = ws.roots.map((r) => r.id);
+    listLabels = Object.fromEntries(ws.roots.map((r) => [r.id, r.label]));
+    shown = sortedByList(shown);
+  }
+
+  function sortedByList(list: FolderState[]): FolderState[] {
+    const rank = (f: FolderState) => {
+      const i = listOrder.indexOf(f.root);
+      return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    return [...list].sort((x, y) => rank(x) - rank(y));
+  }
+
+  function show(state: FolderState): void {
+    if (!shown.includes(state)) shown = sortedByList([...shown, state]);
+  }
+
+  /** A folder this window opened but does not show or no longer shows (an opening overtaken, a
+   *  folder taken out of the sidebar): its index and watch are let go, and so is what the window
+   *  kept for it. Never the folder on screen. */
   function letGo(id: RootId): void {
     if (id === root) return;
     folders.drop(id);
+    shown = shown.filter((f) => f.root !== id);
     const closed: Promise<void> = closeRoot(id)
       .catch((e) => console.warn("Could not close a folder not shown:", e))
       .finally(() => {
@@ -500,16 +533,14 @@
   // the closing would overtake the new opening (or strip what it installed).
   const closing = new Map<RootId, Promise<void>>();
 
-  /** Shows an open folder: it becomes the folder the window works in. What was on screen belonged to
-   *  the folder left — the open note, the selection, the mode, the chat, the related notes. The
-   *  screen shows one folder, so the one left is closed (`TODO(S1b Task 5)`: the sidebar keeps every
-   *  folder open). */
+  /** Makes an open folder the one the window works in. What was on screen belonged to the folder
+   *  left — the open note, the selection, the mode, the chat, the related notes. The folder left
+   *  stays open in the sidebar. The caller has left the open note (`leaveNote`). */
   function activate(state: FolderState): void {
-    const left = root;
     root = state.root;
     rootPath = state.path;
     here = state;
-    if (left && left !== state.root) letGo(left);
+    show(state);
     backupNotice = null; // it was about the folder being left
     // A stale selectedNode would target the previous folder's path as the parent for creation or a
     // move, sending operations to the wrong place.
@@ -524,81 +555,66 @@
     dismissedForeignViews = false; // re-evaluate the foreign-views notice for the new folder
   }
 
-  /** Open a vault path and load the tree (separate from the dialog — reused by the test bridge). */
-  /** Returns false when the switch did not happen: the open note's edits are not saved yet, or
-   *  another folder was opened before this one answered. Until the folder answers, the screen stays
-   *  on the folder it shows. */
-  async function loadVault(path: string): Promise<boolean> {
-    // preserve unsaved edits before switching vault
+  /** Goes to a folder the sidebar shows: the open note is left first (its edits kept). False when it
+   *  could not be left, or the folder is no longer shown. */
+  async function switchTo(state: FolderState): Promise<boolean> {
+    if (state === here) return true;
     if ((await leaveNote()) !== "saved") return false;
-    const mine = ++vaultLoads;
-    latestOpening = path;
-    const overtaken = () => mine !== vaultLoads;
-    const id = await registerRoot(path);
-    if (overtaken()) return false; // another folder was chosen while this one was being named
-    await closing.get(id);
-    if (overtaken()) return false;
-    const state = folders.of(id, () => new FolderState(id, path));
-    let opened: TreeNode[];
-    try {
-      opened = await openVault(id);
-    } catch (e) {
-      if (overtaken()) {
-        if (latestOpening !== path) letGo(id); // what it says is about a folder left behind
-        return false;
-      }
-      if (id !== root) folders.drop(id); // it did not open: nothing of it is kept
-      throw e;
-    }
-    if (overtaken()) {
-      if (latestOpening !== path) letGo(id); // opened after all, but another folder was chosen meanwhile
-      return false;
-    }
-    // The note on screen stayed open while the folder was opening, and may have been typed in:
-    // leaving it again is what keeps those edits (every way out of a note goes through here).
-    if ((await leaveNote()) !== "saved") {
-      if (latestOpening !== path || !overtaken()) letGo(id); // opened, but not shown
-      return false;
-    }
-    if (overtaken()) {
-      if (latestOpening !== path) letGo(id);
-      return false;
-    }
-    state.tree = opened;
+    if (!shown.includes(state) || state === here) return state === here;
     activate(state);
+    return true;
+  }
+
+  /** `fn`, run in `state`'s folder: the window goes to that folder first. */
+  function inFolder<A extends unknown[]>(state: FolderState, fn: (...args: A) => unknown) {
+    return async (...args: A): Promise<void> => {
+      if (await switchTo(state)) await fn(...args);
+    };
+  }
+
+  /**
+   * Reads what the window keeps of a folder that has just opened: its settings (carried out of the
+   * folder if an earlier version kept them there), publish choices, edits an earlier run could not
+   * write, and what other devices sent. `say`: what it found is told on screen (the folder the
+   * person opened, not one opening in the background).
+   */
+  async function prepareFolder(state: FolderState, wanted: () => boolean, say: boolean): Promise<void> {
+    const id = state.root;
+    const tell = (e: unknown) => {
+      if (say && wanted()) opError = friendlyError(e);
+      else console.warn(`Notes folder ${state.path}:`, e);
+    };
     // Before anything reads settings: they may still be inside the folder from an earlier
     // version, and this is what carries them out. Keeping every file is its own guarantee.
     try {
       const moved = await moveStateOutOfVault(id);
-      if (overtaken()) return false;
-      movedOut = worthShowing(moved) ? moved : null;
+      if (say && wanted()) movedOut = worthShowing(moved) ? moved : null;
     } catch (e) {
-      if (overtaken()) return false;
-      // A folder that could not be tidied still opens; the notes are what matter.
-      opError = friendlyError(e);
+      tell(e); // a folder that could not be tidied still opens; the notes are what matter
     }
+    if (!wanted()) return;
     // Settings a newer release saved are shown as defaults and never written over.
     let readOnly = false;
     try {
       readOnly = (await prepareSidecar(id)).readOnly;
     } catch (e) {
-      opError = friendlyError(e); // the folder still opens; writing is refused where it must be
+      tell(e); // the folder still opens; writing is refused where it must be
     }
-    if (overtaken()) return false;
+    if (!wanted()) return;
     const setAside = await state.nav.load(readOnly); // load favorites/order settings
     const viewsSetAside = await state.views.load(readOnly); // saved folder views (views.json)
     if (viewsSetAside) setAside.push(viewsSetAside);
     try {
       await state.publish.load();
     } catch (e) {
-      opError = friendlyError(e); // the folder still opens; the markers stay off
+      tell(e); // the folder still opens; the markers stay off
     }
-    if (overtaken()) return false;
-    settingsNotice = describeSettingsOnOpen(readOnly, setAside);
+    if (!wanted()) return;
+    if (say) settingsNotice = describeSettingsOnOpen(readOnly, setAside);
     // Edits an earlier run could not write to this folder's notes: try them now.
     try {
       const kept = await listStranded(id);
-      if (overtaken()) return false;
+      if (!wanted()) return;
       if (kept.length > 0) {
         save.adopt(id, kept);
         void save.flush();
@@ -608,7 +624,104 @@
     }
     // Take in what other devices sent and send what was recorded here — in the background.
     void backupStore.syncIfConnected(id);
+  }
+
+  /**
+   * Opens the folder at `path` without going to it: its tree, then what the window keeps of it. Null
+   * when it is no longer wanted by the time it answers (`wanted`), in which case it is let go —
+   * unless `keep()` says a later opening of the same folder needs it. Throws when it cannot open.
+   */
+  async function openFolder(
+    path: string,
+    wanted: () => boolean,
+    keep: () => boolean,
+    say: boolean,
+  ): Promise<FolderState | null> {
+    const id = await registerRoot(path);
+    if (!wanted()) return null;
+    await closing.get(id);
+    if (!wanted()) return null;
+    const existing = folders.get(id);
+    const state = existing ?? folders.of(id, () => new FolderState(id, path));
+    let opened: TreeNode[];
+    try {
+      opened = await openVault(id);
+    } catch (e) {
+      if (!wanted()) {
+        if (!keep()) letGo(id); // what it says is about a folder no longer wanted
+        return null;
+      }
+      if (!existing && id !== root) folders.drop(id); // it did not open: nothing of it is kept
+      throw e;
+    }
+    if (!wanted()) {
+      if (!keep()) letGo(id); // opened after all, but not wanted any more
+      return null;
+    }
+    state.tree = opened;
+    // A folder opened again by the person is read again (its settings may have changed on disk).
+    if (!existing || say) await prepareFolder(state, wanted, say);
+    if (!wanted()) {
+      if (!keep()) letGo(id);
+      return null;
+    }
+    return state;
+  }
+
+  /** Open a vault path and go to it (separate from the dialog — reused by the test bridge).
+   *  `alone`: the sidebar shows this folder only — the others are closed (the test bridge, which
+   *  opens one folder after another). Returns false when the switch did not happen: the open note's
+   *  edits are not saved yet, or another folder was opened before this one answered. Until the folder
+   *  answers, the screen stays on the folder it shows. */
+  async function loadVault(path: string, alone = true): Promise<boolean> {
+    // preserve unsaved edits before switching vault
+    if ((await leaveNote()) !== "saved") return false;
+    const mine = ++vaultLoads;
+    if (alone) aloneLoads++;
+    latestOpening = path;
+    const overtaken = () => mine !== vaultLoads;
+    const state = await openFolder(path, () => !overtaken(), () => latestOpening === path, true);
+    if (!state) return false;
+    // The note on screen stayed open while the folder was opening, and may have been typed in:
+    // leaving it again is what keeps those edits (every way out of a note goes through here).
+    if ((await leaveNote()) !== "saved" || overtaken()) {
+      if (latestOpening !== path || !overtaken()) letGo(state.root); // opened, but not shown
+      return false;
+    }
+    activate(state);
+    if (alone) for (const other of [...shown]) if (other !== state) letGo(other.root);
     return true;
+  }
+
+  /** Opens the device's other notes folders in the sidebar, one after another, in the background. */
+  async function openListedFolders(paths: string[]): Promise<void> {
+    const since = aloneLoads;
+    for (const path of paths) {
+      if (since !== aloneLoads) return; // the window was set to one folder meanwhile
+      const still = () => since === aloneLoads;
+      try {
+        const state = await openFolder(path, still, () => false, false);
+        if (state && still()) show(state);
+      } catch (e) {
+        // A folder of the list that is not there (a disconnected drive) is not opened.
+        console.warn(`Could not open the notes folder ${path}:`, e);
+      }
+    }
+  }
+
+  /** Takes a folder out of the sidebar. The folder and its notes stay where they are. */
+  async function removeFromSidebar(state: FolderState): Promise<void> {
+    if (state === here) {
+      const next = shown.find((f) => f !== state);
+      if (!next || !(await switchTo(next))) return; // the window always works in a folder
+    }
+    try {
+      takeList(await workspaceRemove(state.root));
+    } catch (e) {
+      opError = friendlyError(e);
+      return;
+    }
+    letGo(state.root);
   }
 
   /** Persist the opened vault as last-vault and auto-select the first note (wedge1 onboarding).
@@ -619,7 +732,9 @@
     localStorage.setItem(LAST_VAULT_KEY, rootPath);
     // The device's list of notes folders keeps every folder opened — the sidebar will show them.
     // Best effort: a list that cannot be written must not stop the folder from opening.
-    void workspaceAdd(rootPath).catch((e) => console.warn("Could not keep the notes folder in the list:", e));
+    void workspaceAdd(rootPath)
+      .then(takeList)
+      .catch((e) => console.warn("Could not keep the notes folder in the list:", e));
     if (!activePath) {
       const first = findFirstOpenableNote(tree, "", here?.nav.order ?? {});
       if (first) await handleSelect(first);
@@ -630,7 +745,7 @@
    *  Documents was unusable. Throws if no candidate base could be created. */
   async function openDefaultVault() {
     const dv = await ensureDefaultVault();
-    if (!(await loadVault(dv.path))) return;
+    if (!(await loadVault(dv.path, false))) return;
     // Documents was unusable → the vault landed elsewhere. Surface where, so the user always
     // knows where their notes live (data sovereignty) instead of a silent relocation.
     if (dv.fellBack && rootPath) vaultFallbackPath = rootPath;
@@ -651,10 +766,22 @@
     }
   }
 
+  /** «Add notes folder…»: the folder chosen joins the sidebar and the window goes to it. A folder
+   *  inside one the sidebar shows, or holding one, is refused — its notes would be in two places. */
   async function chooseVault() {
     const selected = await open({ directory: true, multiple: false });
     if (typeof selected === "string") {
-      if (!(await loadVault(selected))) return;
+      try {
+        takeList(await workspaceAdd(selected));
+      } catch (e) {
+        const said = friendlyError(e);
+        if (isNestingRefusal(said.raw)) {
+          opError = said;
+          return;
+        }
+        console.warn("Could not keep the notes folder in the list:", e); // it still opens
+      }
+      if (!(await loadVault(selected, false))) return;
       // A successful manual open clears any prior startup failure and is remembered as last-vault.
       staleVaultPath = null;
       startupError = null;
@@ -1688,7 +1815,13 @@
     // (`dev:e2e --embedded` sets VITE_TEXTREE_E2E); a shipped build is tree-shaken of it.
     if (import.meta.env.DEV || import.meta.env.VITE_TEXTREE_E2E === "1") {
       (window as unknown as { __textreeTest?: unknown }).__textreeTest = {
-        loadVault,
+        // One folder alone in the sidebar, as the window was before it showed several.
+        loadVault: (path: string) => loadVault(path),
+        // A folder that joins the sidebar beside those it shows, as «Add notes folder…» does.
+        addRoot: async (path: string) => {
+          takeList(await workspaceAdd(path));
+          return loadVault(path, false);
+        },
         publishTo: publishToDir,
         // Non-destructive read used by E2E to branch safely around the machine-global OS
         // keychain token (no test teardown exists for it — see byo_secret.rs).
@@ -1704,13 +1837,19 @@
         return null;
       });
       if (kept?.setAside) console.warn("The list of notes folders could not be read; it was kept at", kept.setAside);
+      if (kept) takeList(kept);
       const plan = decideStartup(
         localStorage.getItem(LAST_VAULT_KEY),
         kept?.roots.map((r) => r.path),
       );
       if (plan.action === "restore") {
         try {
-          if (await loadVault(plan.path)) await finalizeOpenedVault();
+          if (await loadVault(plan.path, false)) {
+            await finalizeOpenedVault();
+            // The device's other notes folders join the sidebar as they open.
+            const others = (kept?.roots ?? []).filter((r) => r.id !== root).map((r) => r.path);
+            void openListedFolders(others);
+          }
         } catch (e) {
           // The stored vault was moved/deleted, or is on a disconnected drive. Do NOT silently
           // create a new default over the user's intended vault — that could mask a temporary
@@ -1838,7 +1977,7 @@
         <button
           class="vault-name"
           onclick={chooseVault}
-          title={`Switch vault — current: ${rootPath}`}
+          title={`Add notes folder… — this one: ${rootPath}`}
         ><Icon name="folder" /><span class="vault-label">{vaultName(rootPath ?? "")}</span></button>
       {/if}
       <AppMenu {commands} onRunCommand={(c) => c.run()} onOpenPalette={() => palette.show()} />
@@ -1883,42 +2022,96 @@
       {/if}
       <!-- Dropping outside a node (empty area) moves it to the vault root. Node drops are stopPropagation'd.
            This area is the "vault root drop zone" wrapping the tree, so it is marked as a group. -->
-      <div
-        class="tree-root"
-        role="group"
-        aria-label="Vault root — drop here to move to the root"
-        ondragover={(e) => {
-          e.preventDefault();
-          if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-        }}
-        ondrop={(e) => {
-          e.preventDefault();
-          const picked = decodePicked(e.dataTransfer?.getData(DRAG_MIME));
-          if (!picked || !root) return;
-          if (picked.root !== root) refuseAcrossFolders();
-          else handleMove(picked.path, "");
-        }}
-      >
-        {#if here}
-          <TreeView
-            folder={here}
-            top
-            nodes={tree}
-            parentPath={""}
-            onselect={handleSelect}
-            onmove={handleMove}
-            onadopt={handleAdopt}
-            onrename={(node) => beginTreeRename(node)}
-            ondelete={handleDelete}
-            onfavorite={(node) => here?.nav.toggleFavorite(node.path)}
-            oncommitrename={commitTreeRename}
-            oncancelrename={cancelTreeRename}
-            onforeign={refuseAcrossFolders}
-            editingPath={renamingPath}
-            selectedPath={selectedNode?.path ?? null}
-          />
-        {/if}
-      </div>
+      {#if shown.length > 1}
+        <!-- Several notes folders: each under its own name; working in one makes it the folder the
+             window is in (the note open in another is left first). -->
+        {#each shown as f (f.root)}
+          <section class="root-section" aria-label={sidebarName({ path: f.path, label: listLabels[f.root] })}>
+            <div class="root-head" class:active={f === here}>
+              <button class="root-name" onclick={() => void switchTo(f)} title={f.path}
+                ><Icon name="folder" /><span class="vault-label"
+                  >{sidebarName({ path: f.path, label: listLabels[f.root] })}</span
+                ></button>
+              <button
+                class="root-remove"
+                onclick={() => void removeFromSidebar(f)}
+                title="Remove from sidebar — the folder and its notes stay where they are."
+                aria-label="Remove from sidebar"><Icon name="x" size={12} /></button>
+            </div>
+            <div
+              class="tree-root"
+              role="group"
+              aria-label="Top of this notes folder — drop here to move to the top"
+              ondragover={(e) => {
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+              }}
+              ondrop={(e) => {
+                e.preventDefault();
+                const picked = decodePicked(e.dataTransfer?.getData(DRAG_MIME));
+                if (!picked) return;
+                if (picked.root !== f.root) refuseAcrossFolders();
+                else void inFolder(f, handleMove)(picked.path, "");
+              }}
+            >
+              <TreeView
+                folder={f}
+                top
+                nodes={f.tree}
+                parentPath={""}
+                onselect={inFolder(f, handleSelect)}
+                onmove={inFolder(f, handleMove)}
+                onadopt={inFolder(f, handleAdopt)}
+                onrename={inFolder(f, (node: TreeNode) => beginTreeRename(node))}
+                ondelete={inFolder(f, handleDelete)}
+                onfavorite={(node) => f.nav.toggleFavorite(node.path)}
+                oncommitrename={f === here ? commitTreeRename : async () => null}
+                oncancelrename={cancelTreeRename}
+                onforeign={refuseAcrossFolders}
+                editingPath={f === here ? renamingPath : null}
+                selectedPath={f === here ? (selectedNode?.path ?? null) : null}
+              />
+            </div>
+          </section>
+        {/each}
+      {:else}
+        <div
+          class="tree-root"
+          role="group"
+          aria-label="Vault root — drop here to move to the root"
+          ondragover={(e) => {
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+          }}
+          ondrop={(e) => {
+            e.preventDefault();
+            const picked = decodePicked(e.dataTransfer?.getData(DRAG_MIME));
+            if (!picked || !root) return;
+            if (picked.root !== root) refuseAcrossFolders();
+            else handleMove(picked.path, "");
+          }}
+        >
+          {#if here}
+            <TreeView
+              folder={here}
+              top
+              nodes={tree}
+              parentPath={""}
+              onselect={handleSelect}
+              onmove={handleMove}
+              onadopt={handleAdopt}
+              onrename={(node) => beginTreeRename(node)}
+              ondelete={handleDelete}
+              onfavorite={(node) => here?.nav.toggleFavorite(node.path)}
+              oncommitrename={commitTreeRename}
+              oncancelrename={cancelTreeRename}
+              onforeign={refuseAcrossFolders}
+              editingPath={renamingPath}
+              selectedPath={selectedNode?.path ?? null}
+            />
+          {/if}
+        </div>
+      {/if}
     {:else}
       <p class="hint">{NO_VAULT_HINT}</p>
     {/if}
@@ -2931,6 +3124,59 @@
   /* Fill the remaining height so the empty area below the tree is also a drop target (move to root). */
   .tree-root {
     min-height: 80px;
+  }
+  .root-section + .root-section {
+    border-top: 1px solid var(--border);
+    margin-top: var(--sp-1);
+    padding-top: var(--sp-1);
+  }
+  .root-section .tree-root {
+    min-height: var(--sp-4);
+  }
+  .root-head {
+    display: flex;
+    align-items: center;
+  }
+  .root-name {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    font: inherit;
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-semibold);
+    text-align: left;
+    padding: var(--sp-1) var(--sp-2);
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-muted);
+  }
+  .root-head.active .root-name {
+    color: var(--text-normal);
+  }
+  .root-name:hover,
+  .root-remove:hover {
+    background: var(--bg-hover);
+  }
+  .root-name:focus-visible,
+  .root-remove:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .root-remove {
+    display: flex;
+    padding: var(--sp-1);
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    visibility: hidden;
+  }
+  .root-head:hover .root-remove,
+  .root-remove:focus-visible {
+    visibility: visible;
   }
   .tree-root:focus {
     outline: none;
