@@ -90,12 +90,39 @@ test("taking a notes folder out of the sidebar leaves the folder and its notes w
     await loadVault(page, a);
     expect(await addRoot(b)).toBe(true);
     const bName = new RegExp(b.split("/").pop()!);
-    await section(bName).hover();
-    await section(bName).getByRole("button", { name: "Remove from sidebar" }).click();
+    await section(bName).getByRole("button", { name: /Notes folder menu/ }).click();
+    await page.getByRole("menuitem", { name: "Remove from sidebar" }).click();
     await expect(section(bName)).toHaveCount(0);
     expect(listVaultDir(b, "")).toContain("b.md");
     // One folder left: the sidebar shows it as it always did, without a name above it.
     await expect(page.getByRole("treeitem", { name: /^a/ })).toBeVisible();
+  } finally {
+    await loadVault(page, a);
+    removeTempVault(a);
+    removeTempVault(b);
+  }
+});
+
+test("a notes folder is named and moved in the sidebar, and the folder on disk keeps its name", async () => {
+  const a = createTempVault({ "a.md": "# a\n" });
+  const b = createTempVault({ "b.md": "# b\n" });
+  try {
+    await loadVault(page, a);
+    await tauriInvoke(page, "workspace_add", { path: a }); // listed first, as a folder opened before
+    expect(await addRoot(b)).toBe(true);
+    const bName = new RegExp(b.split("/").pop()!);
+    await section(bName).getByRole("button", { name: /Notes folder menu/ }).click();
+    await page.getByRole("menuitem", { name: "Rename in sidebar…" }).click();
+    const input = page.getByRole("textbox", { name: "Name in sidebar" });
+    await input.fill("Home notes");
+    await input.press("Enter");
+    await expect(section(/Home notes/)).toBeVisible();
+    expect(listVaultDir(b, "")).toContain("b.md"); // the folder itself is as it was
+
+    await section(/Home notes/).getByRole("button", { name: /Notes folder menu/ }).click();
+    await page.getByRole("menuitem", { name: "Move up" }).click();
+    const names = await page.locator(".root-section").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+    expect(names[0]).toBe("Home notes");
   } finally {
     await loadVault(page, a);
     removeTempVault(a);

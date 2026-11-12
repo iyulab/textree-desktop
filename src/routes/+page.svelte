@@ -12,6 +12,8 @@
     workspaceAdd,
     workspaceList,
     workspaceRemove,
+    workspaceRelabel,
+    workspaceReorder,
     type Workspace,
     listTree,
     readNote,
@@ -66,7 +68,8 @@
   import { layout } from "$lib/layout.svelte";
   import TreeView, { DRAG_MIME } from "$lib/TreeView.svelte";
   import { decodePicked, NOT_ACROSS_FOLDERS } from "$lib/treeDrag.helpers";
-  import { isNestingRefusal, sidebarName } from "$lib/workspace.helpers";
+  import { isNestingRefusal, movedRoot, sidebarName } from "$lib/workspace.helpers";
+  import RootMenu from "$lib/RootMenu.svelte";
   import Editor from "$lib/Editor.svelte";
   import Backlinks from "$lib/Backlinks.svelte";
   import RelatedNotes from "$lib/RelatedNotes.svelte";
@@ -706,6 +709,31 @@
         // A folder of the list that is not there (a disconnected drive) is not opened.
         console.warn(`Could not open the notes folder ${path}:`, e);
       }
+    }
+  }
+
+  // The folder whose sidebar name is being typed, if any.
+  let relabeling = $state<RootId | null>(null);
+
+  /** Names a folder in the sidebar; an empty name goes back to the folder's own. */
+  async function relabel(state: FolderState, label: string): Promise<void> {
+    relabeling = null;
+    try {
+      takeList(await workspaceRelabel(state.root, label));
+    } catch (e) {
+      opError = friendlyError(e);
+    }
+  }
+
+  /** Moves a folder up (−1) or down (+1) in the sidebar. */
+  async function moveInSidebar(state: FolderState, delta: number): Promise<void> {
+    const order = shown.map((f) => f.root);
+    const next = movedRoot(order, state.root, delta);
+    if (next === order) return;
+    try {
+      takeList(await workspaceReorder([...next]));
+    } catch (e) {
+      opError = friendlyError(e);
     }
   }
 
@@ -2028,15 +2056,35 @@
         {#each shown as f (f.root)}
           <section class="root-section" aria-label={sidebarName({ path: f.path, label: listLabels[f.root] })}>
             <div class="root-head" class:active={f === here}>
-              <button class="root-name" onclick={() => void switchTo(f)} title={f.path}
-                ><Icon name="folder" /><span class="vault-label"
-                  >{sidebarName({ path: f.path, label: listLabels[f.root] })}</span
-                ></button>
-              <button
-                class="root-remove"
-                onclick={() => void removeFromSidebar(f)}
-                title="Remove from sidebar — the folder and its notes stay where they are."
-                aria-label="Remove from sidebar"><Icon name="x" size={12} /></button>
+              {#if relabeling === f.root}
+                <!-- svelte-ignore a11y_autofocus -->
+                <input
+                  class="root-rename"
+                  aria-label="Name in sidebar"
+                  value={sidebarName({ path: f.path, label: listLabels[f.root] })}
+                  autofocus
+                  onkeydown={(e) => {
+                    if (e.key === "Enter") void relabel(f, e.currentTarget.value);
+                    else if (e.key === "Escape") relabeling = null;
+                  }}
+                  onblur={(e) => {
+                    if (relabeling === f.root) void relabel(f, e.currentTarget.value);
+                  }}
+                />
+              {:else}
+                <button class="root-name" onclick={() => void switchTo(f)} title={f.path}
+                  ><Icon name="folder" /><span class="vault-label"
+                    >{sidebarName({ path: f.path, label: listLabels[f.root] })}</span
+                  ></button>
+              {/if}
+              <RootMenu
+                name={sidebarName({ path: f.path, label: listLabels[f.root] })}
+                canMoveUp={shown[0] !== f}
+                canMoveDown={shown[shown.length - 1] !== f}
+                onrename={() => (relabeling = f.root)}
+                onmove={(delta) => void moveInSidebar(f, delta)}
+                onremove={() => void removeFromSidebar(f)}
+              />
             </div>
             <div
               class="tree-root"
@@ -3156,27 +3204,24 @@
   .root-head.active .root-name {
     color: var(--text-normal);
   }
-  .root-name:hover,
-  .root-remove:hover {
+  .root-name:hover {
     background: var(--bg-hover);
   }
-  .root-name:focus-visible,
-  .root-remove:focus-visible {
+  .root-name:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
-  .root-remove {
-    display: flex;
-    padding: var(--sp-1);
-    border: none;
-    background: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    visibility: hidden;
-  }
-  .root-head:hover .root-remove,
-  .root-remove:focus-visible {
-    visibility: visible;
+  .root-rename {
+    flex: 1;
+    min-width: 0;
+    margin: 0 var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    font: inherit;
+    font-size: var(--font-size-small);
+    color: var(--text-normal);
+    background: var(--bg-primary);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-s);
   }
   .tree-root:focus {
     outline: none;
