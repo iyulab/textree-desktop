@@ -36,11 +36,15 @@ test("expand/collapse children via container chevron + persist", async () => {
     await expect(page.getByRole("treeitem", { name: /child1/ })).toHaveCount(0);
     await expect(page.getByRole("treeitem", { name: /child2/ })).toHaveCount(0);
 
-    // Collapsed state persists (1 path stored, in this vault's own list).
-    const stored = await page.evaluate(() => {
-      const key = Object.keys(localStorage).find((k) => k.startsWith("textree-tree-collapsed:"));
+    // Collapsed state persists (1 path stored, in this vault's own list — earlier specs leave
+    // lists of their own folders behind, so the key is picked by this vault's folder name).
+    const folderName = vault.split(/[\\/]/).pop() ?? vault;
+    const stored = await page.evaluate((name) => {
+      const key = Object.keys(localStorage).find(
+        (k) => k.startsWith("textree-tree-collapsed:") && k.endsWith(name),
+      );
       return key ? JSON.parse(localStorage.getItem(key) ?? "[]") : [];
-    });
+    }, folderName);
     expect(stored).toEqual(["folder"]);
 
     // Expand → children return.
