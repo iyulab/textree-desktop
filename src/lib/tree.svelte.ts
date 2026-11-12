@@ -10,7 +10,7 @@
 import type { PickedNode } from "./treeDrag.helpers";
 import { readVaultList, writeVaultList } from "./vaultLocal.helpers";
 
-const COLLAPSE_KEY = "textree-tree-collapsed";
+export const COLLAPSE_KEY = "textree-tree-collapsed";
 
 const storage = () => (typeof localStorage === "undefined" ? undefined : localStorage);
 

@@ -14,6 +14,8 @@
     workspaceList,
     workspaceRemove,
     workspaceRelabel,
+    workspaceRelocate,
+    type WorkspaceRoot,
     workspaceReorder,
     type Workspace,
     listTree,
@@ -69,7 +71,8 @@
   import { layout } from "$lib/layout.svelte";
   import TreeView, { DRAG_MIME } from "$lib/TreeView.svelte";
   import { decodePicked, NOT_ACROSS_FOLDERS } from "$lib/treeDrag.helpers";
-  import { isNestingRefusal, movedRoot, sidebarName } from "$lib/workspace.helpers";
+  import { inListOrder, isFolderNotFound, isNestingRefusal, movedRoot, sidebarName } from "$lib/workspace.helpers";
+  import { moveVaultLists } from "$lib/vaultLocal.helpers";
   import RootMenu from "$lib/RootMenu.svelte";
   import Editor from "$lib/Editor.svelte";
   import Backlinks from "$lib/Backlinks.svelte";
@@ -97,7 +100,7 @@
   import { contextLabel } from "$lib/titlebar.helpers";
   import { buildCommands, activeCommands, type PaletteActions } from "$lib/commands";
   import { matchKeybinding, isFormFieldTag } from "$lib/keybinding.helpers";
-  import { mergeOrder } from "$lib/nav.svelte";
+  import { mergeOrder, RECENT_KEY } from "$lib/nav.svelte";
   import { describeSettingsOnOpen } from "$lib/settingsFile.helpers";
   import { moveInArray, findFirstOpenableNote } from "$lib/nav.helpers";
   import { checkForUpdate, type UpdateInfo } from "$lib/updater";
@@ -115,7 +118,7 @@
   import { backupStore } from "$lib/remoteSync.svelte";
   import { exchangeMessages, isNewFailure, needsAttention } from "$lib/remoteSync.helpers";
   import { initialNoteSaveState, NoteSave, type LeaveOutcome, type Remap } from "$lib/noteSave";
-  import { tree as treeView } from "$lib/tree.svelte";
+  import { COLLAPSE_KEY, tree as treeView } from "$lib/tree.svelte";
   import {
     noteStem,
     parentDir,
@@ -500,10 +503,30 @@
   // the background from before then is not wanted in the sidebar.
   let aloneLoads = 0;
 
+  // The device's notes folders that were not there when the window tried to open them — moved,
+  // renamed or deleted, or on a drive that is not connected. The sidebar shows each where it was,
+  // with «Locate…»; the window tries them again when it is focused.
+  let missing = $state<WorkspaceRoot[]>([]);
+
+  // What the sidebar shows, open folders and folders not found together, in the list's order.
+  type SidebarEntry = { id: string; f: FolderState; m?: undefined } | { id: string; f?: undefined; m: WorkspaceRoot };
+  const sidebarEntries = $derived(
+    inListOrder<SidebarEntry>(
+      [...shown.map((f) => ({ id: f.root as string, f })), ...missing.map((m) => ({ id: m.id as string, m }))],
+      (e) => e.id,
+      listOrder,
+    ),
+  );
+
   function takeList(ws: Workspace): void {
     listOrder = ws.roots.map((r) => r.id);
     listLabels = Object.fromEntries(ws.roots.map((r) => [r.id, r.label]));
     shown = sortedByList(shown);
+    missing = missing.filter((m) => listOrder.includes(m.id)); // one taken out of the sidebar
+  }
+
+  function markMissing(r: WorkspaceRoot): void {
+    if (!missing.some((m) => m.id === r.id)) missing = [...missing, r];
   }
 
   function sortedByList(list: FolderState[]): FolderState[] {
@@ -694,22 +717,113 @@
     }
     activate(state);
     if (alone) for (const other of [...shown]) if (other !== state) letGo(other.root);
+    if (alone) missing = []; // one folder alone: nor does the sidebar show the ones not found
     return true;
   }
 
   /** Opens the device's other notes folders in the sidebar, one after another, in the background. */
-  async function openListedFolders(paths: string[]): Promise<void> {
+  async function openListedFolders(roots: WorkspaceRoot[]): Promise<void> {
     const since = aloneLoads;
-    for (const path of paths) {
+    for (const r of roots) {
       if (since !== aloneLoads) return; // the window was set to one folder meanwhile
       const still = () => since === aloneLoads;
       try {
-        const state = await openFolder(path, still, () => false, false);
+        const state = await openFolder(r.path, still, () => false, false);
         if (state && still()) show(state);
       } catch (e) {
-        // A folder of the list that is not there (a disconnected drive) is not opened.
-        console.warn(`Could not open the notes folder ${path}:`, e);
+        // A folder of the list that is not there (a disconnected drive) is shown as not found.
+        if (isFolderNotFound(e)) markMissing(r);
+        else console.warn(`Could not open the notes folder ${r.path}:`, e);
       }
+    }
+  }
+
+  /** Goes to the first of `roots` that opens, then opens the rest in the background. False when
+   *  none opened. Folders not there are shown as not found. */
+  async function startFromList(roots: WorkspaceRoot[]): Promise<boolean> {
+    for (const [i, r] of roots.entries()) {
+      try {
+        if (await loadVault(r.path, false)) {
+          await finalizeOpenedVault();
+          void openListedFolders(roots.slice(i + 1));
+          return true;
+        }
+      } catch (e) {
+        if (isFolderNotFound(e)) markMissing(r);
+        else console.warn(`Could not open the notes folder ${r.path}:`, e);
+      }
+    }
+    return false;
+  }
+
+  /** «Locate…»: the person shows where a folder not found is now. It keeps its place and name in the
+   *  sidebar, and what the app keeps for it (favorites, order, views, its remote, kept edits) moves
+   *  with it. */
+  async function locate(m: WorkspaceRoot, chosen?: string): Promise<void> {
+    const selected = chosen ?? (await open({ directory: true, multiple: false, title: `Locate ${sidebarName(m)}` }));
+    if (typeof selected !== "string") return;
+    let done;
+    try {
+      done = await workspaceRelocate(m.id, selected);
+    } catch (e) {
+      opError = friendlyError(e);
+      return;
+    }
+    moveVaultLists(localStorage, [RECENT_KEY, COLLAPSE_KEY], m.path, selected);
+    if (localStorage.getItem(LAST_VAULT_KEY) === m.path) localStorage.setItem(LAST_VAULT_KEY, selected);
+    missing = missing.filter((x) => x.id !== m.id);
+    takeList(done.workspace);
+    try {
+      const state = await openFolder(selected, () => true, () => false, true);
+      if (!state) return;
+      if (here) show(state);
+      else if ((await leaveNote()) === "saved") {
+        activate(state);
+        staleVaultPath = null;
+        startupError = null;
+        await finalizeOpenedVault();
+      }
+    } catch (e) {
+      opError = friendlyError(e);
+    }
+    if (done.settings === "keptApart") {
+      settingsNotice = `${sidebarName(m)} already had settings in its new place — those are used. The ones it had before were kept, not changed.`;
+    }
+  }
+
+  /** Takes a folder not found out of the sidebar. Nothing is deleted. */
+  async function forgetMissing(m: WorkspaceRoot): Promise<void> {
+    try {
+      takeList(await workspaceRemove(m.id));
+    } catch (e) {
+      opError = friendlyError(e);
+    }
+  }
+
+  // Trying the folders not found again, so a drive connected meanwhile brings its folder back.
+  let retrying = false;
+  async function retryMissing(): Promise<void> {
+    if (retrying || missing.length === 0) return;
+    retrying = true;
+    try {
+      for (const m of [...missing]) {
+        try {
+          const state = await openFolder(m.path, () => true, () => false, false);
+          if (!state) continue;
+          missing = missing.filter((x) => x.id !== m.id);
+          if (here) show(state);
+          else if ((await leaveNote()) === "saved") {
+            activate(state);
+            staleVaultPath = null;
+            startupError = null;
+            await finalizeOpenedVault();
+          }
+        } catch (e) {
+          if (!isFolderNotFound(e)) console.warn(`Could not open the notes folder ${m.path}:`, e);
+        }
+      }
+    } finally {
+      retrying = false;
     }
   }
 
@@ -1851,6 +1965,19 @@
           takeList(await workspaceAdd(path));
           return loadVault(path, false);
         },
+        // The device's list read again and its folders not shown opened, as at startup.
+        openList: async () => {
+          const ws = await workspaceList();
+          takeList(ws);
+          await openListedFolders(ws.roots.filter((r) => !shown.some((f) => f.root === r.id)));
+        },
+        // «Locate…» with the folder chosen, as the dialog would answer.
+        locate: async (from: string, to: string) => {
+          const m = missing.find((x) => x.path === from);
+          if (m) await locate(m, to);
+          return m !== undefined;
+        },
+        retryMissing,
         publishTo: publishToDir,
         // Non-destructive read used by E2E to branch safely around the machine-global OS
         // keychain token (no test teardown exists for it — see byo_secret.rs).
@@ -1876,10 +2003,17 @@
           if (await loadVault(plan.path, false)) {
             await finalizeOpenedVault();
             // The device's other notes folders join the sidebar as they open.
-            const others = (kept?.roots ?? []).filter((r) => r.id !== root).map((r) => r.path);
+            const others = (kept?.roots ?? []).filter((r) => r.id !== root);
             void openListedFolders(others);
           }
         } catch (e) {
+          const listed = kept?.roots ?? [];
+          if (isFolderNotFound(e)) {
+            const lost = listed.find((r) => r.path === plan.path);
+            if (lost) markMissing(lost);
+            // Another of the device's folders opens instead; this one waits in the sidebar.
+            if (await startFromList(listed.filter((r) => r.path !== plan.path))) return;
+          }
           // The stored vault was moved/deleted, or is on a disconnected drive. Do NOT silently
           // create a new default over the user's intended vault — that could mask a temporary
           // outage and look like their notes vanished. Surface a recovery prompt instead
@@ -1912,6 +2046,10 @@
     }
 
     const win = getCurrentWindow();
+    // A drive connected, or a folder put back, while the window was in the background.
+    const unlistenFocus = win.onFocusChanged(({ payload: focused }) => {
+      if (focused) void retryMissing();
+    });
     const unlistenClose = win.onCloseRequested(async (event) => {
       // What was typed into an alternative is written first; if it cannot be, the window stays open
       // with the failure on screen.
@@ -1958,6 +2096,7 @@
 
     return () => {
       void unlistenClose.then((un) => un());
+      void unlistenFocus.then((un) => un());
       void unlistenSyncP.then((un) => un());
     };
   });
@@ -2051,10 +2190,34 @@
       {/if}
       <!-- Dropping outside a node (empty area) moves it to the vault root. Node drops are stopPropagation'd.
            This area is the "vault root drop zone" wrapping the tree, so it is marked as a group. -->
-      {#if shown.length > 1}
+      {#if sidebarEntries.length > 1}
         <!-- Several notes folders: each under its own name; working in one makes it the folder the
              window is in (the note open in another is left first). -->
-        {#each shown as f (f.root)}
+        {#each sidebarEntries as e (e.id)}
+          {#if e.m}
+            {@const m = e.m}
+            <!-- A folder of the device's list that is not there: where it was, and how to find it. -->
+            <section class="root-section" aria-label={sidebarName(m)}>
+              <div class="root-head">
+                <span class="root-name gone" title={m.path}
+                  ><Icon name="folder" /><span class="vault-label">{sidebarName(m)}</span></span
+                >
+              </div>
+              <div class="root-missing" title={m.path}>
+                <p>Notes folder not found</p>
+                <div class="root-missing-actions">
+                  <button onclick={() => void locate(m)} title="Show where this folder is now"
+                    >Locate…</button
+                  >
+                  <button
+                    onclick={() => void forgetMissing(m)}
+                    title="The sidebar stops showing it. Nothing is deleted.">Remove from sidebar</button
+                  >
+                </div>
+              </div>
+            </section>
+          {:else if e.f}
+          {@const f = e.f}
           <section class="root-section" aria-label={sidebarName({ path: f.path, label: listLabels[f.root] })}>
             <div class="root-head" class:active={f === here}>
               <button
@@ -2132,6 +2295,7 @@
               </div>
             {/if}
           </section>
+          {/if}
         {/each}
       {:else}
         <div
@@ -2303,6 +2467,9 @@
           <p class="empty-sub">Couldn't open your last vault — it may have moved, been deleted, or be on a disconnected drive.</p>
           <p class="empty-path">{staleVaultPath}</p>
           <div class="empty-actions">
+            {#each missing.filter((m) => m.path === staleVaultPath) as m (m.id)}
+              <button class="open-cta" onclick={() => void locate(m)}>Locate…</button>
+            {/each}
             <button class="open-cta" onclick={chooseVault}>Open a folder</button>
             <button class="open-cta secondary" onclick={startWithDefaultVault}>Start with a default vault</button>
           </div>
@@ -3211,6 +3378,35 @@
     background: none;
     cursor: pointer;
     color: var(--text-muted);
+  }
+  .root-name.gone {
+    cursor: default;
+    opacity: 0.6;
+  }
+  .root-missing {
+    padding: 0 var(--sp-2) var(--sp-1) var(--sp-5);
+    font-size: var(--font-size-smaller);
+    color: var(--text-muted);
+  }
+  .root-missing p {
+    margin: 0 0 var(--sp-1);
+  }
+  .root-missing-actions {
+    display: flex;
+    gap: var(--sp-1);
+    flex-wrap: wrap;
+  }
+  .root-missing-actions button {
+    font: inherit;
+    padding: var(--sp-1) var(--sp-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-s);
+    background: none;
+    color: var(--text-normal);
+    cursor: pointer;
+  }
+  .root-missing-actions button:hover {
+    background: var(--bg-hover);
   }
   .root-head.active .root-name {
     color: var(--text-normal);

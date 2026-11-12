@@ -65,6 +65,23 @@ export async function workspaceRelabel(id: RootId, label: string): Promise<Works
   return invoke<Workspace>("workspace_relabel", { id, label });
 }
 
+/** What became of a located folder's settings: moved with it, none to move, or kept where they
+ *  were because its new place already had its own (those are used — nothing is overwritten). */
+export type SettingsCarried = "moved" | "none" | "keptApart";
+
+/** The sidebar's list after a folder was pointed at its new place, and the folder's id now. */
+export interface Relocated {
+  workspace: Workspace;
+  id: RootId;
+  settings: SettingsCarried;
+}
+
+/** Points a notes folder of the sidebar at where it now is («Locate…»): it keeps its place, its
+ *  name and its settings. */
+export async function workspaceRelocate(id: RootId, path: string): Promise<Relocated> {
+  return invoke<Relocated>("workspace_relocate", { id, path });
+}
+
 export async function openVault(rootId: RootId): Promise<TreeNode[]> {
   return invoke<TreeNode[]>("open_vault", { rootId });
 }

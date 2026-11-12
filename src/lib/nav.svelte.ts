@@ -18,7 +18,7 @@ import { readVaultList, writeVaultList } from "./vaultLocal.helpers";
 // Re-export so components can import the order helper alongside from `$lib/nav.svelte`.
 export { mergeOrder } from "./nav.helpers";
 
-const RECENT_KEY = "textree-recent";
+export const RECENT_KEY = "textree-recent";
 
 const storage = () => (typeof localStorage === "undefined" ? undefined : localStorage);
 

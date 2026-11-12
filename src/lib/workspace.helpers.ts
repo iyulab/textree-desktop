@@ -45,3 +45,25 @@ export function isNestingRefusal(message: string): boolean {
     message.endsWith(" is inside this folder.")
   );
 }
+
+/** What opening or locating a notes folder says when there is no folder at its path (the backend's
+ *  `NOT_FOUND`, read as it is). */
+export const FOLDER_NOT_FOUND = "Notes folder not found";
+
+/** Whether opening a folder failed because there is no folder at its path — it was moved, renamed
+ *  or deleted, or its drive is not connected — rather than for another reason. */
+export function isFolderNotFound(error: unknown): boolean {
+  return String(error).includes(FOLDER_NOT_FOUND);
+}
+
+/**
+ * `items` in the order of the device's list `order` (ids), those it does not name after, as they
+ * came. The sidebar's open and not-found folders are shown together in this order.
+ */
+export function inListOrder<T>(items: readonly T[], idOf: (item: T) => string, order: readonly string[]): T[] {
+  const rank = (item: T) => {
+    const i = order.indexOf(idOf(item));
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  return [...items].sort((x, y) => rank(x) - rank(y));
+}
