@@ -2803,6 +2803,23 @@ fn note_alternative(
     }))
 }
 
+/// The open alternative `id` of a note in this folder. An enclosing repository may hold alternatives
+/// of notes in other folders beside it; this folder's commands neither read nor change those.
+fn own_alternative(
+    prepared: &crate::git_engine::VaultRepo,
+    id: &str,
+) -> Result<crate::alternatives::Alternative, String> {
+    let alternative =
+        crate::alternatives::get(prepared.repo(), id).map_err(|e| e.message().to_string())?;
+    if prepared
+        .path_in_vault(Path::new(&alternative.path))
+        .is_none()
+    {
+        return Err("no such alternative".into());
+    }
+    Ok(alternative)
+}
+
 /// The repository of a folder something has been recorded in, refusing while it is busy.
 fn writable_history(root: &Path) -> Result<crate::git_engine::VaultRepo, String> {
     let prepared =
@@ -2857,7 +2874,7 @@ pub fn alternative_text(root: String, id: String) -> Result<String, String> {
     let prepared =
         history_repo(Path::new(&root))?.ok_or_else(|| "no such alternative".to_string())?;
     let repo = prepared.repo();
-    let alternative = crate::alternatives::get(repo, &id).map_err(|e| e.message().to_string())?;
+    let alternative = own_alternative(&prepared, &id)?;
     let bytes = crate::alternatives::content(repo, &alternative)
         .map_err(|e| e.message().to_string())?
         .unwrap_or_default();
@@ -2878,6 +2895,7 @@ pub fn add_alternative_version(
     let _turn = crate::drafts::TURN
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    own_alternative(&prepared, &id)?;
     let oid =
         crate::alternatives::record(repo, &id, text.as_bytes(), &message, &author, &committer)
             .map_err(|e| e.message().to_string())?;
@@ -2942,7 +2960,7 @@ pub fn set_aside_alternative(root: String, id: String) -> Result<(), String> {
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let drafts = drafts_dir(root_p)?;
-    let alternative = crate::alternatives::get(repo, &id).map_err(|e| e.message().to_string())?;
+    let alternative = own_alternative(&prepared, &id)?;
     add_draft_as_version(repo, &drafts, &alternative)?;
     crate::alternatives::end(repo, &id).map_err(|e| e.message().to_string())?;
     forget_draft(&drafts, &id);
@@ -2999,8 +3017,7 @@ fn forget_draft(drafts: &Path, id: &str) {
 pub fn alternative_draft(root: String, id: String) -> Result<Option<String>, String> {
     let root_p = Path::new(&root);
     let prepared = history_repo(root_p)?.ok_or_else(|| "no such alternative".to_string())?;
-    let alternative =
-        crate::alternatives::get(prepared.repo(), &id).map_err(|e| e.message().to_string())?;
+    let alternative = own_alternative(&prepared, &id)?;
     crate::drafts::read(&draft_file(&drafts_dir(root_p)?, &alternative)?).map_err(|e| e.to_string())
 }
 
@@ -3014,8 +3031,7 @@ pub fn write_alternative_draft(root: String, id: String, text: String) -> Result
     let _turn = crate::drafts::TURN
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let alternative =
-        crate::alternatives::get(prepared.repo(), &id).map_err(|e| e.message().to_string())?;
+    let alternative = own_alternative(&prepared, &id)?;
     atomic_write_beside(&draft_file(&drafts_dir(root_p)?, &alternative)?, &text)
         .map_err(|e| e.to_string())
 }
@@ -5320,6 +5336,38 @@ mod tests {
             "other take",
             "the last state on disk came back"
         );
+    }
+
+    #[test]
+    fn a_folder_neither_reads_nor_changes_the_alternatives_of_a_folder_beside_it() {
+        // Two notes folders inside one repository share where alternatives are kept.
+        let tmp = TempDir::new().unwrap();
+        git2::Repository::init(tmp.path()).unwrap();
+        let (here, beside) = (tmp.path().join("here"), tmp.path().join("beside"));
+        std::fs::create_dir_all(&here).unwrap();
+        std::fs::create_dir_all(&beside).unwrap();
+        record_note(&here, "own.md", "own");
+        let theirs = record_note(&beside, "n.md", "first");
+        let (here_s, beside_s) = (
+            here.to_string_lossy().to_string(),
+            beside.to_string_lossy().to_string(),
+        );
+        let started = start_alternative(beside_s.clone(), theirs).unwrap();
+        let id = started.id.clone();
+
+        assert!(list_alternatives(here_s.clone()).unwrap().is_empty());
+        assert!(alternative_text(here_s.clone(), id.clone()).is_err());
+        assert!(
+            add_alternative_version(here_s.clone(), id.clone(), "x".into(), "m".into()).is_err()
+        );
+        assert!(write_alternative_draft(here_s.clone(), id.clone(), "typed".into()).is_err());
+        assert!(alternative_draft(here_s.clone(), id.clone()).is_err());
+        assert!(set_aside_alternative(here_s, id.clone()).is_err());
+
+        let still = list_alternatives(beside_s.clone()).unwrap();
+        assert_eq!(still.len(), 1, "still open in its own folder");
+        assert!(!still[0].differs, "and unchanged");
+        assert_eq!(alternative_text(beside_s, id).unwrap(), "first");
     }
 
     #[test]
