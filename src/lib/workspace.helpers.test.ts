@@ -6,7 +6,7 @@ const id = (s: string) => s as RootId;
 
 describe("sidebar names", () => {
   it("is the folder's own name, whichever separator its path uses", () => {
-    expect(folderName("/Users/me/notes")).toBe("notes");
+    expect(folderName("/data/notes")).toBe("notes");
     expect(folderName("D:\\data\\work notes\\")).toBe("work notes");
     expect(folderName("/")).toBe("/");
   });
