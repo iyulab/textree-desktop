@@ -130,6 +130,24 @@ test("a notes folder is named and moved in the sidebar, and the folder on disk k
   }
 });
 
+test("a notes folder's notes are hidden and shown again from its name", async () => {
+  const a = createTempVault({ "a.md": "# a\n" });
+  const b = createTempVault({ "seen.md": "# seen\n" });
+  try {
+    await loadVault(page, a);
+    expect(await addRoot(b)).toBe(true);
+    const bName = new RegExp(b.split("/").pop()!);
+    await section(bName).getByRole("button", { name: "Hide notes" }).click();
+    await expect(section(bName).getByRole("treeitem", { name: /seen/ })).toHaveCount(0);
+    await section(bName).getByRole("button", { name: "Show notes" }).click();
+    await expect(section(bName).getByRole("treeitem", { name: /seen/ })).toBeVisible();
+  } finally {
+    await loadVault(page, a);
+    removeTempVault(a);
+    removeTempVault(b);
+  }
+});
+
 test("a folder inside one the sidebar shows is refused", async () => {
   const outer = createTempVault({ "inner/n.md": "# n\n", "o.md": "# o\n" });
   try {

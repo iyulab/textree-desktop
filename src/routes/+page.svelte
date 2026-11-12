@@ -2056,6 +2056,13 @@
         {#each shown as f (f.root)}
           <section class="root-section" aria-label={sidebarName({ path: f.path, label: listLabels[f.root] })}>
             <div class="root-head" class:active={f === here}>
+              <button
+                class="root-fold"
+                aria-expanded={!f.folds.isCollapsed("")}
+                aria-label={f.folds.isCollapsed("") ? "Show notes" : "Hide notes"}
+                title={f.folds.isCollapsed("") ? "Show notes" : "Hide notes"}
+                onclick={() => f.folds.toggle("")}
+                ><Icon name={f.folds.isCollapsed("") ? "chevron-right" : "chevron-down"} size={12} /></button>
               {#if relabeling === f.root}
                 <!-- svelte-ignore a11y_autofocus -->
                 <input
@@ -2086,40 +2093,42 @@
                 onremove={() => void removeFromSidebar(f)}
               />
             </div>
-            <div
-              class="tree-root"
-              role="group"
-              aria-label="Top of this notes folder — drop here to move to the top"
-              ondragover={(e) => {
-                e.preventDefault();
-                if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-              }}
-              ondrop={(e) => {
-                e.preventDefault();
-                const picked = decodePicked(e.dataTransfer?.getData(DRAG_MIME));
-                if (!picked) return;
-                if (picked.root !== f.root) refuseAcrossFolders();
-                else void inFolder(f, handleMove)(picked.path, "");
-              }}
-            >
-              <TreeView
-                folder={f}
-                top
-                nodes={f.tree}
-                parentPath={""}
-                onselect={inFolder(f, handleSelect)}
-                onmove={inFolder(f, handleMove)}
-                onadopt={inFolder(f, handleAdopt)}
-                onrename={inFolder(f, (node: TreeNode) => beginTreeRename(node))}
-                ondelete={inFolder(f, handleDelete)}
-                onfavorite={(node) => f.nav.toggleFavorite(node.path)}
-                oncommitrename={f === here ? commitTreeRename : async () => null}
-                oncancelrename={cancelTreeRename}
-                onforeign={refuseAcrossFolders}
-                editingPath={f === here ? renamingPath : null}
-                selectedPath={f === here ? (selectedNode?.path ?? null) : null}
-              />
-            </div>
+            {#if !f.folds.isCollapsed("")}
+              <div
+                class="tree-root"
+                role="group"
+                aria-label="Top of this notes folder — drop here to move to the top"
+                ondragover={(e) => {
+                  e.preventDefault();
+                  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+                }}
+                ondrop={(e) => {
+                  e.preventDefault();
+                  const picked = decodePicked(e.dataTransfer?.getData(DRAG_MIME));
+                  if (!picked) return;
+                  if (picked.root !== f.root) refuseAcrossFolders();
+                  else void inFolder(f, handleMove)(picked.path, "");
+                }}
+              >
+                <TreeView
+                  folder={f}
+                  top
+                  nodes={f.tree}
+                  parentPath={""}
+                  onselect={inFolder(f, handleSelect)}
+                  onmove={inFolder(f, handleMove)}
+                  onadopt={inFolder(f, handleAdopt)}
+                  onrename={inFolder(f, (node: TreeNode) => beginTreeRename(node))}
+                  ondelete={inFolder(f, handleDelete)}
+                  onfavorite={(node) => f.nav.toggleFavorite(node.path)}
+                  oncommitrename={f === here ? commitTreeRename : async () => null}
+                  oncancelrename={cancelTreeRename}
+                  onforeign={refuseAcrossFolders}
+                  editingPath={f === here ? renamingPath : null}
+                  selectedPath={f === here ? (selectedNode?.path ?? null) : null}
+                />
+              </div>
+            {/if}
           </section>
         {/each}
       {:else}
@@ -3203,6 +3212,26 @@
   }
   .root-head.active .root-name {
     color: var(--text-normal);
+  }
+  .root-fold {
+    display: inline-flex;
+    padding: var(--sp-1);
+    margin-left: var(--sp-1);
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-radius: var(--radius-s);
+    cursor: pointer;
+  }
+  .root-fold:hover {
+    background: var(--bg-hover);
+  }
+  .root-fold:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .root-head .root-name {
+    padding-left: 0;
   }
   .root-name:hover {
     background: var(--bg-hover);
