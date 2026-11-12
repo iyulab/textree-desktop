@@ -1,6 +1,6 @@
 <script lang="ts">
   import { type FolderTable, type SortDir } from "./folderTable.helpers";
-  import { views } from "./views.svelte";
+  import type { FolderViews } from "./views.svelte";
   import {
     applyView,
     VIEW_VERSION,
@@ -12,12 +12,15 @@
   let {
     table,
     folder,
+    views,
     onOpen,
   }: {
     /** The folder's notes as a table model (columns = frontmatter keys, rows = notes). */
     table: FolderTable;
     /** The folder's path — the key under which named views are saved (views.json). */
     folder: string;
+    /** The saved views of the notes folder this folder is in. */
+    views: FolderViews;
     /** Open a row's note. */
     onOpen: (path: string) => void;
   } = $props();

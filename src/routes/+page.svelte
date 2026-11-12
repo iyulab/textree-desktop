@@ -57,7 +57,7 @@
   import { startSync } from "$lib/sync";
   import { decideReopen } from "$lib/sync.helpers";
   import { buildWikiResolver } from "$lib/wikilink.helpers";
-  import { backlinks } from "$lib/backlinkStore.svelte";
+  import { folders, FolderState } from "$lib/folderState.svelte";
   import { relatedNotes } from "$lib/relatedNotesStore.svelte";
   import { theme } from "$lib/theme.svelte";
   import { layout } from "$lib/layout.svelte";
@@ -88,7 +88,7 @@
   import { contextLabel } from "$lib/titlebar.helpers";
   import { buildCommands, activeCommands, type PaletteActions } from "$lib/commands";
   import { matchKeybinding, isFormFieldTag } from "$lib/keybinding.helpers";
-  import { mergeOrder, nav } from "$lib/nav.svelte";
+  import { mergeOrder } from "$lib/nav.svelte";
   import { describeSettingsOnOpen } from "$lib/settingsFile.helpers";
   import { moveInArray, findFirstOpenableNote } from "$lib/nav.helpers";
   import { checkForUpdate, type UpdateInfo } from "$lib/updater";
@@ -96,8 +96,6 @@
   import { detectSyncConflicts } from "$lib/syncConflict.helpers";
   import { leaveRefusal } from "$lib/leaveRefusal.helpers";
   import { buildFolderTable, type FolderTable } from "$lib/folderTable.helpers";
-  import { views } from "$lib/views.svelte";
-  import { publishScope } from "$lib/publishScope.svelte";
   import FolderTableView from "$lib/FolderTable.svelte";
   import Icon from "$lib/Icon.svelte";
   import { friendlyError, type FriendlyError } from "$lib/friendlyError.helpers";
@@ -124,6 +122,9 @@
   // disk, which is what the person is shown and what this device remembers it by.
   let root = $state<RootId | null>(null);
   let rootPath = $state<string | null>(null);
+  // What the app keeps for the open folder: favorites, recent and order, saved views, publish
+  // choices, the backlink index, collapsed folders. Bound to that folder (`folderState.svelte.ts`).
+  let here = $state<FolderState | null>(null);
   let updateInfo = $state<UpdateInfo | null>(null);
   let tree = $state<TreeNode[]>([]);
   let content = $state("");
@@ -137,7 +138,7 @@
     activePath: () => activePath,
     write: (folder, path, text, expected) => writeNote(folder as RootId, path, text, expected),
     // refresh links from the saved note (relative key, no re-read)
-    saved: (path, text) => backlinks.updateSource(path, text),
+    saved: (folder, path, text) => folders.get(folder as RootId)?.backlinks.updateSource(path, text),
     edited: () => {
       publishNotice = null; // an edit supersedes the last publish notice (the site is now stale)
     },
@@ -419,7 +420,7 @@
   // What opening the folder's settings found: saved by a newer release (kept as they are), or files
   // that could not be read (kept aside, defaults used). Said once per open, dismissible.
   let settingsNotice = $state<string | null>(null);
-  let showForeignViews = $derived(views.foreignFolders.length > 0 && !dismissedForeignViews);
+  let showForeignViews = $derived((here?.views.foreignFolders.length ?? 0) > 0 && !dismissedForeignViews);
 
   // External change (M3) state.
   let reloadVersion = $state(0); // bump on external reload → force Editor re-creation
@@ -487,6 +488,11 @@
     if (mine !== vaultLoads) return false; // another folder was chosen while this one was being named
     root = id;
     rootPath = path;
+    // The screen shows one folder: the others' states are let go (`TODO(S1b Task 5)` — the sidebar
+    // keeps every folder open). The same folder opened again keeps its own.
+    folders.keepOnly(id);
+    const state = folders.of(id, () => new FolderState(id, path));
+    here = state;
     let opened: TreeNode[];
     try {
       opened = await openVault(id);
@@ -509,7 +515,7 @@
     chatStore.cancel();
     chatStore.started = false;
     layout.setMode("note");
-    backlinks.clear(); // drop the previous vault's index (the $effect below rebuilds it)
+    treeView.reset(); // what was focused or cut belonged to the folder left
     relatedNotes.clear(); // drop the previous vault's related panel
     // Before anything reads settings: they may still be inside the folder from an earlier
     // version, and this is what carries them out. Keeping every file is its own guarantee.
@@ -530,12 +536,11 @@
       opError = friendlyError(e); // the folder still opens; writing is refused where it must be
     }
     if (overtaken()) return false;
-    const setAside = await nav.load(id, path, readOnly); // load favorites/order settings
-    treeView.load(path); // folders collapsed as this device left them
-    const viewsSetAside = await views.load(id, readOnly); // saved folder views (views.json)
+    const setAside = await state.nav.load(readOnly); // load favorites/order settings
+    const viewsSetAside = await state.views.load(readOnly); // saved folder views (views.json)
     if (viewsSetAside) setAside.push(viewsSetAside);
     try {
-      await publishScope.load(id);
+      await state.publish.load();
     } catch (e) {
       opError = friendlyError(e); // the folder still opens; the markers stay off
     }
@@ -568,7 +573,7 @@
     // Best effort: a list that cannot be written must not stop the folder from opening.
     void workspaceAdd(rootPath).catch((e) => console.warn("Could not keep the notes folder in the list:", e));
     if (!activePath) {
-      const first = findFirstOpenableNote(tree, "", nav.order);
+      const first = findFirstOpenableNote(tree, "", here?.nav.order ?? {});
       if (first) await handleSelect(first);
     }
   }
@@ -593,6 +598,7 @@
     } catch (e) {
       root = null;
       rootPath = null;
+      here = null;
       startupError = String(e);
     }
   }
@@ -831,10 +837,11 @@
    */
   async function relocate(change: () => Promise<Remap>, from?: string | string[]): Promise<void> {
     const done: { remap?: Remap } = {};
+    const state = here; // the folder the change is made in
     await save.move(async () => (done.remap = await change()), from);
-    if (!done.remap) return;
-    treeView.follow(done.remap);
-    await Promise.all([nav.follow(done.remap), views.follow(done.remap)]);
+    if (!done.remap || !state) return;
+    state.folds.follow(done.remap);
+    await Promise.all([state.nav.follow(done.remap), state.views.follow(done.remap)]);
   }
 
   // ── Inline tree rename (T2) ────────────────────────────────────────
@@ -951,8 +958,9 @@
    */
   function reloadPublishChoices() {
     const folder = root;
-    if (!folder) return;
-    void publishScope.load(folder).catch((e) => {
+    const scope = here?.publish;
+    if (!folder || !scope) return;
+    void scope.load().catch((e) => {
       if (folder === root) opError = friendlyError(e);
     });
   }
@@ -1348,7 +1356,8 @@
    */
   async function rebuildBacklinks() {
     const r = root;
-    if (!r) return;
+    const state = here;
+    if (!r || !state) return;
     const paths = collectNotePaths(tree);
     const resolve = buildWikiResolver(paths).resolve;
     const notes = await Promise.all(
@@ -1357,7 +1366,7 @@
         body: await readNote(r, path).catch(() => ""),
       })),
     );
-    backlinks.rebuild(notes, resolve);
+    state.backlinks.rebuild(notes, resolve);
   }
 
   // Rebuild the backlink index whenever the note set changes (vault load, create/rename/move/delete).
@@ -1444,12 +1453,12 @@
     promoteSelected: () => { void startAddChild(); },
     toggleFavoriteSelected: () => {
       const p = selectedNode?.path ?? null;
-      if (p) void nav.toggleFavorite(p);
+      if (p) void here?.nav.toggleFavorite(p);
     },
-    includeSelected: () => { if (selectedNode) void publishScope.choose(selectedNode.path, true).catch((e) => (opError = friendlyError(e))); },
-    excludeSelected: () => { if (selectedNode) void publishScope.choose(selectedNode.path, false).catch((e) => (opError = friendlyError(e))); },
-    followFolderSelected: () => { if (selectedNode) void publishScope.choose(selectedNode.path, null).catch((e) => (opError = friendlyError(e))); },
-    selectedHasPublishChoice: () => selectedNode !== null && publishScope.explicit(selectedNode.path) !== null,
+    includeSelected: () => { if (selectedNode && here) void here.publish.choose(selectedNode.path, true).catch((e) => (opError = friendlyError(e))); },
+    excludeSelected: () => { if (selectedNode && here) void here.publish.choose(selectedNode.path, false).catch((e) => (opError = friendlyError(e))); },
+    followFolderSelected: () => { if (selectedNode && here) void here.publish.choose(selectedNode.path, null).catch((e) => (opError = friendlyError(e))); },
+    selectedHasPublishChoice: () => selectedNode !== null && (here?.publish.explicit(selectedNode.path) ?? null) !== null,
     moveSelectedUp: () => reorderSelected(-1),
     moveSelectedDown: () => reorderSelected(1),
     rebuildIndex: () => {
@@ -1573,7 +1582,7 @@
     const node = findNode(tree, path) ?? findNodeByNotePath(tree, path);
     if (node) {
       void handleSelect(node);
-      nav.pushRecent(node.path);
+      here?.nav.pushRecent(node.path);
     }
   }
 
@@ -1583,17 +1592,18 @@
    * the parentPath key also matches TreeView (root=root, otherwise the parent container path).
    */
   function reorderSelected(delta: number): void {
-    if (!root || !selectedNode) return;
+    const state = here;
+    if (!root || !state || !selectedNode) return;
     const path = selectedNode.path;
     const parentPath = parentDir(path); // "" for a node at the top of the vault
     const parentNode = parentPath === "" ? null : findNode(tree, parentPath);
     const siblings = parentNode ? parentNode.children : tree;
-    const ordered = mergeOrder(siblings, nav.order[parentPath] ?? [], (n) => n.path);
+    const ordered = mergeOrder(siblings, state.nav.order[parentPath] ?? [], (n) => n.path);
     const idx = ordered.findIndex((n) => n.path === path);
     if (idx === -1) return;
     const next = moveInArray(ordered, idx, delta);
     if (next === ordered) return; // boundary — no change
-    void nav.setOrder(parentPath, next.map((n) => n.path));
+    void state.nav.setOrder(parentPath, next.map((n) => n.path));
   }
 
   function onGlobalKey(e: KeyboardEvent): void {
@@ -1652,6 +1662,7 @@
           // (open another folder, or start a fresh default vault).
           root = null;
           rootPath = null;
+          here = null;
           staleVaultPath = plan.path;
           startupError = String(e);
         }
@@ -1662,6 +1673,7 @@
           // First run and the default could not be created anywhere — land on the empty state.
           root = null;
           rootPath = null;
+          here = null;
           startupError = String(e);
         }
       }
@@ -1734,6 +1746,7 @@
   onSearchContent={searchContentFromPalette}
   vaultRoot={root}
   scopePath={semanticScopePath}
+  nav={here?.nav ?? null}
 />
 
 {#if aiHost.download}
@@ -1826,21 +1839,24 @@
           if (s && root) handleMove(s, "");
         }}
       >
-        <TreeView
-          top
-          nodes={tree}
-          parentPath={""}
-          onselect={handleSelect}
-          onmove={handleMove}
-          onadopt={handleAdopt}
-          onrename={(node) => beginTreeRename(node)}
-          ondelete={handleDelete}
-          onfavorite={(node) => nav.toggleFavorite(node.path)}
-          oncommitrename={commitTreeRename}
-          oncancelrename={cancelTreeRename}
-          editingPath={renamingPath}
-          selectedPath={selectedNode?.path ?? null}
-        />
+        {#if here}
+          <TreeView
+            folder={here}
+            top
+            nodes={tree}
+            parentPath={""}
+            onselect={handleSelect}
+            onmove={handleMove}
+            onadopt={handleAdopt}
+            onrename={(node) => beginTreeRename(node)}
+            ondelete={handleDelete}
+            onfavorite={(node) => here?.nav.toggleFavorite(node.path)}
+            oncommitrename={commitTreeRename}
+            oncancelrename={cancelTreeRename}
+            editingPath={renamingPath}
+            selectedPath={selectedNode?.path ?? null}
+          />
+        {/if}
       </div>
     {:else}
       <p class="hint">{NO_VAULT_HINT}</p>
@@ -1949,7 +1965,7 @@
     {#if root && showForeignViews}
       <div class="conflict-banner" role="status" aria-label="Saved views from another location">
         <div class="conflict-head">
-          <span>⚠ {views.foreignFolders.length} saved table view group(s) were created in a different vault location and aren't shown here. Saved views are tied to the folder path, so moving the vault or opening it on another device unlinks them. Nothing was deleted.</span>
+          <span>⚠ {here?.views.foreignFolders.length} saved table view group(s) were created in a different vault location and aren't shown here. Saved views are tied to the folder path, so moving the vault or opening it on another device unlinks them. Nothing was deleted.</span>
           <button
             class="banner-dismiss"
             onclick={() => (dismissedForeignViews = true)}
@@ -2171,7 +2187,7 @@
             {/if}
           </div>
           <Backlinks
-            links={backlinks.for(activePath)}
+            links={here?.backlinks.for(activePath) ?? []}
             onOpen={(p) => handleWikiLink(p, undefined)}
           />
           <RelatedNotes
@@ -2183,12 +2199,13 @@
     {:else if selectedNode?.kind !== "container"}
       <p class="hint">{NO_NOTE_PROMPT}</p>
     {/if}
-    {#if layout.mode === "note" && selectedNode?.kind === "container" && folderTable}
+    {#if layout.mode === "note" && selectedNode?.kind === "container" && folderTable && here}
       <!-- Key by folder path so the (ephemeral) sort state resets when switching folders. -->
       {#key selectedNode.path}
         <FolderTableView
           table={folderTable}
           folder={selectedNode.path}
+          views={here.views}
           onOpen={openFileFromPalette}
         />
       {/key}
@@ -2197,7 +2214,7 @@
       <AddVersion
         {root}
         paths={[activePath]}
-        published={publishScope.isIncluded(activePath)}
+        published={here?.publish.isIncluded(activePath) ?? false}
         onclose={() => { showAddVersion = false; }}
         ondone={(message) => {
           versionNotice = message;

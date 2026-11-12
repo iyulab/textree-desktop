@@ -649,6 +649,26 @@ describe("NoteSave — switching notes", () => {
     ]);
   });
 
+  it("a save that lands after another vault opened is reported with the vault it was typed in", async () => {
+    let root = "/one";
+    const landed: [string, string, string][] = [];
+    const calls: { settle: (o: WriteOutcome) => void }[] = [];
+    const save = new NoteSave(initialNoteSaveState(), {
+      root: () => root,
+      activePath: () => null,
+      write: () => new Promise<WriteOutcome>((resolve) => calls.push({ settle: resolve })),
+      saved: (vault, path, text) => landed.push([vault, path, text]),
+    });
+    save.opened("a0");
+    save.schedule("A.md", "a1");
+    void save.flush();
+    await settle();
+    root = "/two"; // another vault opened while the write was out
+    calls[0].settle(written);
+    await settle();
+    expect(landed).toEqual([["/one", "A.md", "a1"]]);
+  });
+
   it("a note of the same name open in another vault is not the one a late answer is about", async () => {
     let root = "/one";
     let active: string | null = "A.md";

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { RootId } from "./ipc";
   import { palette } from "./paletteStore.svelte";
-  import { nav } from "./nav.svelte";
+  import type { FolderNav } from "./nav.svelte";
   import { fuzzyMatch, type Match } from "./fuzzy";
   import { formatKeybinding } from "./keybinding.helpers";
   import { paletteListState } from "./palette.helpers";
@@ -28,6 +28,7 @@
     onSearchContent,
     vaultRoot = null,
     scopePath = null,
+    nav = null,
   }: {
     files: FileEntry[];
     commands: Command[];
@@ -36,6 +37,8 @@
     onSearchContent: (query: string) => Promise<SearchHit[]>;
     vaultRoot?: RootId | null;
     scopePath?: string | null;
+    /** Favorites and recent notes of the open notes folder (null before one opens). */
+    nav?: FolderNav | null;
   } = $props();
 
   let fileMatches = $derived<Match<FileEntry>[]>(
@@ -44,8 +47,8 @@
       : palette.term === ""
         ? // Empty query: surface favorites first, then recent (excluding ones already favorited).
           [
-            ...nav.favorites,
-            ...nav.recent.filter((p) => !nav.favorites.includes(p)),
+            ...(nav?.favorites ?? []),
+            ...(nav?.recent ?? []).filter((p) => !nav?.favorites.includes(p)),
           ]
             .map((p) => files.find((f) => f.path === p))
             .filter((f): f is FileEntry => f !== undefined)
@@ -311,7 +314,7 @@
               }}
             >
               <span class="title">
-                {#if nav.isFavorite(m.item.path)}<span class="fav-mark" aria-hidden="true">★</span
+                {#if nav?.isFavorite(m.item.path)}<span class="fav-mark" aria-hidden="true">★</span
                   >{/if}{#each highlight(m.item.name, m.ranges) as seg}<span class:hl={seg.on}
                     >{seg.t}</span
                   >{/each}

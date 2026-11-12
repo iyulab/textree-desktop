@@ -12,11 +12,12 @@
   import type { FriendlyError } from "./friendlyError.helpers";
   import { tree } from "./tree.svelte";
   import Icon from "./Icon.svelte";
-  import { publishScope } from "./publishScope.svelte";
-  import { mergeOrder, nav } from "./nav.svelte";
+  import type { FolderState } from "./folderState.svelte";
+  import { mergeOrder } from "./nav.svelte";
   import Self from "./TreeView.svelte";
 
   let {
+    folder,
     nodes,
     parentPath,
     onselect,
@@ -31,6 +32,8 @@
     selectedPath = null,
     top = false,
   }: {
+    /** The notes folder these nodes belong to: its order, favorites, publish choices, collapsed folders. */
+    folder: FolderState;
     nodes: TreeNode[];
     /** Parent path of this node list (manual order key). The top level is the vault root. */
     parentPath: string;
@@ -58,7 +61,7 @@
   } = $props();
 
   /** Derived array of sibling nodes ordered by nav.order[parentPath]. Original order if not registered in order. */
-  let ordered = $derived(mergeOrder(nodes, nav.order[parentPath] ?? [], (n) => n.path));
+  let ordered = $derived(mergeOrder(nodes, folder.nav.order[parentPath] ?? [], (n) => n.path));
 
   function onDragStart(e: DragEvent, node: TreeNode) {
     if (!e.dataTransfer) return;
@@ -131,7 +134,7 @@
   function onKeydown(e: KeyboardEvent, node: TreeNode) {
     const el = e.currentTarget as HTMLElement;
     const isContainer = node.kind === "container" && node.children.length > 0;
-    const open = isContainer && !tree.isCollapsed(node.path);
+    const open = isContainer && !folder.folds.isCollapsed(node.path);
 
     // Keyboard move: Ctrl+X cut → Ctrl+V at target (container = move, leaf = adopt).
     // Accessibility path equivalent to DnD (WCAG 2.1.1).
@@ -161,12 +164,12 @@
         break;
       case "ArrowRight":
         e.preventDefault();
-        if (isContainer && !open) tree.expand(node.path);
+        if (isContainer && !open) folder.folds.expand(node.path);
         else if (open) focusItem(firstChildItem(el));
         break;
       case "ArrowLeft":
         e.preventDefault();
-        if (open) tree.collapse(node.path);
+        if (open) folder.folds.collapse(node.path);
         else focusItem(parentItem(el));
         break;
       case "Home":
@@ -264,10 +267,10 @@
        Enter) would act on that note instead of the one the person had focused. -->
   {#each ordered as node, i (node.path)}
     {@const hasChildren = node.children.length > 0}
-    {@const open = !tree.isCollapsed(node.path)}
+    {@const open = !folder.folds.isCollapsed(node.path)}
     {@const isContainer = node.kind === "container" && hasChildren}
-    {@const fav = nav.isFavorite(node.path)}
-    {@const published = publishScope.isIncluded(node.path)}
+    {@const fav = folder.nav.isFavorite(node.path)}
+    {@const published = folder.publish.isIncluded(node.path)}
     <li>
       <div
         class="row"
@@ -282,7 +285,7 @@
             class:open
             onclick={(e) => {
               e.stopPropagation();
-              tree.toggle(node.path);
+              folder.folds.toggle(node.path);
             }}
             aria-label={open ? "Collapse" : "Expand"}
             tabindex="-1"
@@ -351,6 +354,7 @@
       {/if}
       {#if hasChildren && open}
         <Self
+          {folder}
           nodes={node.children}
           parentPath={node.path}
           {onselect}

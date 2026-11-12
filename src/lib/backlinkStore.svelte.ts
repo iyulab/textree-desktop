@@ -1,5 +1,6 @@
 /*
- * Backlink index state — "what links here" for the open note.
+ * Backlink index of one notes folder — "what links here" for its notes. One instance per open
+ * folder (`folderState.svelte.ts`).
  *
  * The index is built by reading every note's body once per vault load / structure change. Edits to
  * the open note update just that source in-memory (no re-read). Pure construction lives in
@@ -12,7 +13,7 @@ import { buildBacklinkIndex, type Backlink, type BacklinkIndex } from "./wikilin
 
 const EMPTY: BacklinkIndex = { to: () => [] };
 
-class BacklinkStore {
+export class FolderBacklinks {
   index = $state<BacklinkIndex>(EMPTY);
   /** path → body cache, so an edit recomputes from memory without re-reading the vault. */
   #bodies = new Map<string, string>();
@@ -44,17 +45,8 @@ class BacklinkStore {
     this.index = buildBacklinkIndex(notes, this.#resolve);
   }
 
-  /** Drop the index and cache (vault close/switch). */
-  clear(): void {
-    this.#bodies = new Map();
-    this.#resolve = () => undefined;
-    this.index = EMPTY;
-  }
-
   /** Incoming links for a note path (empty when none or no open note). */
   for(path: string | null): Backlink[] {
     return path ? this.index.to(path) : [];
   }
 }
-
-export const backlinks = new BacklinkStore();
