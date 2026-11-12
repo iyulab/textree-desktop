@@ -7,6 +7,7 @@
  * `tree` — keyboard focus and the "cut" node: one per sidebar, session state, not persisted.
  */
 
+import type { PickedNode } from "./treeDrag.helpers";
 import { readVaultList, writeVaultList } from "./vaultLocal.helpers";
 
 const COLLAPSE_KEY = "textree-tree-collapsed";
@@ -62,8 +63,8 @@ export class FolderFolds {
 class TreeFocus {
   /** Path of the node under keyboard focus (roving tabindex basis). null = unset (falls back to the first item). */
   focused = $state<string | null>(null);
-  /** Path of the node "cut" for keyboard move (Ctrl+X). Moved/adopted onto the paste (Ctrl+V) target. */
-  cut = $state<string | null>(null);
+  /** The node "cut" for keyboard move (Ctrl+X), with its notes folder. Moved/adopted onto the paste (Ctrl+V) target. */
+  cut = $state<PickedNode | null>(null);
 
   /** A notes folder opened in place of another: what was focused or cut belonged to it. */
   reset(): void {
@@ -75,8 +76,8 @@ class TreeFocus {
     this.focused = path;
   }
 
-  setCut(path: string | null): void {
-    this.cut = path;
+  setCut(picked: PickedNode | null): void {
+    this.cut = picked;
   }
 }
 

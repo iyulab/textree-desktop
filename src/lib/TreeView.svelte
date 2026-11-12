@@ -15,6 +15,7 @@
   import type { FolderState } from "./folderState.svelte";
   import { mergeOrder } from "./nav.svelte";
   import Self from "./TreeView.svelte";
+  import { decodePicked, encodePicked, samePicked, type PickedNode } from "./treeDrag.helpers";
 
   let {
     folder,
@@ -28,6 +29,7 @@
     onfavorite,
     oncommitrename,
     oncancelrename,
+    onforeign,
     editingPath = null,
     selectedPath = null,
     top = false,
@@ -52,6 +54,8 @@
     oncommitrename: (node: TreeNode, name: string) => Promise<FriendlyError | null>;
     /** Cancel the inline rename (Escape). */
     oncancelrename: () => void;
+    /** A node of another notes folder was put down here: nothing moves. */
+    onforeign: () => void;
     /** Path of the node currently being inline-renamed (null = none). */
     editingPath?: string | null;
     /** Currently selected node path (for highlighting). Propagated to all descendants. */
@@ -65,7 +69,7 @@
 
   function onDragStart(e: DragEvent, node: TreeNode) {
     if (!e.dataTransfer) return;
-    e.dataTransfer.setData(DRAG_MIME, node.path);
+    e.dataTransfer.setData(DRAG_MIME, encodePicked({ root: folder.root, path: node.path }));
     e.dataTransfer.effectAllowed = "move";
   }
 
@@ -86,10 +90,19 @@
     e.preventDefault();
     e.stopPropagation();
     dragOverPath = null;
-    const src = e.dataTransfer?.getData(DRAG_MIME);
-    if (!src) return;
-    if (node.kind === "container") onmove(src, node.path); // move into container directory
-    else onadopt(src, node.path); // leaf → child after promotion
+    putDown(decodePicked(e.dataTransfer?.getData(DRAG_MIME)), node);
+  }
+
+  /** A node picked up (dragged or cut) is put down on `node`: moved into a container, or made a
+   *  child of a leaf. Never into another notes folder. */
+  function putDown(picked: PickedNode | null, node: TreeNode) {
+    if (!picked) return;
+    if (picked.root !== folder.root) {
+      onforeign();
+      return;
+    }
+    if (node.kind === "container") onmove(picked.path, node.path); // move into container directory
+    else onadopt(picked.path, node.path); // leaf → child after promotion
   }
 
   // ── Keyboard navigation (WAI-ARIA tree) ──────────────────────────
@@ -140,16 +153,14 @@
     // Accessibility path equivalent to DnD (WCAG 2.1.1).
     if (e.ctrlKey && (e.key === "x" || e.key === "X")) {
       e.preventDefault();
-      tree.setCut(node.path);
+      tree.setCut({ root: folder.root, path: node.path });
       return;
     }
     if (e.ctrlKey && (e.key === "v" || e.key === "V")) {
       e.preventDefault();
-      const src = tree.cut;
-      if (!src) return;
+      const picked = tree.cut;
       tree.setCut(null);
-      if (node.kind === "container") onmove(src, node.path);
-      else onadopt(src, node.path);
+      putDown(picked, node);
       return;
     }
 
@@ -277,7 +288,7 @@
         class:selected={node.path === selectedPath}
         class:drop-over={node.path === dragOverPath}
         class:drop-leaf={node.path === dragOverPath && node.kind === "leaf"}
-        class:cut={node.path === tree.cut}
+        class:cut={samePicked(tree.cut, { root: folder.root, path: node.path })}
       >
         {#if isContainer}
           <button
@@ -365,6 +376,7 @@
           {onfavorite}
           {oncommitrename}
           {oncancelrename}
+          {onforeign}
           {editingPath}
           {selectedPath}
         />

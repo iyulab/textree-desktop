@@ -63,6 +63,7 @@
   import { theme } from "$lib/theme.svelte";
   import { layout } from "$lib/layout.svelte";
   import TreeView, { DRAG_MIME } from "$lib/TreeView.svelte";
+  import { decodePicked, NOT_ACROSS_FOLDERS } from "$lib/treeDrag.helpers";
   import Editor from "$lib/Editor.svelte";
   import Backlinks from "$lib/Backlinks.svelte";
   import RelatedNotes from "$lib/RelatedNotes.svelte";
@@ -972,6 +973,12 @@
     activeName = noteStem(path);
   }
 
+  /** A note or folder of one notes folder was put down in another: nothing moves, and the sidebar
+   *  says why. */
+  function refuseAcrossFolders(): void {
+    opError = { summary: NOT_ACROSS_FOLDERS, raw: NOT_ACROSS_FOLDERS };
+  }
+
   /** Reads the open folder's tree again — into that folder's state, even if another opens meanwhile. */
   async function refreshTree() {
     const state = here;
@@ -1864,8 +1871,10 @@
         }}
         ondrop={(e) => {
           e.preventDefault();
-          const s = e.dataTransfer?.getData(DRAG_MIME);
-          if (s && root) handleMove(s, "");
+          const picked = decodePicked(e.dataTransfer?.getData(DRAG_MIME));
+          if (!picked || !root) return;
+          if (picked.root !== root) refuseAcrossFolders();
+          else handleMove(picked.path, "");
         }}
       >
         {#if here}
@@ -1882,6 +1891,7 @@
             onfavorite={(node) => here?.nav.toggleFavorite(node.path)}
             oncommitrename={commitTreeRename}
             oncancelrename={cancelTreeRename}
+            onforeign={refuseAcrossFolders}
             editingPath={renamingPath}
             selectedPath={selectedNode?.path ?? null}
           />
