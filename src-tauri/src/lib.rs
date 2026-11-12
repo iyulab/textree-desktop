@@ -137,6 +137,7 @@ pub fn run() {
         .manage(Arc::new(HostHandle::default()))
         .invoke_handler(tauri::generate_handler![
             tree_commands::open_vault,
+            tree_commands::close_root,
             tree_commands::register_root,
             tree_commands::workspace_list,
             tree_commands::workspace_add,

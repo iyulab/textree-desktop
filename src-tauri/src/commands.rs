@@ -851,18 +851,16 @@ fn refresh_indexes(app: &AppHandle, root: PathBuf, path: PathBuf) {
     });
 }
 
-/// Which opening of a folder is the latest. Opening runs off the main thread, so a folder that
-/// does not answer no longer holds the window — and the person can open another one meanwhile.
-/// Then the later one is what they want: the earlier one, when it finally gets through, installs
-/// nothing.
-static OPENS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Which opening of each folder is the latest (see [`crate::open_roots::Openings`]).
+static OPENS: std::sync::LazyLock<crate::open_roots::Openings> =
+    std::sync::LazyLock::new(Default::default);
 
 /// Taken while an opening puts its folder in place, so two cannot interleave that.
 static INSTALLING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// What an opening that another one overtook reports. The window, having started the later one,
-/// does not show it.
-pub(crate) const SUPERSEDED: &str = "another folder was opened meanwhile";
+/// What an opening that a later opening of the same folder, or its closing, overtook reports. The
+/// window, having started the later one, does not show it.
+pub(crate) const SUPERSEDED: &str = "the folder was opened again or closed meanwhile";
 
 /// Development builds only: while the file named by `TEXTREE_E2E_OPEN_STALL_FLAG` exists and holds
 /// this folder's path, opening it waits before reading anything — how the end-to-end tests make a
@@ -881,15 +879,16 @@ fn stall_opening(root: &str) {
 #[inline(always)]
 fn stall_opening(_: &str) {}
 
-/// Starts an opening; the number it returns is what [`open_vault`] checks before installing.
-pub(crate) fn begin_open() -> u64 {
-    OPENS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+/// Starts an opening of `root`; the number it returns is what [`open_vault`] checks before
+/// installing.
+pub(crate) fn begin_open(root: &str) -> u64 {
+    OPENS.begin(Path::new(root))
 }
 
 /// Opens a folder: reads its tree, installs its search index, points the semantic index at it and
 /// watches it. Everything that reads the folder runs first, where it may take as long as the
 /// folder takes; only then, briefly and one opening at a time, is the folder put in place — and
-/// only if no later opening started meanwhile.
+/// only if the folder was not opened again, or closed, meanwhile. Other open folders stay open.
 pub fn open_vault(
     root: String,
     root_id: String,
@@ -949,8 +948,8 @@ pub fn open_vault(
         )?;
 
     let _installing = INSTALLING.lock().unwrap_or_else(|e| e.into_inner());
-    if OPENS.load(std::sync::atomic::Ordering::SeqCst) != ticket {
-        log::info!("open_vault: {root} was overtaken by a later opening; not installed");
+    if !OPENS.is_latest(&root_path, ticket) {
+        log::info!("open_vault: {root} was opened again or closed meanwhile; not installed");
         return Err(SUPERSEDED.into()); // the watch it started stops as it drops
     }
 
@@ -991,18 +990,27 @@ pub fn open_vault(
         host::reindex_vault(&host, &vault_str);
     });
 
-    // The folder's index and watch go in its own entries. The window shows one folder at a time
-    // until the sidebar lists several (TODO(S1b Task 5): keep every folder the sidebar shows), so
-    // the others are let go here — their watches stop as they drop, and leftover changes from them
-    // do not reach the window.
-    let indexes = app.state::<Indexes>();
-    indexes.install(&root_path, index);
-    drop(indexes.keep_only(&root_path));
-    let watchers = app.state::<Watchers>();
-    drop(watchers.install(&root_path, watcher));
-    drop(watchers.keep_only(&root_path));
+    // The folder's index and watch go in its own entries; other open folders keep theirs.
+    drop(app.state::<Indexes>().install(&root_path, index));
+    drop(app.state::<Watchers>().install(&root_path, watcher));
 
     Ok(tree)
+}
+
+/// Closes a folder: its search index and watch are let go, and an opening of it still under way
+/// installs nothing. Nothing on the disk changes.
+pub fn close_root(root: String, app: AppHandle) {
+    let root_path = PathBuf::from(&root);
+    let (index, watcher) = {
+        let _installing = INSTALLING.lock().unwrap_or_else(|e| e.into_inner());
+        OPENS.end(&root_path);
+        (
+            app.state::<Indexes>().remove(&root_path),
+            app.state::<Watchers>().remove(&root_path),
+        )
+    };
+    drop((index, watcher)); // the watch stops as it drops, outside the lock
+    log::info!("close_root: {root}");
 }
 
 // ── Structural edits (M4) — delegated to fs_ops ────────────────────────────────

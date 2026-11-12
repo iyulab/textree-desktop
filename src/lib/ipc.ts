@@ -69,6 +69,11 @@ export async function openVault(rootId: RootId): Promise<TreeNode[]> {
   return invoke<TreeNode[]>("open_vault", { rootId });
 }
 
+/** Lets a folder the window no longer shows go: its search index and watch. Nothing on disk changes. */
+export async function closeRoot(rootId: RootId): Promise<void> {
+  return invoke<void>("close_root", { rootId });
+}
+
 /** Resolved default vault: its absolute path, and whether the preferred (Documents) location was
  * unusable so the vault was created in a fallback location (home/app-local-data) instead. */
 export type DefaultVault = { path: string; fellBack: boolean };

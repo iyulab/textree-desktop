@@ -45,18 +45,28 @@ async fn folder_resolved(root: &str, rel: &str) -> Result<String, String> {
 }
 
 /// Opening a folder reads all of it; one that does not answer must not hold the window, or keep
-/// the person from opening another instead (the later opening wins — see
-/// [`commands::open_vault`]).
+/// the person from opening another meanwhile (see [`commands::open_vault`]).
 #[tauri::command]
 pub async fn open_vault(
     root_id: String,
     app: AppHandle,
 ) -> Result<Vec<commands::TreeItem>, String> {
-    let ticket = commands::begin_open();
     let root = crate::workspace::path_of(&root_id)?;
+    let ticket = commands::begin_open(&root);
     off_main(move || {
         commands::open_vault(root.clone(), root_id, app, ticket)
             .and_then(|tree| commands::tree_out(&root, tree))
+    })
+    .await
+}
+
+/// Closes a folder the window no longer shows (see [`commands::close_root`]).
+#[tauri::command]
+pub async fn close_root(root_id: String, app: AppHandle) -> Result<(), String> {
+    let root = crate::workspace::path_of(&root_id)?;
+    off_main(move || {
+        commands::close_root(root, app);
+        Ok(())
     })
     .await
 }

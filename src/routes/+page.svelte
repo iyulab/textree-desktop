@@ -5,6 +5,7 @@
   import {
     notesBackedUp,
     openVault,
+    closeRoot,
     registerRoot,
     type RootId,
     ensureDefaultVault,
@@ -486,10 +487,13 @@
     const mine = ++vaultLoads;
     const id = await registerRoot(path);
     if (mine !== vaultLoads) return false; // another folder was chosen while this one was being named
+    const left = root;
     root = id;
     rootPath = path;
-    // The screen shows one folder: the others' states are let go (`TODO(S1b Task 5)` — the sidebar
-    // keeps every folder open). The same folder opened again keeps its own.
+    // The screen shows one folder: the one left is closed — its index and watch, and an opening of
+    // it still under way — and its state let go (`TODO(S1b Task 5)` — the sidebar keeps every
+    // folder open). The same folder opened again keeps its own.
+    if (left && left !== id) void closeRoot(left).catch((e) => console.warn("Could not close the folder left:", e));
     folders.keepOnly(id);
     const state = folders.of(id, () => new FolderState(id, path));
     here = state;
