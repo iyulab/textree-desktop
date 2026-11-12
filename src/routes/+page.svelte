@@ -507,12 +507,27 @@
   // renamed or deleted, or on a drive that is not connected. The sidebar shows each where it was,
   // with «Locate…»; the window tries them again when it is focused.
   let missing = $state<WorkspaceRoot[]>([]);
+  // The device's folders opening in the background, and those the person stopped this launch — a
+  // step in the background shows that it is going on, and can be stopped.
+  let opening = $state<WorkspaceRoot[]>([]);
+  let notOpened = $state<WorkspaceRoot[]>([]);
+  // Stops for the openings under way, by folder id.
+  const stops = new Map<string, () => void>();
 
-  // What the sidebar shows, open folders and folders not found together, in the list's order.
-  type SidebarEntry = { id: string; f: FolderState; m?: undefined } | { id: string; f?: undefined; m: WorkspaceRoot };
+  // What the sidebar shows — open folders, folders opening or not opened, folders not found — in the
+  // list's order.
+  type SidebarEntry =
+    | { id: string; f: FolderState; m?: undefined; wait?: undefined }
+    | { id: string; f?: undefined; m: WorkspaceRoot; wait?: undefined }
+    | { id: string; f?: undefined; m?: undefined; wait: { root: WorkspaceRoot; stopped: boolean } };
   const sidebarEntries = $derived(
     inListOrder<SidebarEntry>(
-      [...shown.map((f) => ({ id: f.root as string, f })), ...missing.map((m) => ({ id: m.id as string, m }))],
+      [
+        ...shown.map((f) => ({ id: f.root as string, f })),
+        ...missing.map((m) => ({ id: m.id as string, m })),
+        ...opening.map((r) => ({ id: r.id as string, wait: { root: r, stopped: false } })),
+        ...notOpened.map((r) => ({ id: r.id as string, wait: { root: r, stopped: true } })),
+      ],
       (e) => e.id,
       listOrder,
     ),
@@ -523,6 +538,7 @@
     listLabels = Object.fromEntries(ws.roots.map((r) => [r.id, r.label]));
     shown = sortedByList(shown);
     missing = missing.filter((m) => listOrder.includes(m.id)); // one taken out of the sidebar
+    notOpened = notOpened.filter((m) => listOrder.includes(m.id));
   }
 
   function markMissing(r: WorkspaceRoot): void {
@@ -717,25 +733,60 @@
     }
     activate(state);
     if (alone) for (const other of [...shown]) if (other !== state) letGo(other.root);
-    if (alone) missing = []; // one folder alone: nor does the sidebar show the ones not found
+    if (alone) {
+      // One folder alone: nor does the sidebar show the ones not found, opening or not opened.
+      missing = [];
+      notOpened = [];
+      for (const r of opening) stops.get(r.id)?.();
+      opening = [];
+    }
     return true;
   }
 
   /** Opens the device's other notes folders in the sidebar, one after another, in the background. */
   async function openListedFolders(roots: WorkspaceRoot[]): Promise<void> {
     const since = aloneLoads;
-    for (const r of roots) {
-      if (since !== aloneLoads) return; // the window was set to one folder meanwhile
-      const still = () => since === aloneLoads;
-      try {
-        const state = await openFolder(r.path, still, () => false, false);
-        if (state && still()) show(state);
-      } catch (e) {
-        // A folder of the list that is not there (a disconnected drive) is shown as not found.
-        if (isFolderNotFound(e)) markMissing(r);
-        else console.warn(`Could not open the notes folder ${r.path}:`, e);
+    const waiting = roots.filter((r) => !opening.some((o) => o.id === r.id));
+    opening = [...opening, ...waiting];
+    notOpened = notOpened.filter((n) => !waiting.some((r) => r.id === n.id));
+    try {
+      for (const r of waiting) {
+        if (since !== aloneLoads) return; // the window was set to one folder meanwhile
+        if (!opening.some((o) => o.id === r.id)) continue; // stopped before its turn
+        let stopped = false;
+        const halted = new Promise<void>((resolve) =>
+          stops.set(r.id, () => {
+            stopped = true;
+            resolve();
+          }),
+        );
+        const still = () => since === aloneLoads && !stopped;
+        const attempt = openFolder(r.path, still, () => false, false).then(
+          (state) => {
+            if (state && still()) show(state);
+          },
+          (e) => {
+            if (!still()) return;
+            // A folder of the list that is not there (a disconnected drive) is shown as not found.
+            if (isFolderNotFound(e)) markMissing(r);
+            else console.warn(`Could not open the notes folder ${r.path}:`, e);
+          },
+        );
+        // A folder that does not answer is not waited on once the person stops it: the rest open.
+        await Promise.race([attempt, halted]);
+        stops.delete(r.id);
+        opening = opening.filter((o) => o.id !== r.id);
       }
+    } finally {
+      if (since !== aloneLoads) opening = opening.filter((o) => !waiting.some((r) => r.id === o.id));
     }
+  }
+
+  /** Stop: the folder is not opened this launch. It stays in the sidebar, to be opened later. */
+  function stopOpening(r: WorkspaceRoot): void {
+    opening = opening.filter((o) => o.id !== r.id);
+    if (!notOpened.some((n) => n.id === r.id)) notOpened = [...notOpened, r];
+    stops.get(r.id)?.();
   }
 
   /** Goes to the first of `roots` that opens, then opens the rest in the background. False when
@@ -2207,7 +2258,36 @@
         <!-- Several notes folders: each under its own name; working in one makes it the folder the
              window is in (the note open in another is left first). -->
         {#each sidebarEntries as e (e.id)}
-          {#if e.m}
+          {#if e.wait}
+            {@const w = e.wait}
+            <!-- A folder of the device's list opening in the background, or one stopped this launch. -->
+            <section class="root-section" aria-label={sidebarName(w.root)}>
+              <div class="root-head">
+                <span class="root-name gone" title={w.root.path}
+                  ><Icon name="folder" /><span class="vault-label">{sidebarName(w.root)}</span></span
+                >
+              </div>
+              <div class="root-missing" title={w.root.path}>
+                {#if w.stopped}
+                  <p>Not opened</p>
+                  <div class="root-missing-actions">
+                    <button onclick={() => void openListedFolders([w.root])}>Open</button>
+                    <button
+                      onclick={() => void forgetMissing(w.root)}
+                      title="The sidebar stops showing it. Nothing is deleted.">Remove from sidebar</button
+                    >
+                  </div>
+                {:else}
+                  <p role="status">Opening…</p>
+                  <div class="root-missing-actions">
+                    <button onclick={() => stopOpening(w.root)} title="Don't open this folder now. It stays in the sidebar."
+                      >Stop</button
+                    >
+                  </div>
+                {/if}
+              </div>
+            </section>
+          {:else if e.m}
             {@const m = e.m}
             <!-- A folder of the device's list that is not there: where it was, and how to find it. -->
             <section class="root-section" aria-label={sidebarName(m)}>
