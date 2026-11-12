@@ -1,5 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { connectToApp, E2E_DEFAULT_VAULT_BASE } from "./helpers";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
+import { connectToApp, E2E_DEFAULT_VAULT_BASE, E2E_PERSONAL_BASE } from "./helpers";
 
 /**
  * Onboarding E2E — first-run default vault auto-open.
@@ -12,6 +14,13 @@ import { connectToApp, E2E_DEFAULT_VAULT_BASE } from "./helpers";
  */
 
 const LAST_VAULT_KEY = "textree-last-vault";
+
+/**
+ * The device's list of notes folders under the launcher's isolated home. Startup falls back to it
+ * when nothing was opened last, so a fresh install is simulated only once it is gone too —
+ * otherwise the folder an earlier spec opened is restored instead of the default vault.
+ */
+const WORKSPACE_DIR = join(E2E_PERSONAL_BASE, ".textree", "workspace");
 
 /** Fail with the cause, not with a downstream assertion, when the app is not isolated. */
 async function expectIsolatedDefaultVault(page: Page): Promise<void> {
@@ -82,9 +91,10 @@ test("restore failure: offers a calm recovery prompt when the last vault cannot 
 });
 
 test("first run: onMount auto-opens default vault and seeds welcome.md", async () => {
-  // Simulate a fresh install: clear the last-vault key and reload.
-  // onMount will see no stored path → call ensureDefaultVault() automatically.
+  // Simulate a fresh install: clear the last-vault key and the device's list of notes folders,
+  // and reload. onMount will see neither → call ensureDefaultVault() automatically.
   await page.evaluate((key) => localStorage.removeItem(key), LAST_VAULT_KEY);
+  rmSync(WORKSPACE_DIR, { recursive: true, force: true });
   await page.reload();
   await expectIsolatedDefaultVault(page);
 

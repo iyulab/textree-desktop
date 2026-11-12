@@ -39,6 +39,7 @@ pub(crate) mod vault;
 pub mod vault_paths;
 pub(crate) mod watcher;
 pub(crate) mod workspace;
+pub(crate) mod workspace_file;
 
 use host::HostHandle;
 use search::IndexHandle;
@@ -131,6 +132,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             tree_commands::open_vault,
             tree_commands::register_root,
+            tree_commands::workspace_list,
+            tree_commands::workspace_add,
             commands::list_tree,
             commands::read_note,
             commands::write_note,

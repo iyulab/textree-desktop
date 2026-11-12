@@ -353,11 +353,64 @@ pub fn ensure_default_vault(app: AppHandle) -> Result<DefaultVault, String> {
 /// wants to see in their folder, and it should not travel when the notes do. Keyed per folder,
 /// because "which notes are favourites" only means anything about one set of notes.
 fn personal_dir(root: &Path) -> Result<PathBuf, String> {
-    let base = crate::dev_env::var_os("TEXTREE_PERSONAL_BASE")
+    Ok(personal_home()?
+        .join(".textree")
+        .join("vaults")
+        .join(folder_key(root)))
+}
+
+/// The base the person's settings are kept under (`~` — or, for a test run, a place of its own).
+fn personal_home() -> Result<PathBuf, String> {
+    crate::dev_env::var_os("TEXTREE_PERSONAL_BASE")
         .map(PathBuf::from)
         .or_else(personal_base)
-        .ok_or_else(|| "cannot find a place to keep settings".to_string())?;
-    Ok(base.join(".textree").join("vaults").join(folder_key(root)))
+        .ok_or_else(|| "cannot find a place to keep settings".to_string())
+}
+
+/// The sidebar's notes folders, as the screen reads them.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceOut {
+    pub roots: Vec<crate::workspace_file::Root>,
+    /// Changes are not kept: the list was written by a newer release.
+    pub read_only: bool,
+    /// Where an unreadable list was moved this launch.
+    pub set_aside: Option<String>,
+}
+
+fn workspace_out(ws: &crate::workspace_file::Workspace) -> WorkspaceOut {
+    WorkspaceOut {
+        roots: ws.roots().to_vec(),
+        read_only: !ws.writable(),
+        set_aside: ws.set_aside().map(|p| p.display().to_string()),
+    }
+}
+
+/// The sidebar's notes folders as kept on this device. Each one is registered, so commands can
+/// name it by its id before it is opened.
+pub fn workspace_list() -> Result<WorkspaceOut, String> {
+    let ws = crate::workspace_file::Workspace::load(&crate::workspace_file::dir_under(
+        &personal_home()?,
+    ))
+    .map_err(|e| e.to_string())?;
+    for root in ws.roots() {
+        crate::workspace::register(&root.path);
+    }
+    Ok(workspace_out(&ws))
+}
+
+/// Keeps the notes folder at `path` in the list — every folder the window opens, so the first
+/// launch with a list takes the folder an earlier release opened last.
+pub fn workspace_add(path: String) -> Result<WorkspaceOut, String> {
+    let mut ws = crate::workspace_file::Workspace::load(&crate::workspace_file::dir_under(
+        &personal_home()?,
+    ))
+    .map_err(|e| e.to_string())?;
+    ws.add(&path).map_err(|e| e.to_string())?;
+    for root in ws.roots() {
+        crate::workspace::register(&root.path);
+    }
+    Ok(workspace_out(&ws))
 }
 
 #[cfg(not(test))]
@@ -2843,6 +2896,22 @@ pub fn restore_deleted(root: String, rel: String) -> Result<RestoredNote, String
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_workspace_keeps_each_opened_folder_once_and_registers_them() {
+        workspace_add("/notes/workspace-test-a".into()).unwrap();
+        workspace_add("/notes/workspace-test-b".into()).unwrap();
+        let listed = workspace_add("/notes/workspace-test-a".into()).unwrap();
+        let paths: Vec<_> = listed.roots.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            ["/notes/workspace-test-a", "/notes/workspace-test-b"]
+        );
+        assert!(!listed.read_only);
+        for root in workspace_list().unwrap().roots {
+            assert_eq!(crate::workspace::path_of(&root.id).unwrap(), root.path);
+        }
+    }
     use super::*;
     use tempfile::TempDir;
 
