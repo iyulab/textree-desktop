@@ -210,3 +210,40 @@ test("Tab reaches each notes folder's tree after moving within another", async (
     removeTempVault(b);
   }
 });
+
+test("links and linked mentions stay within each note's notes folder", async () => {
+  // «Only-there» exists only in the other folder: a link to it from here stays unresolved.
+  const a = createTempVault({
+    "Hub.md": "# Hub\n\nSee [[Target]] and [[Only-there]].\n",
+    "Target.md": "# Target\n\nhere target\n",
+  });
+  const b = createTempVault({
+    "Elsewhere.md": "# Elsewhere\n\nAlso [[Target]].\n",
+    "Target.md": "# Target\n\nthere target\n",
+    "Only-there.md": "# Only there\n",
+  });
+  try {
+    await loadVault(page, a);
+    expect(await addRoot(b)).toBe(true);
+    const aName = new RegExp(a.split(/[/\\]/).pop()!);
+    const bName = new RegExp(b.split(/[/\\]/).pop()!);
+
+    await section(aName).getByRole("treeitem", { name: /Hub/ }).click();
+    await expect(page.locator(".cm-lp-wikilink-unresolved", { hasText: "Only-there" })).toBeVisible();
+    await page.locator(".cm-lp-wikilink", { hasText: "Target" }).click();
+    await expect(page.locator(".cm-content")).toContainText("here target");
+    // Linked from its own folder's «Hub», not from the other folder's «Elsewhere».
+    const mentions = page.getByRole("region", { name: "Linked mentions" });
+    await expect(mentions).toContainText("Hub");
+    await expect(mentions).not.toContainText("Elsewhere");
+
+    await section(bName).getByRole("treeitem", { name: /Target/ }).click();
+    await expect(page.locator(".cm-content")).toContainText("there target");
+    await expect(mentions).toContainText("Elsewhere");
+    await expect(mentions).not.toContainText("Hub");
+  } finally {
+    await loadVault(page, a);
+    removeTempVault(a);
+    removeTempVault(b);
+  }
+});
