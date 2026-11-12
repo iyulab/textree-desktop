@@ -127,7 +127,8 @@
   // choices, the backlink index, collapsed folders. Bound to that folder (`folderState.svelte.ts`).
   let here = $state<FolderState | null>(null);
   let updateInfo = $state<UpdateInfo | null>(null);
-  let tree = $state<TreeNode[]>([]);
+  // The open folder's tree; each open folder keeps its own (`FolderState.tree`).
+  let tree = $derived<TreeNode[]>(here?.tree ?? []);
   let content = $state("");
   // Live document text — mirrors `content` on note load, then tracks edits so the page header
   // reflects frontmatter changes immediately (the editor owns its own doc; `content` is load-only).
@@ -477,42 +478,31 @@
   // Counts openings. Opening no longer holds the window, so a folder that is slow to answer can be
   // left for another one — and then the later opening is the one that counts.
   let vaultLoads = 0;
+  // The folder the latest opening is for: an opening it overtook lets its folder go only when it is
+  // another one — the same folder opened again must stay open for the later opening.
+  let latestOpening: string | null = null;
 
-  /** Open a vault path and load the tree (separate from the dialog — reused by the test bridge). */
-  /** Returns false when the switch did not happen: the open note's edits are not saved yet, or
-   *  another folder was opened before this one answered. */
-  async function loadVault(path: string): Promise<boolean> {
-    // preserve unsaved edits before switching vault
-    if ((await leaveNote()) !== "saved") return false;
-    const mine = ++vaultLoads;
-    const id = await registerRoot(path);
-    if (mine !== vaultLoads) return false; // another folder was chosen while this one was being named
+  /** A folder this window opened but does not show (an opening overtaken, or the folder left): its
+   *  index and watch are let go, and so is what the window kept for it. */
+  function letGo(id: RootId): void {
+    if (id === root) return;
+    folders.drop(id);
+    void closeRoot(id).catch((e) => console.warn("Could not close a folder not shown:", e));
+  }
+
+  /** Shows an open folder: it becomes the folder the window works in. What was on screen belonged to
+   *  the folder left — the open note, the selection, the mode, the chat, the related notes. The
+   *  screen shows one folder, so the one left is closed (`TODO(S1b Task 5)`: the sidebar keeps every
+   *  folder open). */
+  function activate(state: FolderState): void {
     const left = root;
-    root = id;
-    rootPath = path;
-    // The screen shows one folder: the one left is closed — its index and watch, and an opening of
-    // it still under way — and its state let go (`TODO(S1b Task 5)` — the sidebar keeps every
-    // folder open). The same folder opened again keeps its own.
-    if (left && left !== id) void closeRoot(left).catch((e) => console.warn("Could not close the folder left:", e));
-    folders.keepOnly(id);
-    const state = folders.of(id, () => new FolderState(id, path));
+    root = state.root;
+    rootPath = state.path;
     here = state;
-    let opened: TreeNode[];
-    try {
-      opened = await openVault(id);
-    } catch (e) {
-      if (mine !== vaultLoads) return false; // overtaken: what it says is about a folder left behind
-      throw e;
-    }
-    // Each step below puts something of this folder on screen; once a later opening has started,
-    // none of it is wanted.
-    const overtaken = () => mine !== vaultLoads;
-    if (overtaken()) return false;
-    tree = opened;
+    if (left && left !== state.root) letGo(left);
     backupNotice = null; // it was about the folder being left
-    // When the vault changes, the previous vault's selection, open note, and edit-mode context are invalid.
-    // If not cleared, a stale selectedNode would wrongly target the previous vault's path as the
-    // parent for creation/move, sending operations to the wrong location or failing.
+    // A stale selectedNode would target the previous folder's path as the parent for creation or a
+    // move, sending operations to the wrong place.
     closeEditor();
     selectedNode = null;
     cancelMode();
@@ -520,7 +510,39 @@
     chatStore.started = false;
     layout.setMode("note");
     treeView.reset(); // what was focused or cut belonged to the folder left
-    relatedNotes.clear(); // drop the previous vault's related panel
+    relatedNotes.clear(); // drop the previous folder's related panel
+    dismissedForeignViews = false; // re-evaluate the foreign-views notice for the new folder
+  }
+
+  /** Open a vault path and load the tree (separate from the dialog — reused by the test bridge). */
+  /** Returns false when the switch did not happen: the open note's edits are not saved yet, or
+   *  another folder was opened before this one answered. Until the folder answers, the screen stays
+   *  on the folder it shows. */
+  async function loadVault(path: string): Promise<boolean> {
+    // preserve unsaved edits before switching vault
+    if ((await leaveNote()) !== "saved") return false;
+    const mine = ++vaultLoads;
+    latestOpening = path;
+    const overtaken = () => mine !== vaultLoads;
+    const id = await registerRoot(path);
+    if (overtaken()) return false; // another folder was chosen while this one was being named
+    const state = folders.of(id, () => new FolderState(id, path));
+    let opened: TreeNode[];
+    try {
+      opened = await openVault(id);
+    } catch (e) {
+      if (overtaken()) {
+        if (latestOpening !== path) letGo(id); // what it says is about a folder left behind
+        return false;
+      }
+      throw e;
+    }
+    if (overtaken()) {
+      if (latestOpening !== path) letGo(id); // opened after all, but another folder was chosen meanwhile
+      return false;
+    }
+    state.tree = opened;
+    activate(state);
     // Before anything reads settings: they may still be inside the folder from an earlier
     // version, and this is what carries them out. Keeping every file is its own guarantee.
     try {
@@ -561,7 +583,6 @@
     } catch (e) {
       console.warn("Could not read edits kept from an earlier run:", e);
     }
-    dismissedForeignViews = false; // re-evaluate the foreign-views notice for the new vault
     // Take in what other devices sent and send what was recorded here — in the background.
     void backupStore.syncIfConnected(id);
     return true;
@@ -951,8 +972,10 @@
     activeName = noteStem(path);
   }
 
+  /** Reads the open folder's tree again — into that folder's state, even if another opens meanwhile. */
   async function refreshTree() {
-    if (root) tree = await listTree(root);
+    const state = here;
+    if (state) state.tree = await listTree(state.root);
   }
 
   /**
@@ -1716,8 +1739,10 @@
       activeDoc: () => liveDoc,
       isDirty: () => saveState.dirty,
       synced: () => save.synced,
-      setTree: (t) => {
-        tree = t;
+      isOpen: (folder) => folders.get(folder) !== undefined,
+      setTree: (folder, t) => {
+        const state = folders.get(folder);
+        if (state) state.tree = t;
       },
       reloadActive: applyReload,
       activeRemoved: () => save.markRemoved(),

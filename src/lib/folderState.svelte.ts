@@ -1,11 +1,11 @@
 /*
- * What the app keeps for each open notes folder: favorites, recent and order, saved views, publish
- * choices, the backlink index and collapsed folders. Each folder's state is bound to that folder for
+ * What the app keeps for each open notes folder: its tree, favorites, recent and order, saved views,
+ * publish choices, the backlink index and collapsed folders. Each folder's state is bound to that folder for
  * its whole life — it reads and writes only there — so nothing of one folder can land in another.
  */
 
 import { FolderBacklinks } from "./backlinkStore.svelte";
-import type { RootId } from "./ipc";
+import type { RootId, TreeNode } from "./ipc";
 import { FolderNav } from "./nav.svelte";
 import { FolderPublishScope } from "./publishScope.svelte";
 import { RootStates } from "./rootStates";
@@ -18,6 +18,8 @@ export class FolderState {
   readonly publish: FolderPublishScope;
   readonly backlinks = new FolderBacklinks();
   readonly folds: FolderFolds;
+  /** The folder's notes and folders as last read. */
+  tree = $state<TreeNode[]>([]);
 
   /** `path`: where the folder is on disk — what this device remembers of it is kept by it. */
   constructor(
