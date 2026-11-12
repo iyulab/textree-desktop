@@ -391,8 +391,10 @@
   backupStore.listen({
     exchanged: (folder, exchange) => {
       failureSaid.delete(folder);
-      if (folder !== root) return;
+      // Folders of one repository share its remote: an exchange for another of them can change
+      // whether this one is backed up. Asking is cheap and needs no network.
       void refreshBackup();
+      if (folder !== root) return;
       void refreshAlternatives();
       if (exchange.received.length > 0 || exchange.removed.length > 0) void refreshTree();
       // Choices travel on their own: they may have arrived from another device with no note.

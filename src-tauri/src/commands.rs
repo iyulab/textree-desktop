@@ -1856,9 +1856,67 @@ pub fn publish_preview(vault_path: String) -> Result<PublishPreview, String> {
 
 // ── Remote (exchange recorded notes with a remote the person connected) ─────────────────────
 
-/// The remote this folder exchanges notes with, as this machine remembers it.
+/// Where the remote connection of the folder at `root` is kept, and the key its secret is kept
+/// under: those of the repository the folder records into, not of the folder.
+///
+/// A repository has one set of recorded references and one record of what the remote holds, so
+/// it has one remote. Folders of the same repository therefore share it — connecting one connects
+/// the others, and they all say the same about being backed up. A folder that is its own
+/// repository, or has none yet (recording makes one there), keeps it as before.
+///
+/// A connection kept with the folder by an earlier version, when the folder sits inside a larger
+/// repository, is taken over for the repository the first time it is looked for — unless the
+/// repository already has one, which then stands and the folder's is left as it was.
+fn remote_place(root: &Path) -> Result<(PathBuf, String), String> {
+    let home = match history_repo(root)? {
+        Some(prepared) => prepared
+            .repo()
+            .workdir()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| root.to_path_buf()),
+        None => root.to_path_buf(),
+    };
+    let (key, own) = (folder_key(&home), folder_key(root));
+    let dir = personal_dir(&home)?;
+    if key != own {
+        adopt_folder_connection(&personal_dir(root)?, &dir, &own, &key)?;
+    }
+    Ok((dir.join(crate::remote::CONNECTION_FILE), key))
+}
+
+/// Moves a folder's own remote connection (file and secret) to its repository's place, when the
+/// repository has none. The secret is written under the new key before it is forgotten under the
+/// old one.
+fn adopt_folder_connection(
+    folder_dir: &Path,
+    repo_dir: &Path,
+    folder_key: &str,
+    repo_key: &str,
+) -> Result<(), String> {
+    let old = folder_dir.join(crate::remote::CONNECTION_FILE);
+    let new = repo_dir.join(crate::remote::CONNECTION_FILE);
+    if !old.is_file() || new.symlink_metadata().is_ok() {
+        return Ok(());
+    }
+    if !crate::state_dir::writable(repo_dir).map_err(|e| e.to_string())? {
+        return Ok(());
+    }
+    if let Some(secret) = crate::remote::secret(folder_key) {
+        crate::remote::set_secret(repo_key, &secret)?;
+    }
+    std::fs::create_dir_all(repo_dir).map_err(|e| e.to_string())?;
+    match crate::fs_ops::rename(&old, &new) {
+        Ok(()) => crate::remote::clear_secret(folder_key),
+        // Another folder of the repository got there first: its connection stands.
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// The remote this folder exchanges notes with, as this machine remembers it — the one of the
+/// repository it records into ([`remote_place`]).
 pub fn remote_connection(root: String) -> Result<Option<crate::remote::Connection>, String> {
-    let path = personal_dir(Path::new(&root))?.join(crate::remote::CONNECTION_FILE);
+    let (path, _) = remote_place(Path::new(&root))?;
     match std::fs::read_to_string(&path) {
         Ok(text) => serde_json::from_str(&text)
             .map(Some)
@@ -1884,11 +1942,15 @@ pub fn connect_remote(
         "" => "textree".to_string(),
         name => name.to_string(),
     };
-    let dir = personal_dir(root_p)?;
-    if !crate::state_dir::writable(&dir).map_err(|e| e.to_string())? {
+    let prepared = crate::git_engine::prepare(root_p).map_err(|e| e.message().to_string())?;
+    // After `prepare`: the place is the repository's, and a folder with none has one now.
+    let (path, key) = remote_place(root_p)?;
+    let dir = path
+        .parent()
+        .ok_or("cannot find a place to keep settings")?;
+    if !crate::state_dir::writable(dir).map_err(|e| e.to_string())? {
         return Err(NEWER_SETTINGS.into());
     }
-    let prepared = crate::git_engine::prepare(root_p).map_err(|e| e.message().to_string())?;
     let credentials = crate::git_transport::Credentials {
         username: username.clone(),
         secret: secret.clone(),
@@ -1898,8 +1960,8 @@ pub fn connect_remote(
 
     let connection = crate::remote::Connection { url, username };
     let text = serde_json::to_string_pretty(&connection).map_err(|e| e.to_string())?;
-    crate::remote::set_secret(&folder_key(root_p), &secret)?;
-    atomic_write_beside(&dir.join(crate::remote::CONNECTION_FILE), &text).map_err(|e| e.to_string())
+    crate::remote::set_secret(&key, &secret)?;
+    atomic_write_beside(&path, &text).map_err(|e| e.to_string())
 }
 
 /// Whether this folder's recorded notes are somewhere besides this machine: it is connected to a
@@ -1918,16 +1980,16 @@ pub fn notes_backed_up(root: String) -> Result<bool, String> {
     }
 }
 
-/// Forgets this folder's remote on this machine. Nothing on the remote changes.
+/// Forgets this folder's remote on this machine — for every folder of its repository, since they
+/// share it. Nothing on the remote changes.
 pub fn disconnect_remote(root: String) -> Result<(), String> {
-    let root_p = Path::new(&root);
-    let path = personal_dir(root_p)?.join(crate::remote::CONNECTION_FILE);
+    let (path, key) = remote_place(Path::new(&root))?;
     match std::fs::remove_file(&path) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.to_string()),
     }
-    crate::remote::clear_secret(&folder_key(root_p))
+    crate::remote::clear_secret(&key)
 }
 
 /// One exchange with this folder's remote: takes in what arrived where it can, and sends what
@@ -1936,14 +1998,29 @@ pub fn sync_remote(root: String, locks: &NoteLocks) -> Result<crate::remote::Exc
     let root_p = Path::new(&root);
     let connection = remote_connection(root.clone())?
         .ok_or_else(|| "this folder is not connected to a remote".to_string())?;
-    let credentials = crate::remote::secret(&folder_key(root_p)).map(|secret| {
-        crate::git_transport::Credentials {
-            username: connection.username.clone(),
-            secret,
-        }
+    let (_, key) = remote_place(root_p)?;
+    // Folders of one repository share its remote: one exchange at a time for the repository, so
+    // two opened together do not fetch, take in and send over each other.
+    let turn = exchange_turn(&key);
+    let _turn = turn.lock().unwrap_or_else(|p| p.into_inner());
+    let credentials = crate::remote::secret(&key).map(|secret| crate::git_transport::Credentials {
+        username: connection.username.clone(),
+        secret,
     });
     let prepared = crate::git_engine::prepare(root_p).map_err(|e| e.message().to_string())?;
     crate::remote::exchange(&prepared, root_p, &connection.url, credentials, locks)
+}
+
+/// The turn for exchanges of the repository whose remote is kept under `key`.
+fn exchange_turn(key: &str) -> std::sync::Arc<std::sync::Mutex<()>> {
+    static TURNS: std::sync::OnceLock<
+        std::sync::Mutex<HashMap<String, std::sync::Arc<std::sync::Mutex<()>>>>,
+    > = std::sync::OnceLock::new();
+    let mut turns = TURNS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    turns.entry(key.to_string()).or_default().clone()
 }
 
 /// Opens the OS app log directory in the system file explorer. Useful for diagnostic sharing.
@@ -4041,6 +4118,107 @@ mod tests {
 
         disconnect_remote(here_s).unwrap();
         disconnect_remote(there_s).unwrap();
+    }
+
+    #[test]
+    fn folders_of_one_repository_share_its_remote() {
+        use crate::git_transport::test_server::{SECRET, USER};
+        let tmp = TempDir::new().unwrap();
+        let Some(url) = remote_for_test(tmp.path()) else {
+            eprintln!("skipped: git is not installed");
+            return;
+        };
+        let locks = NoteLocks::default();
+        let repo = tmp.path().join("work");
+        git2::Repository::init(&repo).unwrap();
+        let (a, b) = (repo.join("journal"), repo.join("manual"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let (a_s, b_s) = (
+            a.to_string_lossy().to_string(),
+            b.to_string_lossy().to_string(),
+        );
+
+        connect_remote(a_s.clone(), url.clone(), USER.into(), SECRET.into()).unwrap();
+        let shared = Some(crate::remote::Connection {
+            url: url.clone(),
+            username: USER.into(),
+        });
+        assert_eq!(remote_connection(b_s.clone()).unwrap(), shared);
+        assert!(crate::remote::secret(&folder_key(&repo)).is_some());
+        assert!(crate::remote::secret(&folder_key(&a)).is_none());
+
+        // Recorded in one folder, sent from the other: one repository, one record of what the
+        // remote holds — both say the same about being backed up.
+        seed_note(&b, "b.md", "# B\n");
+        commit_notes(
+            b_s.clone(),
+            vec![b.join("b.md").to_string_lossy().to_string()],
+            "b".into(),
+        )
+        .unwrap();
+        assert!(!notes_backed_up(a_s.clone()).unwrap());
+        assert!(!notes_backed_up(b_s.clone()).unwrap());
+        assert!(sync_remote(a_s.clone(), &locks).unwrap().sent);
+        assert!(notes_backed_up(a_s.clone()).unwrap());
+        assert!(notes_backed_up(b_s.clone()).unwrap());
+
+        disconnect_remote(b_s.clone()).unwrap();
+        assert_eq!(remote_connection(a_s.clone()).unwrap(), None);
+        assert!(crate::remote::secret(&folder_key(&repo)).is_none());
+    }
+
+    #[test]
+    fn a_connection_kept_with_a_folder_inside_a_repository_moves_to_the_repository() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path().join("work");
+        git2::Repository::init(&repo).unwrap();
+        let (a, b) = (repo.join("journal"), repo.join("manual"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        let earlier = |folder: &Path, url: &str| {
+            let dir = personal_dir(folder).unwrap();
+            std::fs::create_dir_all(&dir).unwrap();
+            let c = crate::remote::Connection {
+                url: url.into(),
+                username: "me".into(),
+            };
+            std::fs::write(
+                dir.join(crate::remote::CONNECTION_FILE),
+                serde_json::to_string(&c).unwrap(),
+            )
+            .unwrap();
+            crate::remote::set_secret(&folder_key(folder), url).unwrap();
+        };
+        earlier(&a, "https://a.example/notes.git");
+        earlier(&b, "https://b.example/notes.git");
+
+        let a_s = a.to_string_lossy().to_string();
+        let got = remote_connection(a_s.clone()).unwrap().unwrap();
+        assert_eq!(got.url, "https://a.example/notes.git");
+        assert!(!personal_dir(&a)
+            .unwrap()
+            .join(crate::remote::CONNECTION_FILE)
+            .exists());
+        assert_eq!(
+            crate::remote::secret(&folder_key(&repo)).as_deref(),
+            Some("https://a.example/notes.git")
+        );
+        assert!(crate::remote::secret(&folder_key(&a)).is_none());
+
+        // The repository has one now: the other folder's earlier one is left as it was.
+        let b_s = b.to_string_lossy().to_string();
+        assert_eq!(
+            remote_connection(b_s).unwrap().unwrap().url,
+            "https://a.example/notes.git"
+        );
+        assert!(personal_dir(&b)
+            .unwrap()
+            .join(crate::remote::CONNECTION_FILE)
+            .exists());
+
+        disconnect_remote(a_s).unwrap();
+        crate::remote::clear_secret(&folder_key(&b)).unwrap();
     }
 
     #[test]
