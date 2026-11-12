@@ -30,6 +30,7 @@ fn workspace_out(ws: &crate::workspace_file::Workspace) -> WorkspaceOut {
 /// The sidebar's notes folders as kept on this device. Each one is registered, so commands can
 /// name it by its id before it is opened.
 pub fn workspace_list() -> Result<WorkspaceOut, String> {
+    let _turn = list_turn();
     let ws = crate::workspace_file::Workspace::load(&crate::workspace_file::dir_under(
         &personal_home()?,
     ))
@@ -43,6 +44,7 @@ pub fn workspace_list() -> Result<WorkspaceOut, String> {
 /// Keeps the notes folder at `path` in the list — every folder the window opens, so the first
 /// launch with a list takes the folder an earlier release opened last.
 pub fn workspace_add(path: String) -> Result<WorkspaceOut, String> {
+    let _turn = list_turn();
     let mut ws = crate::workspace_file::Workspace::load(&crate::workspace_file::dir_under(
         &personal_home()?,
     ))
@@ -54,10 +56,20 @@ pub fn workspace_add(path: String) -> Result<WorkspaceOut, String> {
     Ok(workspace_out(&ws))
 }
 
+/// Held from reading the device's list to writing it back. Commands run off the main thread and
+/// may overlap — at startup each folder opened adds itself while the person may already be
+/// adding or naming one — and two that read the same list would each write back their own change
+/// without the other's.
+fn list_turn() -> std::sync::MutexGuard<'static, ()> {
+    static TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    TURN.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 /// Changes the sidebar's list of notes folders with `change` and returns the list as it now is.
 fn workspace_change(
     change: impl FnOnce(&mut crate::workspace_file::Workspace) -> std::io::Result<()>,
 ) -> Result<WorkspaceOut, String> {
+    let _turn = list_turn();
     let mut ws = crate::workspace_file::Workspace::load(&crate::workspace_file::dir_under(
         &personal_home()?,
     ))
@@ -109,6 +121,7 @@ pub struct Relocated {
 /// it, edits kept from notes it left, drafts of alternatives — move with it. The settings move
 /// first and the list is written last, so a move cut short is finished by doing it again.
 pub fn workspace_relocate(id: String, path: String) -> Result<Relocated, String> {
+    let _turn = list_turn();
     let mut ws = crate::workspace_file::Workspace::load(&crate::workspace_file::dir_under(
         &personal_home()?,
     ))
