@@ -6,6 +6,7 @@
     notesBackedUp,
     openVault,
     closeRoot,
+    revealRoot,
     registerRoot,
     type RootId,
     ensureDefaultVault,
@@ -2090,6 +2091,7 @@
                 canMoveDown={shown[shown.length - 1] !== f}
                 onrename={() => (relabeling = f.root)}
                 onmove={(delta) => void moveInSidebar(f, delta)}
+                onreveal={() => void revealRoot(f.root).catch((e) => (opError = friendlyError(e)))}
                 onremove={() => void removeFromSidebar(f)}
               />
             </div>

@@ -1,9 +1,10 @@
 <script lang="ts">
   /*
-   * ⋮ menu of one notes folder in the sidebar: name it, move it up or down, take it out of the
-   * sidebar. The folder and its notes are never touched by any of these.
+   * ⋮ menu of one notes folder in the sidebar: name it, move it up or down, show it in the
+   * system's file manager, take it out of the sidebar. The folder and its notes are never touched by any of these.
    */
   import Icon from "./Icon.svelte";
+  import { fileManagerAction } from "./workspace.helpers";
 
   let {
     name,
@@ -11,6 +12,7 @@
     canMoveDown,
     onrename,
     onmove,
+    onreveal,
     onremove,
   }: {
     /** The folder's name in the sidebar, for the menu's label. */
@@ -20,10 +22,13 @@
     onrename: () => void;
     /** −1 up, +1 down. */
     onmove: (delta: number) => void;
+    /** Show the folder in the system's file manager. */
+    onreveal: () => void;
     onremove: () => void;
   } = $props();
 
   let open = $state(false);
+  const revealLabel = fileManagerAction(typeof navigator === "undefined" ? "" : navigator.platform);
 
   function choose(action: () => void): void {
     open = false;
@@ -58,6 +63,7 @@
         >Move up</button>
       <button class="item" role="menuitem" disabled={!canMoveDown} onclick={() => choose(() => onmove(1))}
         >Move down</button>
+      <button class="item" role="menuitem" onclick={() => choose(onreveal)}>{revealLabel}</button>
       <div class="sep" role="separator"></div>
       <button
         class="item"

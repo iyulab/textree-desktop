@@ -71,6 +71,20 @@ pub async fn close_root(root_id: String, app: AppHandle) -> Result<(), String> {
     .await
 }
 
+/// Shows a notes folder in the system's file manager. The path is worked out here — the window
+/// names the folder only by its id.
+#[tauri::command]
+pub async fn reveal_root(root_id: String, app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt as _;
+    let root = crate::workspace::path_of(&root_id)?;
+    off_main(move || {
+        app.opener()
+            .reveal_item_in_dir(&root)
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
 /// Makes the folder at `path` known and answers with the id every later command names it by. It
 /// only records the name — nothing on the disk is looked at — so the screen can hold the id
 /// before the folder has finished opening.

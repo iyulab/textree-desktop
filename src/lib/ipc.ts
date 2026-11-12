@@ -69,6 +69,11 @@ export async function openVault(rootId: RootId): Promise<TreeNode[]> {
   return invoke<TreeNode[]>("open_vault", { rootId });
 }
 
+/** Shows a notes folder in the system's file manager. */
+export async function revealRoot(rootId: RootId): Promise<void> {
+  return invoke<void>("reveal_root", { rootId });
+}
+
 /** Lets a folder the window no longer shows go: its search index and watch. Nothing on disk changes. */
 export async function closeRoot(rootId: RootId): Promise<void> {
   return invoke<void>("close_root", { rootId });

@@ -30,6 +30,11 @@ export function movedRoot(ids: readonly RootId[], id: RootId, delta: number): re
   return next;
 }
 
+/** What showing a folder in the system's file manager is called where the app runs. */
+export function fileManagerAction(platform: string): string {
+  return /mac/i.test(platform) ? "Show in Finder" : "Show in File Explorer";
+}
+
 /**
  * Whether adding a folder to the sidebar was refused because it is inside a folder the sidebar
  * shows, or holds one (the backend's wording, which the person reads as it is).

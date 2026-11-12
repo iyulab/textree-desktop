@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RootId } from "./ipc";
-import { folderName, isNestingRefusal, movedRoot, sidebarName } from "./workspace.helpers";
+import { fileManagerAction, folderName, isNestingRefusal, movedRoot, sidebarName } from "./workspace.helpers";
 
 const id = (s: string) => s as RootId;
 
@@ -38,5 +38,12 @@ describe("adding a folder the sidebar refuses", () => {
     expect(isNestingRefusal("This folder is already in the sidebar inside Work.")).toBe(true);
     expect(isNestingRefusal("Work is inside this folder.")).toBe(true);
     expect(isNestingRefusal("Access is denied. (os error 5)")).toBe(false);
+  });
+});
+
+describe("showing a folder in the file manager", () => {
+  it("is called what the system calls it", () => {
+    expect(fileManagerAction("MacIntel")).toBe("Show in Finder");
+    expect(fileManagerAction("Win32")).toBe("Show in File Explorer");
   });
 });
