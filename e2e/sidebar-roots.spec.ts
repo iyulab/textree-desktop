@@ -55,6 +55,15 @@ test("two notes folders side by side: a note of the same name opens from its own
 
     await section(workName).getByRole("treeitem", { name: /plan/ }).click();
     await expect(page.locator(".cm-content")).toContainText("work plan");
+
+    // Content search looks only in the folder the window is in, and says which.
+    await page.keyboard.press("Control+p");
+    await page.getByTestId("palette-input").fill("/");
+    await expect(page.getByTestId("palette-status")).toHaveText(
+      `Searches the notes in ${work.split("/").pop()} only`,
+    );
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("palette-overlay")).toHaveCount(0);
   } finally {
     await loadVault(page, work); // alone again, for the specs after this one
     removeTempVault(work);

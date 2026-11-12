@@ -4,7 +4,7 @@
   import type { FolderNav } from "./nav.svelte";
   import { fuzzyMatch, type Match } from "./fuzzy";
   import { formatKeybinding } from "./keybinding.helpers";
-  import { paletteListState } from "./palette.helpers";
+  import { paletteListState, paletteStatusText } from "./palette.helpers";
   import type { Command } from "./commands";
   import { semanticSearch, hostStatus, prepareAiModel, type SearchHit, type SemanticHit, type HostStatus } from "./ipc";
   import { resolveSemanticAiUi } from "./semanticAiUi.helpers";
@@ -32,6 +32,7 @@
     vaultRoot = null,
     scopePath = null,
     nav = null,
+    folderName = null,
   }: {
     files: FileEntry[];
     commands: Command[];
@@ -43,6 +44,8 @@
     scopePath?: string | null;
     /** Favorites and recent notes of the open notes folder (null before one opens). */
     nav?: FolderNav | null;
+    /** The open notes folder's name when the sidebar shows several — where content search looks. */
+    folderName?: string | null;
   } = $props();
 
   let fileMatches = $derived<Match<FileEntry>[]>(
@@ -215,6 +218,7 @@
   let listState = $derived(
     paletteListState({ mode: palette.mode, term: palette.term, count, searching }),
   );
+  let statusText = $derived(paletteStatusText(listState, palette.mode, folderName));
 
   function highlight(text: string, ranges: [number, number][]): { t: string; on: boolean }[] {
     const out: { t: string; on: boolean }[] = [];
@@ -296,13 +300,7 @@
         class="input"
         data-testid="palette-input"
         use:focusOnMount
-        placeholder={palette.mode === "command"
-          ? "Run a command…"
-          : palette.mode === "content"
-            ? "Search content…"
-            : palette.mode === "semantic"
-              ? "Semantic search…  (scoped to current folder)"
-              : "Search files…  ('>' = commands, '/' = content, '?' = semantic)"}
+        placeholder="Search files…  ('>' = commands, '/' = content, '?' = semantic)"
         value={palette.query}
         oninput={(e) => palette.setQuery(e.currentTarget.value)}
         onkeydown={onKey}
@@ -417,10 +415,12 @@
             {/each}
           {/if}
         {/if}
-        {#if !aiNotReady && listState === "searching"}
-          <li class="status-row" role="status">Searching…</li>
-        {:else if !aiNotReady && listState === "no-results"}
-          <li class="status-row" role="status" data-testid="palette-empty">No matches found</li>
+        {#if !aiNotReady && statusText}
+          <li
+            class="status-row"
+            role="status"
+            data-testid={listState === "no-results" ? "palette-empty" : "palette-status"}
+          >{statusText}</li>
         {/if}
       </ul>
     </div>

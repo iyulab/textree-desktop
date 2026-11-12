@@ -39,3 +39,27 @@ export function paletteListState(args: {
   if (args.term !== "") return "no-results";
   return "empty";
 }
+
+/**
+ * The status row under content or semantic results, or `null` for none. Finding a note by name
+ * looks in every notes folder the sidebar shows, but content and semantic search look only in the
+ * open one — so with several shown (`folder` names the open one) the row says where it looked,
+ * and says it before anything is typed.
+ */
+export function paletteStatusText(
+  state: PaletteListState,
+  mode: PaletteMode,
+  folder: string | null,
+): string | null {
+  const scoped = folder !== null && (mode === "content" || mode === "semantic");
+  switch (state) {
+    case "searching":
+      return scoped ? `Searching ${folder}…` : "Searching…";
+    case "no-results":
+      return scoped ? `No matches in ${folder}` : "No matches found";
+    case "empty":
+      return scoped ? `Searches the notes in ${folder} only` : null;
+    case "results":
+      return null;
+  }
+}

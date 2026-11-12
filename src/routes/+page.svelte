@@ -2168,6 +2168,7 @@
   vaultRoot={root}
   scopePath={semanticScopePath}
   nav={here?.nav ?? null}
+  folderName={shown.length > 1 && here ? sidebarName({ path: here.path, label: listLabels[here.root] }) : null}
 />
 
 {#if aiHost.download}

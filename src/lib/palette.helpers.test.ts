@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { paletteMode, paletteTerm, paletteListState } from "./palette.helpers";
+import { paletteMode, paletteTerm, paletteListState, paletteStatusText } from "./palette.helpers";
 
 describe("paletteMode", () => {
   it("'>' prefix is command", () => expect(paletteMode(">new note")).toBe("command"));
@@ -77,5 +77,20 @@ describe("paletteMode semantic", () => {
     expect(paletteMode(">cmd")).toBe("command");
     expect(paletteMode("/text")).toBe("content");
     expect(paletteMode("file")).toBe("file");
+  });
+});
+
+describe("paletteStatusText", () => {
+  it("says where content and semantic search look when several folders are shown", () => {
+    expect(paletteStatusText("empty", "content", "Work")).toBe("Searches the notes in Work only");
+    expect(paletteStatusText("searching", "semantic", "Work")).toBe("Searching Work…");
+    expect(paletteStatusText("no-results", "content", "Work")).toBe("No matches in Work");
+    expect(paletteStatusText("results", "content", "Work")).toBeNull();
+  });
+  it("keeps the plain rows with one folder, and for finding by name", () => {
+    expect(paletteStatusText("empty", "content", null)).toBeNull();
+    expect(paletteStatusText("searching", "content", null)).toBe("Searching…");
+    expect(paletteStatusText("no-results", "file", "Work")).toBe("No matches found");
+    expect(paletteStatusText("empty", "file", "Work")).toBeNull();
   });
 });
