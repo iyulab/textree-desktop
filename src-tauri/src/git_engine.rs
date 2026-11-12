@@ -307,10 +307,26 @@ pub fn history(
     reference: &str,
     rel: &Path,
 ) -> Result<Vec<RecordedVersion>, git2::Error> {
-    let mut target = slashed(rel);
     let mut out = Vec::new();
+    walk_history(repo, reference, rel, |v| {
+        out.push(v);
+        true
+    })?;
+    Ok(out)
+}
+
+/// [`history`], one version at a time, newest first: `each` returns whether to go on. A caller
+/// that is looking for one version stops the walk there — the reference holds every note's
+/// revisions, so walking to its end costs as much as the folder's whole history.
+fn walk_history(
+    repo: &Repository,
+    reference: &str,
+    rel: &Path,
+    mut each: impl FnMut(RecordedVersion) -> bool,
+) -> Result<(), git2::Error> {
+    let mut target = slashed(rel);
     if repo.find_reference(reference).is_err() {
-        return Ok(out);
+        return Ok(());
     }
     let mut walk = repo.revwalk()?;
     // Topological as well as by time: several notes recorded in the same second carry
@@ -333,15 +349,18 @@ pub fn history(
             }
             Touch::Changed => {}
         }
-        out.push(RecordedVersion {
+        let go_on = each(RecordedVersion {
             id: commit.id().to_string(),
             message: commit.summary().ok().flatten().unwrap_or("").to_string(),
             seconds: commit.time().seconds(),
             author: commit.author().name().unwrap_or("").to_string(),
             path: target.clone(),
         });
+        if !go_on {
+            break;
+        }
     }
-    Ok(out)
+    Ok(())
 }
 
 /// What a note held at one of its recorded states, named by the note's current path.
@@ -357,13 +376,19 @@ pub fn content_at_version(
     rel: &Path,
     id: &str,
 ) -> Result<Option<Vec<u8>>, git2::Error> {
-    let Some(version) = history(repo, reference, rel)?
-        .into_iter()
-        .find(|v| v.id == id)
-    else {
+    let mut found = None;
+    walk_history(repo, reference, rel, |v| {
+        if v.id == id {
+            found = Some(v.path);
+            false
+        } else {
+            true
+        }
+    })?;
+    let Some(path) = found else {
         return Ok(None);
     };
-    content_at(repo, id, Path::new(&version.path))
+    content_at(repo, id, Path::new(&path))
 }
 
 /// When each of `wanted` was last written on `reference`, in seconds since the epoch.
