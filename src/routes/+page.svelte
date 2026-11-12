@@ -488,8 +488,17 @@
   function letGo(id: RootId): void {
     if (id === root) return;
     folders.drop(id);
-    void closeRoot(id).catch((e) => console.warn("Could not close a folder not shown:", e));
+    const closed: Promise<void> = closeRoot(id)
+      .catch((e) => console.warn("Could not close a folder not shown:", e))
+      .finally(() => {
+        if (closing.get(id) === closed) closing.delete(id);
+      });
+    closing.set(id, closed);
   }
+
+  // Closings still on their way, by folder: opening the same folder again waits for its closing, or
+  // the closing would overtake the new opening (or strip what it installed).
+  const closing = new Map<RootId, Promise<void>>();
 
   /** Shows an open folder: it becomes the folder the window works in. What was on screen belonged to
    *  the folder left — the open note, the selection, the mode, the chat, the related notes. The
@@ -527,6 +536,8 @@
     const overtaken = () => mine !== vaultLoads;
     const id = await registerRoot(path);
     if (overtaken()) return false; // another folder was chosen while this one was being named
+    await closing.get(id);
+    if (overtaken()) return false;
     const state = folders.of(id, () => new FolderState(id, path));
     let opened: TreeNode[];
     try {
@@ -536,10 +547,21 @@
         if (latestOpening !== path) letGo(id); // what it says is about a folder left behind
         return false;
       }
+      if (id !== root) folders.drop(id); // it did not open: nothing of it is kept
       throw e;
     }
     if (overtaken()) {
       if (latestOpening !== path) letGo(id); // opened after all, but another folder was chosen meanwhile
+      return false;
+    }
+    // The note on screen stayed open while the folder was opening, and may have been typed in:
+    // leaving it again is what keeps those edits (every way out of a note goes through here).
+    if ((await leaveNote()) !== "saved") {
+      if (latestOpening !== path || !overtaken()) letGo(id); // opened, but not shown
+      return false;
+    }
+    if (overtaken()) {
+      if (latestOpening !== path) letGo(id);
       return false;
     }
     state.tree = opened;
