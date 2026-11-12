@@ -11,6 +11,7 @@
   import type { TreeNode } from "./ipc";
   import type { FriendlyError } from "./friendlyError.helpers";
   import { tree } from "./tree.svelte";
+  import { tabStop } from "./treeFocus.helpers";
   import Icon from "./Icon.svelte";
   import type { FolderState } from "./folderState.svelte";
   import { mergeOrder } from "./nav.svelte";
@@ -116,7 +117,7 @@
   function focusItem(el: HTMLElement | null | undefined, path?: string) {
     if (!el) return;
     el.focus();
-    if (path) tree.setFocused(path);
+    if (path) tree.setFocused({ root: folder.root, path });
   }
 
   function siblingItem(el: HTMLElement, delta: number) {
@@ -217,9 +218,7 @@
 
   /** roving tabindex: only the focused node is 0; if unset, the top-level first item is 0. */
   function tabFor(path: string, index: number): number {
-    if (tree.focused === path) return 0;
-    if (tree.focused === null && top && index === 0) return 0;
-    return -1;
+    return tabStop(tree.focused, folder.root, path, top, index);
   }
 
   // ── Inline rename (T2) ──────────────────────────────────────────
@@ -328,7 +327,7 @@
             ondragleave={() => onDragLeave(node)}
             ondrop={(e) => onDrop(e, node)}
             onclick={() => onselect(node)}
-            onfocus={() => tree.setFocused(node.path)}
+            onfocus={() => tree.setFocused({ root: folder.root, path: node.path })}
             onkeydown={(e) => onKeydown(e, node)}
           >
             <span class="icon"><Icon name={node.kind === "container" ? "folder" : "file-text"} size={15} /></span>

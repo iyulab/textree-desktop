@@ -61,8 +61,9 @@ export class FolderFolds {
 }
 
 class TreeFocus {
-  /** Path of the node under keyboard focus (roving tabindex basis). null = unset (falls back to the first item). */
-  focused = $state<string | null>(null);
+  /** The node under keyboard focus, with its notes folder (roving tabindex basis). null = unset (each
+   *  folder's first item takes Tab). */
+  focused = $state<PickedNode | null>(null);
   /** The node "cut" for keyboard move (Ctrl+X), with its notes folder. Moved/adopted onto the paste (Ctrl+V) target. */
   cut = $state<PickedNode | null>(null);
 
@@ -72,8 +73,8 @@ class TreeFocus {
     this.cut = null;
   }
 
-  setFocused(path: string | null): void {
-    this.focused = path;
+  setFocused(picked: PickedNode | null): void {
+    this.focused = picked;
   }
 
   setCut(picked: PickedNode | null): void {

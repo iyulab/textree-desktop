@@ -1628,17 +1628,27 @@
     name: string;
     path: string;
     kind: "leaf" | "container";
+    /** The notes folder it is in, and that folder's name when the sidebar shows several. */
+    root?: RootId;
+    folder?: string;
   }
 
-  function flattenTree(nodes: TreeNode[], acc: FileEntry[] = []): FileEntry[] {
+  function flattenTree(nodes: TreeNode[], at: Pick<FileEntry, "root" | "folder"> = {}, acc: FileEntry[] = []): FileEntry[] {
     for (const n of nodes) {
-      acc.push({ name: n.name, path: n.path, kind: n.kind });
-      if (n.children?.length) flattenTree(n.children, acc);
+      acc.push({ name: n.name, path: n.path, kind: n.kind, ...at });
+      if (n.children?.length) flattenTree(n.children, at, acc);
     }
     return acc;
   }
 
-  let fileIndex = $derived<FileEntry[]>(flattenTree(tree));
+  // Every open folder's notes, each said with its folder when the sidebar shows several.
+  let fileIndex = $derived<FileEntry[]>(
+    shown.length > 1
+      ? shown.flatMap((f) =>
+          flattenTree(f.tree, { root: f.root, folder: sidebarName({ path: f.path, label: listLabels[f.root] }) }),
+        )
+      : flattenTree(tree, { root: root ?? undefined }),
+  );
 
   /** Collect every note's `.md` path: leaf=own path, container=its folder note. */
   function collectNotePaths(nodes: TreeNode[], acc: string[] = []): string[] {
@@ -1904,12 +1914,15 @@
   /** Palette file selection → find the matching TreeNode and delegate to handleSelect.
    *  Takes a node's path (file/command/content modes) or a note's `.md` path (semantic hits, a
    *  folder's own note among them) so all modes converge here. */
-  function openFileFromPalette(path: string): void {
-    const node = findNode(tree, path) ?? findNodeByNotePath(tree, path);
-    if (node) {
-      void handleSelect(node);
-      here?.nav.pushRecent(node.path);
-    }
+  function openFileFromPalette(path: string, folder?: RootId): void {
+    const state = (folder && folders.get(folder)) || here;
+    if (!state) return;
+    const node = findNode(state.tree, path) ?? findNodeByNotePath(state.tree, path);
+    if (!node) return;
+    // A note of another open folder: the window goes to that folder, as choosing it in its tree does.
+    void inFolder(state, handleSelect)(node).then(() => {
+      if (here === state) state.nav.pushRecent(node.path);
+    });
   }
 
   /**

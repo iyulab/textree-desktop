@@ -18,6 +18,9 @@
     name: string;
     path: string;
     kind: "leaf" | "container";
+    /** The notes folder it is in; `folder` names it when the sidebar shows several. */
+    root?: string;
+    folder?: string;
   }
 
   let {
@@ -32,7 +35,8 @@
   }: {
     files: FileEntry[];
     commands: Command[];
-    onOpenFile: (path: string) => void;
+    /** `root`: the notes folder of a note listed from several (else the open folder). */
+    onOpenFile: (path: string, root?: RootId) => void;
     onRunCommand: (cmd: Command) => void;
     onSearchContent: (query: string) => Promise<SearchHit[]>;
     vaultRoot?: RootId | null;
@@ -50,7 +54,7 @@
             ...(nav?.favorites ?? []),
             ...(nav?.recent ?? []).filter((p) => !nav?.favorites.includes(p)),
           ]
-            .map((p) => files.find((f) => f.path === p))
+            .map((p) => files.find((f) => f.path === p && (f.root === undefined || f.root === vaultRoot)))
             .filter((f): f is FileEntry => f !== undefined)
             .map((item) => ({ item, score: 0, ranges: [] as [number, number][] }))
         : fuzzyMatch(palette.term, files, (f) => f.name),
@@ -237,7 +241,10 @@
 
   function commit(): void {
     if (count === 0) return;
-    if (palette.mode === "file") onOpenFile(fileMatches[palette.selected].item.path);
+    if (palette.mode === "file") {
+      const { path, root } = fileMatches[palette.selected].item;
+      onOpenFile(path, root as RootId | undefined);
+    }
     else if (palette.mode === "command") onRunCommand(cmdMatches[palette.selected].item);
     else if (palette.mode === "semantic") onOpenFile(semanticHits[palette.selected].path);
     else onOpenFile(contentHits[palette.selected].path);
@@ -302,7 +309,7 @@
       />
       <ul class="results" data-testid="palette-results">
         {#if palette.mode === "file"}
-          {#each fileMatches as m, i (m.item.path)}
+          {#each fileMatches as m, i (`${m.item.root ?? ""}:${m.item.path}`)}
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <li
               class="row"
@@ -314,12 +321,12 @@
               }}
             >
               <span class="title">
-                {#if nav?.isFavorite(m.item.path)}<span class="fav-mark" aria-hidden="true">★</span
+                {#if (m.item.root === undefined || m.item.root === vaultRoot) && nav?.isFavorite(m.item.path)}<span class="fav-mark" aria-hidden="true">★</span
                   >{/if}{#each highlight(m.item.name, m.ranges) as seg}<span class:hl={seg.on}
                     >{seg.t}</span
                   >{/each}
               </span>
-              <span class="sub">{m.item.path}</span>
+              <span class="sub">{#if m.item.folder}<span class="folder">{m.item.folder}</span> · {/if}{m.item.path}</span>
             </li>
           {/each}
         {:else if palette.mode === "command"}
@@ -497,6 +504,7 @@
   .hl { color: var(--accent); font-weight: 600; }
   /* --text-muted: secondary path text */
   .sub { color: var(--text-muted); font-size: 0.8rem; }
+  .sub .folder { color: var(--text-normal); }
   .snippet { color: var(--text-normal); font-size: 0.85rem; }
   /* Non-interactive status row (searching / no matches) — muted, not selectable. */
   .status-row {

@@ -162,3 +162,51 @@ test("a folder inside one the sidebar shows is refused", async () => {
     removeTempVault(outer);
   }
 });
+
+test("the palette finds notes of every open notes folder, says which, and opens one in its folder", async () => {
+  const work = createTempVault({ "plan.md": "# plan\n\nwork plan\n" });
+  const home = createTempVault({ "plan.md": "# plan\n\nhome plan\n" });
+  try {
+    await loadVault(page, work);
+    expect(await addRoot(home)).toBe(true);
+    const homeFolder = home.split(/[/\\]/).pop()!;
+
+    await page.keyboard.press("Control+p");
+    await page.getByTestId("palette-input").fill("plan");
+    const rows = page.getByTestId("palette-item");
+    await expect(rows).toHaveCount(2);
+    await rows.filter({ hasText: homeFolder }).click();
+
+    await expectOpenNote(page, "plan");
+    await expect(page.locator(".cm-content")).toContainText("home plan");
+    await expect(page.locator(".root-head.active")).toContainText(homeFolder);
+  } finally {
+    await loadVault(page, work);
+    removeTempVault(work);
+    removeTempVault(home);
+  }
+});
+
+test("Tab reaches each notes folder's tree after moving within another", async () => {
+  const a = createTempVault({ "one.md": "# one\n", "two.md": "# two\n" });
+  const b = createTempVault({ "other.md": "# other\n" });
+  try {
+    await loadVault(page, a);
+    expect(await addRoot(b)).toBe(true);
+    const aName = new RegExp(a.split(/[/\\]/).pop()!);
+    const bName = new RegExp(b.split(/[/\\]/).pop()!);
+    await section(aName).getByRole("treeitem", { name: /one/ }).focus();
+    await page.keyboard.press("ArrowDown"); // the tab stop moves to «two» in this folder
+    await expect(section(aName).getByRole("treeitem", { name: /two/ })).toBeFocused();
+
+    const target = section(bName).getByRole("treeitem", { name: /other/ });
+    for (let i = 0; i < 8 && !(await target.evaluate((el) => el === document.activeElement)); i++) {
+      await page.keyboard.press("Tab");
+    }
+    await expect(target).toBeFocused();
+  } finally {
+    await loadVault(page, a);
+    removeTempVault(a);
+    removeTempVault(b);
+  }
+});
