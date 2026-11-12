@@ -609,6 +609,12 @@ pub async fn workspace_reorder(ids: Vec<String>) -> Result<commands::WorkspaceOu
     off_main(move || commands::workspace_reorder(ids)).await
 }
 
+/// Points a notes folder of the sidebar at where it now is (see [`commands::workspace_relocate`]).
+#[tauri::command]
+pub async fn workspace_relocate(id: String, path: String) -> Result<commands::Relocated, String> {
+    off_main(move || commands::workspace_relocate(id, path)).await
+}
+
 /// Names a notes folder in the sidebar (see [`commands::workspace_relabel`]).
 #[tauri::command]
 pub async fn workspace_relabel(
