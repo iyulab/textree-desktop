@@ -64,6 +64,9 @@ test("folders of one repository share its backup", async () => {
     await expectOpenNote(page, "day");
     await addVersion(page);
     await expect(indicator).toHaveText("Not backed up");
+    // Each folder's row says so too, so a folder not open does not hide it.
+    await expect(journalSection.getByTestId("root-not-backed-up")).toBeVisible();
+    await expect(manualSection.getByTestId("root-not-backed-up")).toBeVisible();
     await indicator.click();
     await page.getByTestId("backup-url").fill(remote.url);
     await page.getByTestId("backup-token").fill(remote.token);
@@ -71,6 +74,9 @@ test("folders of one repository share its backup", async () => {
     await expect(page.getByTestId("backup-outcome")).toHaveText("Everything is backed up.");
     await dialog.getByRole("button", { name: "Close" }).click();
     expect(versions()).toBe(1);
+    // One repository, one backup: both rows clear.
+    await expect(journalSection.getByTestId("root-not-backed-up")).toHaveCount(0);
+    await expect(manualSection.getByTestId("root-not-backed-up")).toHaveCount(0);
 
     // ── Manual: already connected — the same repository, the same remote.
     await manualSection.getByRole("treeitem", { name: /howto/ }).click();

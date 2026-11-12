@@ -113,7 +113,7 @@
   import { friendlyError, type FriendlyError } from "$lib/friendlyError.helpers";
   import { extractFirstH1, isUnnamed, sanitizeForFilename } from "$lib/h1sync.helpers";
   import { NO_VAULT_HINT, NO_VAULT_PROMPT, NO_NOTE_PROMPT } from "$lib/emptyState";
-  import { backupStatus } from "$lib/backupStatus.helpers";
+  import { backupStatus, NOT_BACKED_UP } from "$lib/backupStatus.helpers";
   import BackupDialog from "$lib/BackupDialog.svelte";
   import { backupStore } from "$lib/remoteSync.svelte";
   import { exchangeMessages, isNewFailure, needsAttention } from "$lib/remoteSync.helpers";
@@ -356,7 +356,31 @@
   // network, so a stale answer can only ever be "not backed up".
   let backedUp = $state(false);
   let backupAsks = 0;
+  // Whether each notes folder the sidebar shows is backed up, said on its row when several are
+  // shown — the one in the title bar speaks only for the open folder, and a missing backup is not
+  // to be hidden (D-61). Asked without the network, so it is cheap to ask again whenever the open
+  // folder's answer is asked for.
+  let backedUpOf = $state<Record<string, boolean>>({});
+  let backupOfAsks = 0;
+  async function refreshBackupOfShown() {
+    const mine = ++backupOfAsks;
+    const folders = shown.length > 1 ? shown.map((f) => f.root) : [];
+    const answers = await Promise.all(
+      folders.map(async (id) => [id, await notesBackedUp(id as RootId).catch(() => false)] as const),
+    );
+    if (mine === backupOfAsks) backedUpOf = Object.fromEntries(answers);
+  }
+  $effect(() => {
+    void shown.map((f) => f.root).join("\n");
+    untrack(() => void refreshBackupOfShown());
+  });
+  /** The mark on a folder's row: go to that folder and show where it could be backed up. */
+  async function backUpFolder(state: FolderState) {
+    if (await switchTo(state)) showBackup = true;
+  }
+
   async function refreshBackup() {
+    void refreshBackupOfShown();
     const asking = root;
     const mine = ++backupAsks;
     if (!asking) return;
@@ -2334,6 +2358,15 @@
                     >{sidebarName({ path: f.path, label: listLabels[f.root] })}</span
                   ></button>
               {/if}
+              {#if backedUpOf[f.root] === false}
+                <button
+                  class="root-backup"
+                  data-testid="root-not-backed-up"
+                  aria-label={`${sidebarName({ path: f.path, label: listLabels[f.root] })}: ${NOT_BACKED_UP.label}`}
+                  title={`${NOT_BACKED_UP.label} — ${NOT_BACKED_UP.tooltip}`}
+                  onclick={() => void backUpFolder(f)}><Icon name="cloud-off" size={14} /></button
+                >
+              {/if}
               <RootMenu
                 name={sidebarName({ path: f.path, label: listLabels[f.root] })}
                 canMoveUp={shown[0] !== f}
@@ -3496,6 +3529,23 @@
   }
   .root-head.active .root-name {
     color: var(--text-normal);
+  }
+  /* Outside the row's menu on purpose: a missing backup stays in view (as in the title bar). */
+  .root-backup {
+    display: inline-flex;
+    padding: var(--sp-1);
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-radius: var(--radius-s);
+    cursor: pointer;
+  }
+  .root-backup:hover {
+    color: var(--text-normal);
+    background: var(--bg-hover);
+  }
+  .root-backup:focus-visible {
+    outline: 2px solid var(--accent);
   }
   .root-fold {
     display: inline-flex;
