@@ -1516,7 +1516,7 @@
   /** Palette content search: hits name notes; a folder's own note opens as its folder. */
   async function searchContentFromPalette(query: string): Promise<SearchHit[]> {
     if (!root) return [];
-    const hits = await searchContent(query);
+    const hits = await searchContent(root, query);
     return hits.map((h) => ({ ...h, path: nodePathOfNote(h.path) }));
   }
 

@@ -23,6 +23,7 @@ pub(crate) mod git_transport;
 pub(crate) mod host;
 pub(crate) mod note_locks;
 pub(crate) mod note_refs;
+pub(crate) mod open_roots;
 pub(crate) mod pathsafe;
 pub(crate) mod publish;
 pub(crate) mod publish_assembly;
@@ -42,9 +43,9 @@ pub(crate) mod workspace;
 pub(crate) mod workspace_file;
 
 use host::HostHandle;
-use search::IndexHandle;
+use search::Indexes;
 use std::sync::Arc;
-use watcher::WatcherHandle;
+use watcher::Watchers;
 
 /// Brings the main window back in front of the person: restored if minimized, shown, focused.
 #[cfg(not(debug_assertions))]
@@ -126,8 +127,8 @@ pub fn run() {
         // What the app writes to notes, shared by the watch (which leaves it out) and write_note.
         .manage(tauri_kit_watch::OwnWrites::new())
         .manage(Arc::new(note_locks::NoteLocks::default()))
-        .manage(WatcherHandle::default())
-        .manage(Arc::new(IndexHandle::default()))
+        .manage(Watchers::default())
+        .manage(Indexes::default())
         .manage(Arc::new(HostHandle::default()))
         .invoke_handler(tauri::generate_handler![
             tree_commands::open_vault,

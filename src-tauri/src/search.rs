@@ -329,9 +329,12 @@ impl IndexState {
     }
 }
 
-/// Current vault index handle managed as Tauri State. Shared (Arc) by the watcher thread and commands.
+/// One folder's search index, shared (Arc) by its watch and the commands that name the folder.
 #[derive(Default)]
 pub struct IndexHandle(pub Mutex<Option<IndexState>>);
+
+/// The search index of every open folder, managed as Tauri State.
+pub type Indexes = crate::open_roots::RootTable<std::sync::Arc<IndexHandle>>;
 
 #[cfg(test)]
 mod tests {

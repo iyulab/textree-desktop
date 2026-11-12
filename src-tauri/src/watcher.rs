@@ -9,7 +9,7 @@
 use crate::search::IndexHandle;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tauri_kit_watch::{Notice, OwnWrites, Watch, Watcher};
 
@@ -37,10 +37,9 @@ pub enum Surface {
     Rescan,
 }
 
-/// The running watch of the open folder. Managed as a Tauri `State`; opening another folder
-/// replaces it, and dropping it stops watching.
-#[derive(Default)]
-pub struct WatcherHandle(pub Mutex<Option<Watcher>>);
+/// The running watch of every open folder, managed as a Tauri `State`. Opening a folder again
+/// replaces its watch, and dropping one stops it.
+pub type Watchers = crate::open_roots::RootTable<Watcher>;
 
 /// Dot segments relative to the vault root (`.textree`, `.git`, etc.) are hidden in the tree, so
 /// the watcher ignores them too. Dots in the root path itself are not counted.
