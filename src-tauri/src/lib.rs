@@ -43,6 +43,7 @@ pub(crate) mod vault;
 pub mod vault_paths;
 pub(crate) mod watcher;
 pub(crate) mod workspace;
+pub(crate) mod workspace_commands;
 pub(crate) mod workspace_file;
 
 use host::HostHandle;

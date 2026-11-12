@@ -587,41 +587,50 @@ pub async fn set_aside_sidecar(root_id: String, rel: String) -> Result<String, S
 
 /// The sidebar's notes folders: read from the person's home folder, which may be a network drive.
 #[tauri::command]
-pub async fn workspace_list() -> Result<commands::WorkspaceOut, String> {
-    off_main(commands::workspace_list).await
+pub async fn workspace_list() -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(crate::workspace_commands::workspace_list).await
 }
 
-/// Keeps an opened folder in the list (see [`commands::workspace_add`]).
+/// Keeps an opened folder in the list (see [`crate::workspace_commands::workspace_add`]).
 #[tauri::command]
-pub async fn workspace_add(path: String) -> Result<commands::WorkspaceOut, String> {
-    off_main(move || commands::workspace_add(path)).await
+pub async fn workspace_add(
+    path: String,
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(move || crate::workspace_commands::workspace_add(path)).await
 }
 
-/// Takes a notes folder out of the sidebar (see [`commands::workspace_remove`]).
+/// Takes a notes folder out of the sidebar (see [`crate::workspace_commands::workspace_remove`]).
 #[tauri::command]
-pub async fn workspace_remove(id: String) -> Result<commands::WorkspaceOut, String> {
-    off_main(move || commands::workspace_remove(id)).await
+pub async fn workspace_remove(
+    id: String,
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(move || crate::workspace_commands::workspace_remove(id)).await
 }
 
-/// Puts the sidebar's notes folders in order (see [`commands::workspace_reorder`]).
+/// Puts the sidebar's notes folders in order (see [`crate::workspace_commands::workspace_reorder`]).
 #[tauri::command]
-pub async fn workspace_reorder(ids: Vec<String>) -> Result<commands::WorkspaceOut, String> {
-    off_main(move || commands::workspace_reorder(ids)).await
+pub async fn workspace_reorder(
+    ids: Vec<String>,
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(move || crate::workspace_commands::workspace_reorder(ids)).await
 }
 
-/// Points a notes folder of the sidebar at where it now is (see [`commands::workspace_relocate`]).
+/// Points a notes folder of the sidebar at where it now is (see [`crate::workspace_commands::workspace_relocate`]).
 #[tauri::command]
-pub async fn workspace_relocate(id: String, path: String) -> Result<commands::Relocated, String> {
-    off_main(move || commands::workspace_relocate(id, path)).await
+pub async fn workspace_relocate(
+    id: String,
+    path: String,
+) -> Result<crate::workspace_commands::Relocated, String> {
+    off_main(move || crate::workspace_commands::workspace_relocate(id, path)).await
 }
 
-/// Names a notes folder in the sidebar (see [`commands::workspace_relabel`]).
+/// Names a notes folder in the sidebar (see [`crate::workspace_commands::workspace_relabel`]).
 #[tauri::command]
 pub async fn workspace_relabel(
     id: String,
     label: String,
-) -> Result<commands::WorkspaceOut, String> {
-    off_main(move || commands::workspace_relabel(id, label)).await
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(move || crate::workspace_commands::workspace_relabel(id, label)).await
 }
 
 /// The first folder is made and seeded in Documents, which may be redirected to a synced drive.
