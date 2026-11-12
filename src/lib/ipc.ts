@@ -82,6 +82,11 @@ export async function workspaceRelocate(id: RootId, path: string): Promise<Reloc
   return invoke<Relocated>("workspace_relocate", { id, path });
 }
 
+/** The folder dialog titled `title`: the folder picked, or `null` when it was closed without one. */
+export async function chooseFolder(title: string): Promise<string | null> {
+  return invoke<string | null>("choose_folder", { title });
+}
+
 export async function openVault(rootId: RootId): Promise<TreeNode[]> {
   return invoke<TreeNode[]>("open_vault", { rootId });
 }

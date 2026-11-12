@@ -8,6 +8,8 @@ import {
   loadVault,
   removeTempVault,
   tauriInvoke,
+  answerFolderDialog,
+  dialogsAsked,
 } from "./helpers";
 
 // Several notes folders in the sidebar at once. Each keeps its own notes; working in one makes it
@@ -245,5 +247,30 @@ test("links and linked mentions stay within each note's notes folder", async () 
     await loadVault(page, a);
     removeTempVault(a);
     removeTempVault(b);
+  }
+});
+
+test("Add notes folder… through its dialog: a pick joins the sidebar, closing it changes nothing", async () => {
+  const work = createTempVault({ "w.md": "# w\n" });
+  const more = createTempVault({ "picked.md": "# picked\n" });
+  const moreName = new RegExp(more.split("/").pop()!);
+  const add = page.locator(".sidebar-head .vault-name");
+  try {
+    await loadVault(page, work);
+    const asked = dialogsAsked().length;
+
+    answerFolderDialog(null);
+    await add.click();
+    await expect.poll(() => dialogsAsked().length).toBe(asked + 1);
+    await expect(section(moreName)).toHaveCount(0);
+
+    answerFolderDialog(more);
+    await add.click();
+    await expect(section(moreName).getByRole("treeitem", { name: /picked/ })).toBeVisible();
+    expect(dialogsAsked().slice(asked)).toEqual(["Add notes folder", "Add notes folder"]);
+  } finally {
+    await loadVault(page, work);
+    removeTempVault(work);
+    removeTempVault(more);
   }
 });

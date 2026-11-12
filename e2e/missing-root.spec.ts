@@ -1,6 +1,14 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { existsSync, renameSync } from "node:fs";
-import { connectToApp, createTempVault, loadVault, removeTempVault, tauriInvoke } from "./helpers";
+import {
+  answerFolderDialog,
+  connectToApp,
+  createTempVault,
+  dialogsAsked,
+  loadVault,
+  removeTempVault,
+  tauriInvoke,
+} from "./helpers";
 
 // A notes folder of the sidebar that is not there any more — moved, renamed, or on a drive that is
 // not connected — stays in the sidebar where it was, says so, and can be pointed at where it is now.
@@ -19,7 +27,6 @@ test.afterAll(async () => {
 type Bridge = {
   addRoot: (p: string) => Promise<boolean>;
   openList: () => Promise<void>;
-  locate: (from: string, to: string) => Promise<boolean>;
   retryMissing: () => Promise<void>;
 };
 
@@ -72,13 +79,17 @@ test("a folder that was moved is shown as not found, and Locate… brings it bac
     const gone = section(/Field notes/);
     await expect(gone).toContainText("Notes folder not found");
 
-    expect(await bridge("locate", away, moved)).toBe(true);
+    // Through the button and the dialog it opens; the dialog is answered with where it is now.
+    const asked = dialogsAsked().length;
+    answerFolderDialog(moved);
+    await gone.getByRole("button", { name: "Locate…" }).first().click();
     const back = section(/Field notes/);
     await expect(back.getByRole("treeitem", { name: /field note/ })).toBeVisible();
     await expect(back).not.toContainText("Notes folder not found");
     const listed = await tauriInvoke<Listed>(page, "workspace_list");
     expect(listed.roots.some((r) => r.path === away)).toBe(false);
     expect(listed.roots.some((r) => r.path === moved)).toBe(true);
+    expect(dialogsAsked().slice(asked)).toEqual(["Locate Field notes"]);
   } finally {
     await tauriInvoke(page, "workspace_remove", { id: await idOf(moved) }).catch(() => {});
     await loadVault(page, main);

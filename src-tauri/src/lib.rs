@@ -4,6 +4,7 @@ pub(crate) mod cloud_auth;
 pub(crate) mod cloud_publish;
 pub(crate) mod commands;
 pub(crate) mod dev_env;
+pub(crate) mod dialogs;
 pub(crate) mod drafts;
 pub(crate) mod fs_ops;
 #[cfg(test)]
@@ -192,6 +193,7 @@ pub fn run() {
             tree_commands::disconnect_remote,
             tree_commands::notes_backed_up,
             tree_commands::sync_remote,
+            tree_commands::choose_folder,
             tree_commands::publish_site,
             tree_commands::publish_to_cloud,
             cloud_auth::connect_publish,

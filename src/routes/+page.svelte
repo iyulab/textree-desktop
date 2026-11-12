@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { open } from "@tauri-apps/plugin-dialog";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { onMount, tick, untrack } from "svelte";
   import {
     notesBackedUp,
+    chooseFolder,
     openVault,
     closeRoot,
     revealRoot,
@@ -812,8 +812,8 @@
   /** «Locate…»: the person shows where a folder not found is now. It keeps its place and name in the
    *  sidebar, and what the app keeps for it (favorites, order, views, its remote, kept edits) moves
    *  with it. */
-  async function locate(m: WorkspaceRoot, chosen?: string): Promise<void> {
-    const selected = chosen ?? (await open({ directory: true, multiple: false, title: `Locate ${sidebarName(m)}` }));
+  async function locate(m: WorkspaceRoot): Promise<void> {
+    const selected = await chooseFolder(`Locate ${sidebarName(m)}`);
     if (typeof selected !== "string") return;
     let done;
     try {
@@ -965,7 +965,7 @@
   /** «Add notes folder…»: the folder chosen joins the sidebar and the window goes to it. A folder
    *  inside one the sidebar shows, or holding one, is refused — its notes would be in two places. */
   async function chooseVault() {
-    const selected = await open({ directory: true, multiple: false });
+    const selected = await chooseFolder("Add notes folder");
     if (typeof selected === "string") {
       try {
         takeList(await workspaceAdd(selected));
@@ -1049,11 +1049,7 @@
 
   async function choosePublishTarget() {
     if (!root || publishing || publishConfirm) return;
-    const out = await open({
-      directory: true,
-      multiple: false,
-      title: "Choose an empty folder to publish the site into",
-    });
+    const out = await chooseFolder("Choose an empty folder to publish the site into");
     if (typeof out === "string") await publishToDir(out);
   }
 
@@ -2036,12 +2032,6 @@
           const ws = await workspaceList();
           takeList(ws);
           await openListedFolders(ws.roots.filter((r) => !shown.some((f) => f.root === r.id)));
-        },
-        // «Locate…» with the folder chosen, as the dialog would answer.
-        locate: async (from: string, to: string) => {
-          const m = missing.find((x) => x.path === from);
-          if (m) await locate(m, to);
-          return m !== undefined;
         },
         retryMissing,
         publishTo: publishToDir,

@@ -40,7 +40,7 @@ libssh2 code is present in this distribution.
 
 ## Rust crates
 
-The 362 crates below are the normal-dependency closure of the binary, resolved for
+The 363 crates below are the normal-dependency closure of the binary, resolved for
 `x86_64-pc-windows-msvc`. Build-time and test-only dependencies are excluded because their code is not
 distributed.
 
@@ -299,6 +299,7 @@ distributed.
 | `tauri-codegen` | 2.7.3 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | `tauri-kit-credentials` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `tauri-kit-diagnostics` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-dialog` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `tauri-kit-fs` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `tauri-kit-sidecar` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `tauri-kit-state` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
@@ -411,7 +412,7 @@ distributed.
 
 ## Bundled web dependencies
 
-The 59 packages below are the production-dependency closure of the web assets, which
+The 58 packages below are the production-dependency closure of the web assets, which
 are compiled into the application.
 
 | Component | Version | License | Upstream |
@@ -465,7 +466,6 @@ are compiled into the application.
 | `@lezer/yaml` | 1.0.4 | MIT | https://github.com/lezer-parser/yaml |
 | `@marijn/find-cluster-break` | 1.0.4 | MIT | https://code.haverbeke.berlin/marijn/find-cluster-break |
 | `@tauri-apps/api` | 2.12.4 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
-| `@tauri-apps/plugin-dialog` | 2.8.3 | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
 | `@tauri-apps/plugin-opener` | 2.7.2 | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
 | `@tauri-apps/plugin-process` | 2.4.0 | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |
 | `@tauri-apps/plugin-updater` | 2.14.0 | MIT OR Apache-2.0 | https://github.com/tauri-apps/plugins-workspace |

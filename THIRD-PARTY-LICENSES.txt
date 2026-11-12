@@ -12597,6 +12597,13 @@ Upstream: https://github.com/iyulab/tauri-kit
 Same license text as tauri-kit-credentials 0.32.0.
 
 ------------------------------------------------------------------------------
+tauri-kit-dialog 0.32.0
+License: MIT
+Upstream: https://github.com/iyulab/tauri-kit
+
+Same license text as tauri-kit-credentials 0.32.0.
+
+------------------------------------------------------------------------------
 tauri-kit-fs 0.32.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
@@ -15922,13 +15929,6 @@ PackageDownloadLocation: git://github.com/tauri-apps/tauri
 PackageDownloadLocation: git+https://github.com/tauri-apps/tauri.git
 PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
 Creator: Person: Daniel Thompson-Yvetot
-
-------------------------------------------------------------------------------
-@tauri-apps/plugin-dialog 2.8.3
-License: MIT OR Apache-2.0
-Upstream: https://github.com/tauri-apps/plugins-workspace
-
-Same license text as tauri-plugin-dialog 2.8.3.
 
 ------------------------------------------------------------------------------
 @tauri-apps/plugin-opener 2.7.2

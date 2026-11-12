@@ -83,6 +83,16 @@ rmSync(STALL_FLAG, { force: true });
 const OPEN_STALL_FLAG = join(tmpdir(), "textree-e2e-open-stall");
 rmSync(OPEN_STALL_FLAG, { force: true });
 
+/**
+ * The answers the build's dialogs take, one JSON line each, in the order they open — the app is
+ * built with the `e2e` feature, so it shows no dialog. Each dialog asked is logged beside it, with
+ * `.asked` added. Keep in sync with DIALOG_ANSWERS in e2e/helpers.ts. Emptied here so a run never
+ * starts with answers left over.
+ */
+const DIALOG_ANSWERS = join(tmpdir(), "textree-e2e-dialog-answers.jsonl");
+rmSync(DIALOG_ANSWERS, { force: true });
+rmSync(`${DIALOG_ANSWERS}.asked`, { force: true });
+
 // Only ever recreate a directory we own: inside the temp dir and under our own name.
 for (const [owned, expected] of [
   [DEFAULT_VAULT_BASE, join(tmpdir(), "textree-e2e-default-vault")],
@@ -190,6 +200,7 @@ const childEnv = {
   TEXTREE_WATCHDOG_INTERVAL_MS: WATCHDOG_INTERVAL_MS,
   TEXTREE_E2E_STALL_FLAG: STALL_FLAG,
   TEXTREE_E2E_OPEN_STALL_FLAG: OPEN_STALL_FLAG,
+  TAURI_KIT_DIALOG_ANSWERS: DIALOG_ANSWERS,
 };
 
 // `--embedded`: run the frontend the build embeds (what a shipped app loads, under the content
@@ -203,7 +214,7 @@ const embedded = process.argv.includes("--embedded");
 let child;
 if (embedded) {
   // VITE_TEXTREE_E2E puts the specs' test bridge into the embedded frontend; a shipped build never has it.
-  const built = spawnSync(`tauri build --debug --no-bundle --config "${GENERATED_OVERLAY}"`, {
+  const built = spawnSync(`tauri build --debug --no-bundle --features e2e --config "${GENERATED_OVERLAY}"`, {
     stdio: "inherit",
     shell: true,
     env: { ...childEnv, VITE_TEXTREE_E2E: "1" },
@@ -213,7 +224,7 @@ if (embedded) {
   console.log(`[dev:e2e] embedded build: ${exe}`);
   child = spawn(`"${exe}"`, { stdio: "inherit", shell: true, env: childEnv });
 } else {
-  child = spawn(`tauri dev --config "${GENERATED_OVERLAY}"`, {
+  child = spawn(`tauri dev --features e2e --config "${GENERATED_OVERLAY}"`, {
     stdio: "inherit",
     shell: true,
     env: childEnv,

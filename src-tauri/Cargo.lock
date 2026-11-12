@@ -4720,6 +4720,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-kit-dialog"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acbbb95112cb7cc281c9f3e8d5e920efa3a371b6927cb7760e44de549f517be2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri-kit-fs",
+]
+
+[[package]]
 name = "tauri-kit-fs"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5097,6 +5108,7 @@ dependencies = [
  "tauri-build",
  "tauri-kit-credentials",
  "tauri-kit-diagnostics",
+ "tauri-kit-dialog",
  "tauri-kit-fs",
  "tauri-kit-sidecar",
  "tauri-kit-state",
