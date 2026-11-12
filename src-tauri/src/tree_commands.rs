@@ -509,7 +509,7 @@ pub async fn remote_connection(
     root_id: String,
 ) -> Result<Option<crate::remote::Connection>, String> {
     let root = crate::workspace::path_of(&root_id)?;
-    off_main(move || commands::remote_connection(root)).await
+    off_main(move || crate::remote_commands::remote_connection(root)).await
 }
 
 /// Reaching the remote is network: it must not hold the window.
@@ -521,19 +521,19 @@ pub async fn connect_remote(
     secret: String,
 ) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
-    off_main(move || commands::connect_remote(root, url, username, secret)).await
+    off_main(move || crate::remote_commands::connect_remote(root, url, username, secret)).await
 }
 
 #[tauri::command]
 pub async fn notes_backed_up(root_id: String) -> Result<bool, String> {
     let root = crate::workspace::path_of(&root_id)?;
-    off_main(move || commands::notes_backed_up(root)).await
+    off_main(move || crate::remote_commands::notes_backed_up(root)).await
 }
 
 #[tauri::command]
 pub async fn disconnect_remote(root_id: String) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
-    off_main(move || commands::disconnect_remote(root)).await
+    off_main(move || crate::remote_commands::disconnect_remote(root)).await
 }
 
 /// Takes the turns of the notes it writes itself (see [`crate::remote::apply`]).
@@ -544,7 +544,7 @@ pub async fn sync_remote(
 ) -> Result<crate::remote::Exchange, String> {
     let root = crate::workspace::path_of(&root_id)?;
     let locks = locks.inner().clone();
-    off_main(move || commands::sync_remote(root, &locks)).await
+    off_main(move || crate::remote_commands::sync_remote(root, &locks)).await
 }
 
 #[tauri::command]

@@ -32,6 +32,7 @@ pub(crate) mod publish_assembly;
 pub(crate) mod publish_scope;
 pub(crate) mod publish_secret;
 pub(crate) mod remote;
+pub(crate) mod remote_commands;
 pub(crate) mod search;
 pub(crate) mod secret_store;
 pub(crate) mod state_dir;
