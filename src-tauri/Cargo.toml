@@ -71,4 +71,8 @@ git2 = { version = "0.21", features = ["vendored-libgit2"] }
 
 [target."cfg(windows)".dependencies]
 tauri-plugin-updater = "2.10.1"
+# The window's web view on Windows: a missing runtime said in words, form entries kept out of the
+# web view's profile, the window held to the app's own origins, and a page whose process ended
+# reloaded (`main_window`).
+tauri-kit-webview = "0.32"
 

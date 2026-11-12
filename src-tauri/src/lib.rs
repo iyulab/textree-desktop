@@ -21,6 +21,7 @@ mod gate_write_interrupted;
 pub(crate) mod git_engine;
 pub(crate) mod git_transport;
 pub(crate) mod host;
+pub(crate) mod main_window;
 pub(crate) mod note_locks;
 pub(crate) mod note_refs;
 pub(crate) mod pathsafe;
@@ -74,6 +75,9 @@ pub fn run() {
         prev_hook(info);
     }));
 
+    // Before any window: a missing web view runtime is said in words, not as the framework's error.
+    main_window::require_runtime();
+
     let builder = tauri::Builder::default();
     // First, so a second launch stops before anything else starts. Release builds only: a
     // development or test build shares the installed app's identifier, and would otherwise just
@@ -108,6 +112,7 @@ pub fn run() {
             }
             // Log startup here (after plugin init) so the logger is already wired.
             log::info!("textree starting (v{})", env!("CARGO_PKG_VERSION"));
+            main_window::create(app)?;
             #[cfg(windows)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;

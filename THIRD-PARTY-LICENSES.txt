@@ -1,7 +1,7 @@
 Third-party licenses
 ====================
 
-This program includes the following 631 third-party packages.
+This program includes the following 632 third-party packages.
 
 ------------------------------------------------------------------------------
 adler2 2.0.1
@@ -12619,6 +12619,13 @@ Same license text as tauri-kit-credentials 0.32.0.
 
 ------------------------------------------------------------------------------
 tauri-kit-watch 0.32.0
+License: MIT
+Upstream: https://github.com/iyulab/tauri-kit
+
+Same license text as tauri-kit-credentials 0.32.0.
+
+------------------------------------------------------------------------------
+tauri-kit-webview 0.32.0
 License: MIT
 Upstream: https://github.com/iyulab/tauri-kit
 
