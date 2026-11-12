@@ -4768,6 +4768,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-kit-webview"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6b0b847b2f7260d7698350b5ea98430825255c6ab3ba301fa7602014652e309"
+dependencies = [
+ "block2",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "objc2-web-kit",
+ "webview2-com",
+ "windows",
+ "windows-core",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "tauri-macros"
 version = "2.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5084,6 +5101,7 @@ dependencies = [
  "tauri-kit-sidecar",
  "tauri-kit-state",
  "tauri-kit-watch",
+ "tauri-kit-webview",
  "tauri-plugin-dialog",
  "tauri-plugin-log",
  "tauri-plugin-opener",
