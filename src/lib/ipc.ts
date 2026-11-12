@@ -50,6 +50,21 @@ export async function workspaceAdd(path: string): Promise<Workspace> {
   return invoke<Workspace>("workspace_add", { path });
 }
 
+/** Takes a notes folder out of the sidebar. The folder and its notes stay where they are. */
+export async function workspaceRemove(id: RootId): Promise<Workspace> {
+  return invoke<Workspace>("workspace_remove", { id });
+}
+
+/** Puts the sidebar's notes folders in the order `ids` names them. */
+export async function workspaceReorder(ids: RootId[]): Promise<Workspace> {
+  return invoke<Workspace>("workspace_reorder", { ids });
+}
+
+/** Names a notes folder in the sidebar; an empty name goes back to the folder's own. */
+export async function workspaceRelabel(id: RootId, label: string): Promise<Workspace> {
+  return invoke<Workspace>("workspace_relabel", { id, label });
+}
+
 export async function openVault(rootId: RootId): Promise<TreeNode[]> {
   return invoke<TreeNode[]>("open_vault", { rootId });
 }

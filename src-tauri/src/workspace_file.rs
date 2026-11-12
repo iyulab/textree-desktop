@@ -75,20 +75,73 @@ impl Workspace {
         self.settings.set_aside()
     }
 
-    /// Adds the notes folder at `path` at the end, unless it is there already. Returns its entry.
+    /// Adds the notes folder at `path` at the end, unless it is there already (however its path is
+    /// spelled). Returns its entry. A folder inside one already listed, or holding one, is refused
+    /// with what the sidebar says about it: a notes folder's notes belong to one notes folder.
     pub fn add(&mut self, path: &str) -> io::Result<Root> {
-        let id = crate::workspace::id_for(path);
-        if let Some(found) = self.roots().iter().find(|r| r.id == id) {
-            return Ok(found.clone());
+        let here = crate::search::vault_identity(Path::new(path));
+        for root in self.roots() {
+            let there = crate::search::vault_identity(Path::new(&root.path));
+            if there == here {
+                return Ok(root.clone());
+            }
+            if here.starts_with(&there) {
+                return Err(refused(format!(
+                    "This folder is already in the sidebar inside {}.",
+                    name_of(root)
+                )));
+            }
+            if there.starts_with(&here) {
+                return Err(refused(format!("{} is inside this folder.", name_of(root))));
+            }
         }
         let root = Root {
-            id,
+            id: crate::workspace::id_for(path),
             path: path.to_string(),
             label: None,
         };
         self.settings.value_mut().roots.push(root.clone());
         self.save()?;
         Ok(root)
+    }
+
+    /// Takes the notes folder `id` out of the list. The folder and its notes are not touched.
+    /// Returns whether it was listed.
+    pub fn remove(&mut self, id: &str) -> io::Result<bool> {
+        let roots = &mut self.settings.value_mut().roots;
+        let before = roots.len();
+        roots.retain(|r| r.id != id);
+        if roots.len() == before {
+            return Ok(false);
+        }
+        self.save()?;
+        Ok(true)
+    }
+
+    /// Puts the notes folders in the order `ids` names them. Folders it does not name keep their
+    /// order after those it does; ids not listed are passed over.
+    pub fn reorder(&mut self, ids: &[String]) -> io::Result<()> {
+        let roots = &mut self.settings.value_mut().roots;
+        let rank = |r: &Root| ids.iter().position(|id| *id == r.id).unwrap_or(usize::MAX);
+        roots.sort_by_key(rank); // stable: the folders not named keep their order
+        self.save()
+    }
+
+    /// Names the notes folder `id` in the sidebar; an empty name goes back to the folder's own.
+    pub fn relabel(&mut self, id: &str, label: &str) -> io::Result<bool> {
+        let label = label.trim();
+        let Some(root) = self
+            .settings
+            .value_mut()
+            .roots
+            .iter_mut()
+            .find(|r| r.id == id)
+        else {
+            return Ok(false);
+        };
+        root.label = (!label.is_empty()).then(|| label.to_string());
+        self.save()?;
+        Ok(true)
     }
 
     fn save(&self) -> io::Result<()> {
@@ -98,6 +151,20 @@ impl Workspace {
             Ok(()) // a newer release's file: this launch's changes stay in memory
         }
     }
+}
+
+/// What the sidebar calls a notes folder: the name the person gave it, else the folder's own.
+pub fn name_of(root: &Root) -> String {
+    root.label.clone().unwrap_or_else(|| {
+        Path::new(&root.path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| root.path.clone())
+    })
+}
+
+fn refused(message: String) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, message)
 }
 
 /// Where the workspace is kept under the base the folders' settings are kept under.
@@ -184,5 +251,102 @@ mod tests {
         let saved: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(d.path().join(FILE)).unwrap()).unwrap();
         assert_eq!(saved["groups"], serde_json::json!(["work"]));
+    }
+    #[test]
+    fn the_same_folder_spelled_another_way_is_listed_once() {
+        let d = dir();
+        let notes = d.path().join("notes");
+        std::fs::create_dir_all(notes.join("sub")).unwrap();
+        let mut ws = Workspace::load(&d.path().join("ws")).unwrap();
+        let a = ws.add(&notes.to_string_lossy()).unwrap();
+        let spelled = notes.join("sub").join("..");
+        assert_eq!(ws.add(&spelled.to_string_lossy()).unwrap(), a);
+        assert_eq!(ws.roots().len(), 1);
+    }
+
+    #[test]
+    fn a_folder_inside_a_listed_one_or_holding_one_is_refused_and_a_sibling_is_not() {
+        let d = dir();
+        let parent = d.path().join("repo");
+        for sub in ["docs/inner", "site"] {
+            std::fs::create_dir_all(parent.join(sub)).unwrap();
+        }
+        let mut ws = Workspace::load(&d.path().join("ws")).unwrap();
+        ws.add(&parent.join("docs").to_string_lossy()).unwrap();
+        let inside = ws
+            .add(&parent.join("docs/inner").to_string_lossy())
+            .unwrap_err();
+        assert_eq!(inside.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            inside.to_string(),
+            "This folder is already in the sidebar inside docs."
+        );
+        let holding = ws.add(&parent.to_string_lossy()).unwrap_err();
+        assert_eq!(holding.to_string(), "docs is inside this folder.");
+        ws.add(&parent.join("site").to_string_lossy()).unwrap();
+        assert_eq!(
+            ws.roots().len(),
+            2,
+            "a sibling of the same repository is its own folder"
+        );
+    }
+
+    #[test]
+    fn a_name_like_another_folders_start_is_not_inside_it() {
+        let d = dir();
+        for sub in ["notes", "notes-old"] {
+            std::fs::create_dir_all(d.path().join(sub)).unwrap();
+        }
+        let mut ws = Workspace::load(&d.path().join("ws")).unwrap();
+        ws.add(&d.path().join("notes").to_string_lossy()).unwrap();
+        ws.add(&d.path().join("notes-old").to_string_lossy())
+            .unwrap();
+        assert_eq!(ws.roots().len(), 2);
+    }
+
+    #[test]
+    fn removing_reordering_and_naming_are_kept_and_leave_the_folders_alone() {
+        let d = dir();
+        let mut ws = Workspace::load(d.path()).unwrap();
+        let a = ws.add("/notes/a").unwrap();
+        let b = ws.add("/notes/b").unwrap();
+        let c = ws.add("/notes/c").unwrap();
+        ws.reorder(&[c.id.clone(), a.id.clone()]).unwrap();
+        assert!(ws.relabel(&a.id, "  Work  ").unwrap());
+        assert!(ws.remove(&b.id).unwrap());
+        assert!(!ws.remove(&b.id).unwrap(), "already gone");
+        let again = Workspace::load(d.path()).unwrap();
+        let listed: Vec<_> = again
+            .roots()
+            .iter()
+            .map(|r| (r.path.as_str(), name_of(r)))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("/notes/c", "c".to_string()),
+                ("/notes/a", "Work".to_string())
+            ]
+        );
+        let mut again = again;
+        again.relabel(&a.id, " ").unwrap();
+        assert_eq!(
+            name_of(&again.roots()[1]),
+            "a",
+            "an empty name goes back to the folder's own"
+        );
+    }
+
+    #[test]
+    fn folders_the_order_does_not_name_keep_their_order_after_it() {
+        let d = dir();
+        let mut ws = Workspace::load(d.path()).unwrap();
+        let ids: Vec<_> = ["/n/a", "/n/b", "/n/c", "/n/d"]
+            .iter()
+            .map(|p| ws.add(p).unwrap().id)
+            .collect();
+        ws.reorder(&[ids[2].clone(), "rgone".to_string()]).unwrap();
+        let paths: Vec<_> = ws.roots().iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, ["/n/c", "/n/a", "/n/b", "/n/d"]);
     }
 }

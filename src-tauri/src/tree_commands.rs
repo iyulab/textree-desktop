@@ -573,6 +573,27 @@ pub async fn workspace_add(path: String) -> Result<commands::WorkspaceOut, Strin
     off_main(move || commands::workspace_add(path)).await
 }
 
+/// Takes a notes folder out of the sidebar (see [`commands::workspace_remove`]).
+#[tauri::command]
+pub async fn workspace_remove(id: String) -> Result<commands::WorkspaceOut, String> {
+    off_main(move || commands::workspace_remove(id)).await
+}
+
+/// Puts the sidebar's notes folders in order (see [`commands::workspace_reorder`]).
+#[tauri::command]
+pub async fn workspace_reorder(ids: Vec<String>) -> Result<commands::WorkspaceOut, String> {
+    off_main(move || commands::workspace_reorder(ids)).await
+}
+
+/// Names a notes folder in the sidebar (see [`commands::workspace_relabel`]).
+#[tauri::command]
+pub async fn workspace_relabel(
+    id: String,
+    label: String,
+) -> Result<commands::WorkspaceOut, String> {
+    off_main(move || commands::workspace_relabel(id, label)).await
+}
+
 /// The first folder is made and seeded in Documents, which may be redirected to a synced drive.
 #[tauri::command]
 pub async fn ensure_default_vault(app: AppHandle) -> Result<DefaultVault, String> {

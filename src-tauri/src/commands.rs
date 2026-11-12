@@ -413,6 +413,33 @@ pub fn workspace_add(path: String) -> Result<WorkspaceOut, String> {
     Ok(workspace_out(&ws))
 }
 
+/// Changes the sidebar's list of notes folders with `change` and returns the list as it now is.
+fn workspace_change(
+    change: impl FnOnce(&mut crate::workspace_file::Workspace) -> std::io::Result<()>,
+) -> Result<WorkspaceOut, String> {
+    let mut ws = crate::workspace_file::Workspace::load(&crate::workspace_file::dir_under(
+        &personal_home()?,
+    ))
+    .map_err(|e| e.to_string())?;
+    change(&mut ws).map_err(|e| e.to_string())?;
+    Ok(workspace_out(&ws))
+}
+
+/// Takes a notes folder out of the sidebar. The folder and its notes stay where they are.
+pub fn workspace_remove(id: String) -> Result<WorkspaceOut, String> {
+    workspace_change(|ws| ws.remove(&id).map(drop))
+}
+
+/// Puts the sidebar's notes folders in the order `ids` names them.
+pub fn workspace_reorder(ids: Vec<String>) -> Result<WorkspaceOut, String> {
+    workspace_change(|ws| ws.reorder(&ids))
+}
+
+/// Names a notes folder in the sidebar; an empty name goes back to the folder's own.
+pub fn workspace_relabel(id: String, label: String) -> Result<WorkspaceOut, String> {
+    workspace_change(|ws| ws.relabel(&id, &label).map(drop))
+}
+
 #[cfg(not(test))]
 fn personal_base() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE")
