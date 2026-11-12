@@ -433,10 +433,11 @@ export interface SearchHit {
 
 /** Body full-text search. Empty array if the index is missing or the query is empty. */
 export async function searchContent(
+  rootId: RootId,
   query: string,
   limit = 50,
 ): Promise<SearchHit[]> {
-  return invoke<SearchHit[]>("search_content", { query, limit });
+  return invoke<SearchHit[]>("search_content", { rootId, query, limit });
 }
 
 /** Full reindex (>reindex command). */

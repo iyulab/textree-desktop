@@ -20,7 +20,7 @@ use crate::commands::{
     SidecarState,
 };
 use crate::note_locks::NoteLocks;
-use crate::search::IndexHandle;
+use crate::search::Indexes;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, State};
@@ -437,12 +437,11 @@ pub async fn deleted_notes(root_id: String) -> Result<Vec<DeletedNote>, String> 
 }
 
 #[tauri::command]
-pub async fn rebuild_index(
-    root_id: String,
-    index: State<'_, Arc<IndexHandle>>,
-) -> Result<(), String> {
+pub async fn rebuild_index(root_id: String, indexes: State<'_, Indexes>) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
-    let index = index.inner().clone();
+    let Some(index) = indexes.of(std::path::Path::new(&root)) else {
+        return Err("index is not installed".into());
+    };
     off_main(move || commands::rebuild_index(root, &index)).await
 }
 

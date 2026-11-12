@@ -1,9 +1,9 @@
 use crate::host;
 use crate::note_locks::NoteLocks;
 use crate::note_refs::is_note_path;
-use crate::search::{IndexHandle, IndexState, SearchHit};
+use crate::search::{IndexHandle, IndexState, Indexes, SearchHit};
 use crate::vault::{self, TreeNode};
-use crate::watcher::WatcherHandle;
+use crate::watcher::Watchers;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{self, Write};
@@ -805,14 +805,18 @@ pub(crate) fn save_note(
 /// these, in no guaranteed order, and whichever runs last must index what the note holds now.
 /// An index failure does not fail anything (the index is a derived cache).
 fn refresh_indexes(app: &AppHandle, root: PathBuf, path: PathBuf) {
-    let index = app.state::<Arc<IndexHandle>>().inner().clone();
+    // This folder's own index — found by the folder, so a save that finishes after another folder
+    // was opened does not reach that one's.
+    let index = app.state::<Indexes>().of(&root);
     let host = app.state::<Arc<host::HostHandle>>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let Ok(content) = std::fs::read_to_string(&path) else {
             return;
         };
-        if let Some(state) = index.0.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
-            let _ = state.index_note(&root, &path, &content);
+        if let Some(index) = &index {
+            if let Some(state) = index.0.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+                let _ = state.index_note(&root, &path, &content);
+            }
         }
         // Background semantic index. Runs without asking because it only reads: it derives a
         // search index and never alters what the person wrote.
@@ -873,7 +877,8 @@ pub fn open_vault(
     log::info!("open_vault: {} ({} top-level nodes)", root, tree.len());
 
     let own = app.state::<tauri_kit_watch::OwnWrites>().inner().clone();
-    let index = app.state::<Arc<IndexHandle>>().inner().clone();
+    // This folder's index, which its watch keeps in step; installed below with the folder.
+    let index = Arc::new(IndexHandle::default());
     let host = app.state::<Arc<host::HostHandle>>().inner().clone();
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let emitter = app.clone();
@@ -959,15 +964,16 @@ pub fn open_vault(
         host::reindex_vault(&host, &vault_str);
     });
 
-    // The previous watch stops as it is replaced, so leftover changes from the old vault don't
-    // bleed into the new.
-    let watcher_handle = app.state::<WatcherHandle>();
-    let previous = watcher_handle
-        .0
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .replace(watcher);
-    drop(previous);
+    // The folder's index and watch go in its own entries. The window shows one folder at a time
+    // until the sidebar lists several (TODO(S1b Task 5): keep every folder the sidebar shows), so
+    // the others are let go here — their watches stop as they drop, and leftover changes from them
+    // do not reach the window.
+    let indexes = app.state::<Indexes>();
+    indexes.install(&root_path, index);
+    drop(indexes.keep_only(&root_path));
+    let watchers = app.state::<Watchers>();
+    drop(watchers.install(&root_path, watcher));
+    drop(watchers.keep_only(&root_path));
 
     Ok(tree)
 }
@@ -1397,11 +1403,15 @@ pub fn save_attachment(
 /// meanwhile waits for it.
 #[tauri::command]
 pub async fn search_content(
+    root_id: String,
     query: String,
     limit: usize,
-    index: State<'_, Arc<IndexHandle>>,
+    indexes: State<'_, Indexes>,
 ) -> Result<Vec<SearchHit>, String> {
-    let index = index.inner().clone();
+    let root = crate::workspace::path_of(&root_id)?;
+    let Some(index) = indexes.of(Path::new(&root)) else {
+        return Ok(Vec::new()); // the folder is not open → no results (graceful)
+    };
     off_main(move || {
         let guard = index.0.lock().unwrap_or_else(|e| e.into_inner());
         match guard.as_ref() {
