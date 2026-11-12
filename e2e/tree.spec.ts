@@ -44,7 +44,9 @@ test("expand/collapse children via container chevron + persist", async () => {
         .filter((k) => k.startsWith("textree-tree-collapsed:"))
         .map((k) => [k, localStorage.getItem(k)] as const),
     );
-    const mine = lists.find(([k]) => k.endsWith(folderName));
+    // Keys name the folder by its path as the device compares paths — folded to lower case on
+    // Windows — so the folder name is matched the same way.
+    const mine = lists.find(([k]) => k.toLowerCase().endsWith(folderName.toLowerCase()));
     expect(mine ? JSON.parse(mine[1] ?? "[]") : [], JSON.stringify(lists)).toEqual(["folder"]);
 
     // Expand → children return.
