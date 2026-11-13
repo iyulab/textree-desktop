@@ -1958,28 +1958,86 @@ fn history_repo(root: &Path) -> Result<Option<crate::git_engine::VaultRepo>, Str
     crate::git_engine::open_existing(root).map_err(|e| e.message().to_string())
 }
 
-/// Every recorded state of one note, newest first.
+/// A page of one note's recorded states, newest first.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteVersionPage {
+    pub versions: Vec<NoteVersion>,
+    /// Hand back as `after` for the older ones; `None` when there are none.
+    pub next: Option<String>,
+}
+
+/// `after` as handed out: the last version's identifier, then the name the note went by there.
+/// An identifier is hexadecimal, so the first `:` always ends it.
+fn resume_token(id: &str, path: &str) -> String {
+    format!("{id}:{path}")
+}
+
+fn resume_from(token: &str) -> Result<crate::git_engine::HistoryResume, String> {
+    token
+        .split_once(':')
+        .filter(|(id, path)| {
+            !id.is_empty() && id.bytes().all(|b| b.is_ascii_hexdigit()) && !path.is_empty()
+        })
+        .map(|(id, path)| crate::git_engine::HistoryResume {
+            id: id.to_string(),
+            path: path.to_string(),
+        })
+        .ok_or_else(|| "that page of versions is not one this application handed out".to_string())
+}
+
+/// Up to `limit` recorded states of one note, newest first, after `after` (a `next` from the
+/// page before; `None` for the newest). Reading stops one version past the page, so the newest
+/// few of a note changed often are quick however long the folder has been used.
 ///
 /// The note does not have to still be in the folder: this is how a deleted one is looked at
 /// before deciding whether to bring it back.
-pub fn note_versions(root: String, path: String) -> Result<Vec<NoteVersion>, String> {
+pub fn note_versions(
+    root: String,
+    path: String,
+    limit: usize,
+    after: Option<String>,
+) -> Result<NoteVersionPage, String> {
+    let after = after.as_deref().map(resume_from).transpose()?;
     let root_p = Path::new(&root);
     let rel = crate::vault_paths::rel_out(root_p, &path)?;
     let Some(prepared) = history_repo(root_p)? else {
-        return Ok(Vec::new());
+        return Ok(NoteVersionPage {
+            versions: Vec::new(),
+            next: None,
+        });
     };
     let in_repo = prepared.path_in_repo(Path::new(&rel));
-    let found = crate::git_engine::history(prepared.repo(), crate::git_engine::NOTES_REF, &in_repo)
-        .map_err(|e| e.message().to_string())?;
-    Ok(found
-        .into_iter()
-        .map(|v| NoteVersion {
-            id: v.id,
-            message: v.message,
-            seconds: v.seconds,
-            author: v.author,
-        })
-        .collect())
+    let (found, more) = crate::git_engine::history_page(
+        prepared.repo(),
+        crate::git_engine::NOTES_REF,
+        &in_repo,
+        limit.max(1),
+        after.as_ref(),
+    )
+    .map_err(|e| e.message().to_string())?;
+    let next = found
+        .last()
+        .filter(|_| more)
+        .map(|v| resume_token(&v.id, &v.path));
+    Ok(NoteVersionPage {
+        versions: found
+            .into_iter()
+            .map(|v| NoteVersion {
+                id: v.id,
+                message: v.message,
+                seconds: v.seconds,
+                author: v.author,
+            })
+            .collect(),
+        next,
+    })
+}
+
+/// Every recorded state of one note, newest first — what the tests read.
+#[cfg(test)]
+pub fn note_versions_all(root: String, path: String) -> Result<Vec<NoteVersion>, String> {
+    note_versions(root, path, usize::MAX, None).map(|p| p.versions)
 }
 
 /// What a note held at one recorded state. Reads objects only — the file on disk is not touched.
@@ -3629,7 +3687,7 @@ mod tests {
         // A different note's revision must not show up in this note's list.
         record_note(root, "b.md", "unrelated");
 
-        let versions = note_versions(root.to_string_lossy().to_string(), a.clone()).unwrap();
+        let versions = note_versions_all(root.to_string_lossy().to_string(), a.clone()).unwrap();
         assert_eq!(versions.len(), 2);
         assert_eq!(versions[0].message, "second");
 
@@ -3644,6 +3702,57 @@ mod tests {
             std::fs::read_to_string(&a).unwrap(),
             "second",
             "reading an earlier state must leave the file as it is"
+        );
+    }
+
+    #[test]
+    fn the_version_list_comes_a_page_at_a_time_and_says_when_there_is_no_more() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        git2::Repository::init(root).unwrap();
+        let root_s = root.to_string_lossy().to_string();
+        let a = record_note(root, "a.md", "state 0");
+        for n in 1..5 {
+            std::fs::write(&a, format!("state {n}")).unwrap();
+            commit_notes(root_s.clone(), vec![a.clone()], format!("v{n}")).unwrap();
+        }
+
+        let first = note_versions(root_s.clone(), a.clone(), 2, None).unwrap();
+        assert_eq!(first.versions.len(), 2);
+        assert_eq!(first.versions[0].message, "v4");
+        let second = note_versions(root_s.clone(), a.clone(), 2, first.next.clone()).unwrap();
+        assert_eq!(second.versions[0].message, "v2");
+        let last = note_versions(root_s.clone(), a.clone(), 2, second.next.clone()).unwrap();
+        assert_eq!(last.versions.len(), 1);
+        assert_eq!(
+            last.next, None,
+            "five versions in pages of two: the third page is the last"
+        );
+
+        let refused = note_versions(root_s, a, 2, Some("not-a-page".into())).unwrap_err();
+        assert!(
+            refused.contains("not one this application handed out"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn a_note_in_a_folder_with_no_history_has_an_empty_last_page() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::write(tmp.path().join("a.md"), "x").unwrap();
+        let page = note_versions(
+            tmp.path().to_string_lossy().to_string(),
+            tmp.path().join("a.md").to_string_lossy().to_string(),
+            25,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            page,
+            NoteVersionPage {
+                versions: vec![],
+                next: None
+            }
         );
     }
 
@@ -4408,7 +4517,7 @@ mod tests {
         let note = seed_note(root, "a.md", "body");
 
         assert!(deleted_notes(root_s.clone()).unwrap().is_empty());
-        assert!(note_versions(root_s.clone(), note.clone())
+        assert!(note_versions_all(root_s.clone(), note.clone())
             .unwrap()
             .is_empty());
         assert!(note_version_text(root_s.clone(), note, "0".repeat(40)).is_err());
@@ -4433,7 +4542,7 @@ mod tests {
         delete_node(root_s.clone(), note.clone()).unwrap();
         assert!(!root.join("sub").join("a.md").exists());
 
-        let versions = note_versions(root_s.clone(), note.clone()).unwrap();
+        let versions = note_versions_all(root_s.clone(), note.clone()).unwrap();
         assert_eq!(versions.len(), 1, "the note is gone; its history is not");
         assert_eq!(
             note_version_text(root_s.clone(), note, versions[0].id.clone()).unwrap(),
@@ -4442,7 +4551,7 @@ mod tests {
 
         // The check still refuses what it is there to refuse.
         let outside = TempDir::new().unwrap();
-        assert!(note_versions(
+        assert!(note_versions_all(
             root_s,
             outside
                 .path()
@@ -4951,7 +5060,7 @@ mod tests {
         let note = record_note(root, "a.md", "first");
         std::fs::write(&note, "worked on since, never recorded").unwrap();
 
-        let first = note_versions(root_s.clone(), note.clone()).unwrap()[0]
+        let first = note_versions_all(root_s.clone(), note.clone()).unwrap()[0]
             .id
             .clone();
         restore_version(root_s.clone(), note.clone(), first).unwrap();
@@ -4979,7 +5088,7 @@ mod tests {
 
         let a = record_note(root, "a.md", "mine");
         let b = record_note(root, "b.md", "someone else's");
-        let other = note_versions(root_s.clone(), b).unwrap()[0].id.clone();
+        let other = note_versions_all(root_s.clone(), b).unwrap()[0].id.clone();
 
         assert!(restore_version(root_s, a.clone(), other).is_err());
         assert_eq!(
@@ -5021,7 +5130,7 @@ mod tests {
 
         assert_eq!(std::fs::read_to_string(&note).unwrap(), "other take");
         assert!(list_alternatives(root_s.clone()).unwrap().is_empty());
-        let versions = note_versions(root_s.clone(), note.clone()).unwrap();
+        let versions = note_versions_all(root_s.clone(), note.clone()).unwrap();
         assert_eq!(
             versions[0].message.lines().next(),
             Some("Used an alternative")
@@ -5246,7 +5355,7 @@ mod tests {
         commit_notes(root_s.clone(), vec![note.clone()], "second".into()).unwrap();
         let after = rename_node(root_s.clone(), note, "after".into()).unwrap();
 
-        let versions = note_versions(root_s.clone(), after.clone()).unwrap();
+        let versions = note_versions_all(root_s.clone(), after.clone()).unwrap();
         assert_eq!(
             versions.len(),
             2,
@@ -5283,7 +5392,7 @@ mod tests {
             "moving a folder deletes none of the notes in it"
         );
         assert_eq!(
-            note_versions(
+            note_versions_all(
                 root_s,
                 root.join("dest")
                     .join("src")
@@ -5323,7 +5432,7 @@ mod tests {
             "renaming a folder deletes neither it nor anything in it"
         );
         assert_eq!(
-            note_versions(
+            note_versions_all(
                 root_s,
                 root.join("subject")
                     .join("subject.md")
@@ -5352,7 +5461,7 @@ mod tests {
             "the note is still there, one level down"
         );
         assert_eq!(
-            note_versions(
+            note_versions_all(
                 root_s,
                 root.join("topic")
                     .join("topic.md")
@@ -5383,7 +5492,7 @@ mod tests {
         );
         for landed in ["host.md", "guest.md"] {
             assert_eq!(
-                note_versions(
+                note_versions_all(
                     root_s.clone(),
                     root.join("host").join(landed).to_string_lossy().to_string(),
                 )
@@ -5523,7 +5632,7 @@ mod tests {
             "nothing was written, so there is no revision to point at"
         );
         assert_eq!(
-            note_versions(root_s, note).unwrap().len(),
+            note_versions_all(root_s, note).unwrap().len(),
             1,
             "and the history it would have been part of is unchanged"
         );

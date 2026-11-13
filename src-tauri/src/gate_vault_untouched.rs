@@ -10,7 +10,8 @@
 #![cfg(test)]
 
 use crate::commands::{
-    create_folder, create_note, delete_node, deleted_notes, move_state_out_of_vault, note_versions,
+    create_folder, create_note, delete_node, deleted_notes, move_state_out_of_vault,
+    note_versions_all,
 };
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -64,7 +65,7 @@ fn looking_at_a_folder_does_not_turn_it_into_a_repository() {
 
     let before = entries(root);
     deleted_notes(root_s.clone()).unwrap();
-    note_versions(
+    note_versions_all(
         root_s.clone(),
         root.join("a.md").to_string_lossy().to_string(),
     )

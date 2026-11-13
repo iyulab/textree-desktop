@@ -1,5 +1,13 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { connectToApp, loadVault, createTempVault, removeTempVault, readVaultFile } from "./helpers";
+import {
+  connectToApp,
+  loadVault,
+  createTempVault,
+  removeTempVault,
+  readVaultFile,
+  writeVaultFile,
+  recordNotes,
+} from "./helpers";
 
 /**
  * Add version → Version history → look at an earlier state → go back to it.
@@ -131,6 +139,36 @@ test("versions: a version added while the history is open shows up in it", async
     await addVersion(page, "kept");
     await expect(page.getByTestId("version-entry")).toHaveCount(1);
     await expect(page.getByTestId("version-entry").first()).toContainText("kept");
+  } finally {
+    removeTempVault(vault);
+  }
+});
+
+test("versions: a long history lists the newest first and the older ones on asking", async () => {
+  const vault = createTempVault({ "long.md": "# long\n\nstate 0\n" });
+
+  try {
+    await loadVault(page, vault);
+    // 30 states: more than one page (25) of the list.
+    for (let n = 0; n < 30; n++) {
+      writeVaultFile(vault, "long.md", `# long\n\nstate ${n}\n`);
+      await recordNotes(page, vault, ["long.md"]);
+    }
+    await page.getByRole("treeitem", { name: /long/ }).click();
+    await expect(page.locator(".cm-content")).toBeVisible();
+    await runCommand(page, "Version history");
+
+    const entries = page.getByTestId("version-entry");
+    await expect(entries).toHaveCount(25);
+    const older = page.getByTestId("version-older");
+    await expect(older).toHaveText("Show older versions");
+    await older.click();
+    await expect(entries).toHaveCount(30);
+    await expect(older).toHaveCount(0); // the list reaches the first one
+
+    // The oldest is the first state, and it can still be looked at.
+    await entries.last().click();
+    await expect(page.getByTestId("version-preview")).toContainText("state 0");
   } finally {
     removeTempVault(vault);
   }

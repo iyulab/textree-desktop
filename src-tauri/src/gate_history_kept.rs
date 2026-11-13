@@ -12,7 +12,7 @@
 #![cfg(test)]
 
 use crate::commands::{
-    commit_notes, delete_node, deleted_notes, move_node, note_versions, rename_node,
+    commit_notes, delete_node, deleted_notes, move_node, note_versions_all, rename_node,
     restore_deleted, restore_version,
 };
 use git2::{Oid, Repository};
@@ -169,7 +169,7 @@ fn step(root: &Path, kind: &str, draw: &mut Draw, n: usize) -> Result<bool, Stri
             let Some(note) = draw.pick(&present) else {
                 return Ok(false);
             };
-            let versions = note_versions(r.clone(), s(note))?;
+            let versions = note_versions_all(r.clone(), s(note))?;
             let Some(version) = draw.pick(&versions) else {
                 return Ok(false);
             };

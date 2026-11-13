@@ -118,6 +118,12 @@ export type NoteVersion = {
   author: string;
 };
 
+/** A page of a note's recorded states, newest first; `next` asks for the older ones (`null`: none). */
+export type NoteVersionPage = {
+  versions: NoteVersion[];
+  next: string | null;
+};
+
 /** A note the history holds but the folder no longer does. */
 export type DeletedNote = {
   /** Vault-root-relative, `/`-separated. */
@@ -143,8 +149,13 @@ export type RestoredNote = {
 };
 
 /** Every recorded state of one note, newest first. */
-export async function noteVersions(rootId: RootId, path: string): Promise<NoteVersion[]> {
-  return invoke<NoteVersion[]>("note_versions", { rootId, rel: path });
+export async function noteVersions(
+  rootId: RootId,
+  path: string,
+  limit: number,
+  after: string | null = null,
+): Promise<NoteVersionPage> {
+  return invoke<NoteVersionPage>("note_versions", { rootId, rel: path, limit, after });
 }
 
 /** What a note held at one recorded state. The file on disk is not touched. */

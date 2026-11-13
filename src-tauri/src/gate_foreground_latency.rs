@@ -16,7 +16,7 @@
 
 #![cfg(test)]
 
-use crate::commands::{deleted_notes, note_version_text, note_versions};
+use crate::commands::{deleted_notes, note_version_text, note_versions_all};
 use crate::git_engine::{
     commit_identities, commit_paths, full_comparisons, revisions_visited, WhenUnchanged, NOTES_REF,
 };
@@ -61,7 +61,7 @@ fn millis(f: impl FnOnce()) -> u128 {
 #[test]
 #[ignore = "reports timings rather than asserting; run with --ignored to take the numbers"]
 fn measure_reads_against_history_length() {
-    println!("revisions | notes | deleted_notes | note_versions | note_version_text");
+    println!("revisions | notes | deleted_notes | note_versions_all | note_version_text");
     for (notes, revisions) in [(5usize, 2usize), (5, 20), (5, 100), (5, 200)] {
         let tmp = vault_with_history(notes, revisions);
         let root = tmp.path().to_string_lossy().to_string();
@@ -79,7 +79,7 @@ fn measure_reads_against_history_length() {
         });
         let mut versions = Vec::new();
         let history = millis(|| {
-            versions = note_versions(root.clone(), one.clone()).unwrap();
+            versions = note_versions_all(root.clone(), one.clone()).unwrap();
         });
         let oldest = versions.last().unwrap().id.clone();
         let text = millis(|| {
@@ -106,7 +106,7 @@ fn cost_of_reading_one(tmp: &TempDir) -> (usize, usize) {
     let root = tmp.path().to_string_lossy().to_string();
     let one = tmp.path().join("note-0.md").to_string_lossy().to_string();
     full_comparisons::taken();
-    let found = note_versions(root, one).unwrap().len();
+    let found = note_versions_all(root, one).unwrap().len();
     (found, full_comparisons::taken())
 }
 
@@ -218,7 +218,7 @@ fn vault_of_size(notes: usize, per_folder: usize) -> TempDir {
 #[ignore = "reports timings rather than asserting; run with --ignored to take the numbers"]
 fn measure_foreground_against_tree_size() {
     println!(
-        "notes | per folder | list_tree | read_note | add version | note_versions | deleted_notes"
+        "notes | per folder | list_tree | read_note | add version | note_versions_all | deleted_notes"
     );
     for (notes, per_folder) in [
         (1_000usize, 100usize),
@@ -264,7 +264,7 @@ fn measure_foreground_against_tree_size() {
             .unwrap();
         });
         let history = millis(|| {
-            note_versions(root.clone(), one_s.clone()).unwrap();
+            note_versions_all(root.clone(), one_s.clone()).unwrap();
         });
         let deleted = millis(|| {
             deleted_notes(root.clone()).unwrap();

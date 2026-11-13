@@ -308,11 +308,47 @@ pub fn history(
     rel: &Path,
 ) -> Result<Vec<RecordedVersion>, git2::Error> {
     let mut out = Vec::new();
-    walk_history(repo, reference, rel, |v| {
+    walk_history(repo, reference, rel, None, |v| {
         out.push(v);
         true
     })?;
     Ok(out)
+}
+
+/// Where a page of [`history_page`] ended: the last version on it, and the name the note went by
+/// there — the walk goes on under that name, so a page can end anywhere along a renamed note's
+/// trail and the next one still follows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryResume {
+    pub id: String,
+    pub path: String,
+}
+
+/// Up to `limit` of [`history`], newest first, starting after `after` (from the newest when
+/// `None`), and whether there are older ones.
+///
+/// The walk stops one version past the page, so asking for the newest few costs only as far
+/// back as they go — for a note changed often, a small part of a long-used folder's history.
+/// Revisions recorded since the previous page was read come before where it ended and are not
+/// repeated. When `after` is no longer on the reference, there is nothing after it.
+pub fn history_page(
+    repo: &Repository,
+    reference: &str,
+    rel: &Path,
+    limit: usize,
+    after: Option<&HistoryResume>,
+) -> Result<(Vec<RecordedVersion>, bool), git2::Error> {
+    let mut out = Vec::new();
+    let mut more = false;
+    walk_history(repo, reference, rel, after, |v| {
+        if out.len() == limit {
+            more = true;
+            return false;
+        }
+        out.push(v);
+        true
+    })?;
+    Ok((out, more))
 }
 
 /// [`history`], one version at a time, newest first: `each` returns whether to go on. A caller
@@ -322,12 +358,20 @@ fn walk_history(
     repo: &Repository,
     reference: &str,
     rel: &Path,
+    after: Option<&HistoryResume>,
     mut each: impl FnMut(RecordedVersion) -> bool,
 ) -> Result<(), git2::Error> {
     let mut target = slashed(rel);
     if repo.find_reference(reference).is_err() {
         return Ok(());
     }
+    // Resuming: the revisions up to and including where the last page ended are passed over
+    // without being looked into — only their identifiers are read — and the trail goes on under
+    // the name the note had there.
+    let mut skipping = after.map(|a| {
+        target = a.path.clone();
+        a.id.as_str()
+    });
     let mut walk = repo.revwalk()?;
     // Topological as well as by time: several notes recorded in the same second carry
     // identical timestamps, and time alone leaves their order to chance. Topological order puts
@@ -335,7 +379,14 @@ fn walk_history(
     walk.set_sorting(git2::Sort::TIME | git2::Sort::TOPOLOGICAL)?;
     walk.push_ref(reference)?;
     for id in walk {
-        let commit = repo.find_commit(id?)?;
+        let id = id?;
+        if let Some(until) = skipping {
+            if id.to_string() == until {
+                skipping = None;
+            }
+            continue;
+        }
+        let commit = repo.find_commit(id)?;
         match touch(repo, &commit, Path::new(&target))? {
             Touch::Untouched => continue,
             // The trail under this name starts here. Anything earlier at the same name is a
@@ -377,7 +428,7 @@ pub fn content_at_version(
     id: &str,
 ) -> Result<Option<Vec<u8>>, git2::Error> {
     let mut found = None;
-    walk_history(repo, reference, rel, |v| {
+    walk_history(repo, reference, rel, None, |v| {
         if v.id == id {
             found = Some(v.path);
             false
@@ -2107,6 +2158,98 @@ mod tests {
             "newest first"
         );
         assert_eq!(for_a[0].author, "Test");
+    }
+
+    #[test]
+    fn history_comes_in_pages_that_join_up_to_the_whole_of_it() {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        let a = Path::new("a.md");
+        for n in 0..7 {
+            record(&repo, a, &format!("a {n}"));
+            record(&repo, Path::new("b.md"), &format!("b {n}"));
+        }
+        let whole = history(&repo, NOTES_REF, a).unwrap();
+
+        let mut joined = Vec::new();
+        let mut after = None;
+        let mut pages = 0;
+        loop {
+            let (page, more) = history_page(&repo, NOTES_REF, a, 3, after.as_ref()).unwrap();
+            pages += 1;
+            assert!(page.len() <= 3);
+            let last = page.last().cloned();
+            joined.extend(page);
+            if !more {
+                break;
+            }
+            let last = last.unwrap();
+            after = Some(HistoryResume {
+                id: last.id,
+                path: last.path,
+            });
+        }
+        assert_eq!(
+            pages, 3,
+            "7 versions in pages of 3: 3 + 3 + 1, and the last says there is no more"
+        );
+        assert_eq!(joined, whole);
+
+        let (exact, more) = history_page(&repo, NOTES_REF, a, 7, None).unwrap();
+        assert_eq!(exact.len(), 7);
+        assert!(
+            !more,
+            "a page that holds all of it says there is nothing older"
+        );
+    }
+
+    #[test]
+    fn a_page_that_ends_before_a_rename_goes_on_under_the_earlier_name() {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        record(&repo, Path::new("old.md"), "first state of the note");
+        record(&repo, Path::new("old.md"), "second state of the note");
+        move_recorded(
+            &repo,
+            NOTES_REF,
+            &[(PathBuf::from("old.md"), PathBuf::from("new.md"))],
+            &author(),
+            &author(),
+        )
+        .unwrap();
+        record(&repo, Path::new("new.md"), "third state of the note");
+        let new = Path::new("new.md");
+
+        let (first, more) = history_page(&repo, NOTES_REF, new, 2, None).unwrap();
+        assert!(more);
+        assert_eq!(
+            first[1].path, "old.md",
+            "the second newest is from before the rename"
+        );
+        let resume = HistoryResume {
+            id: first[1].id.clone(),
+            path: first[1].path.clone(),
+        };
+        let (rest, more) = history_page(&repo, NOTES_REF, new, 2, Some(&resume)).unwrap();
+        assert_eq!(rest.len(), 1);
+        assert!(!more);
+        assert_eq!(rest[0].path, "old.md");
+        let whole = history(&repo, NOTES_REF, new).unwrap();
+        assert_eq!([first, rest].concat(), whole);
+    }
+
+    #[test]
+    fn a_page_after_a_revision_no_longer_on_the_reference_is_empty() {
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        record(&repo, Path::new("a.md"), "one");
+        let gone = HistoryResume {
+            id: "0".repeat(40),
+            path: "a.md".into(),
+        };
+        let (page, more) =
+            history_page(&repo, NOTES_REF, Path::new("a.md"), 5, Some(&gone)).unwrap();
+        assert!(page.is_empty() && !more);
     }
 
     #[test]

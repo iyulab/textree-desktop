@@ -16,8 +16,8 @@
 //! changed, and such a change waits for it.
 
 use crate::commands::{
-    self, off_main, DefaultVault, DeletedNote, MoveOut, NoteAlternative, NoteVersion, RestoredNote,
-    SidecarState,
+    self, off_main, DefaultVault, DeletedNote, MoveOut, NoteAlternative, NoteVersionPage,
+    RestoredNote, SidecarState,
 };
 use crate::note_locks::NoteLocks;
 use crate::search::Indexes;
@@ -417,10 +417,15 @@ pub async fn move_state_out_of_vault(root_id: String) -> Result<MoveOut, String>
 }
 
 #[tauri::command]
-pub async fn note_versions(root_id: String, rel: String) -> Result<Vec<NoteVersion>, String> {
+pub async fn note_versions(
+    root_id: String,
+    rel: String,
+    limit: usize,
+    after: Option<String>,
+) -> Result<NoteVersionPage, String> {
     let root = crate::workspace::path_of(&root_id)?;
     let path = resolved(&root, &rel).await?;
-    off_main(move || commands::note_versions(root, path)).await
+    off_main(move || commands::note_versions(root, path, limit, after)).await
 }
 
 #[tauri::command]

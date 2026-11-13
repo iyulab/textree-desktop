@@ -3,14 +3,7 @@
   import { noteVersions, noteVersionText, restoreVersion, type NoteVersion } from "./ipc";
   import { friendlyError, type FriendlyError } from "./friendlyError.helpers";
   import { noteName } from "./addVersion.helpers";
-  import {
-    emptyMessage,
-    formatRecordedAt,
-    isCurrent,
-    olderMessage,
-    page,
-    PAGE,
-  } from "./versionHistory.helpers";
+  import { emptyMessage, formatRecordedAt, isCurrent, PAGE } from "./versionHistory.helpers";
 
   interface Props {
     /** Absolute vault root path. */
@@ -29,12 +22,12 @@
   let { root, path, revision, dirty, onclose, onrestored }: Props = $props();
 
   let versions = $state<NoteVersion[]>([]);
-  let shown = $state(PAGE);
+  // Where the older versions are asked from; null when the list reaches the first one.
+  let next = $state<string | null>(null);
+  let loadingOlder = $state(false);
   let selected = $state<NoteVersion | null>(null);
   let preview = $state<string | null>(null);
   let failure = $state<FriendlyError | null>(null);
-
-  let listing = $derived(page(versions, shown));
 
   $effect(() => {
     // Re-reads whenever the note being looked at changes, or its history may have.
@@ -49,11 +42,31 @@
     selected = null;
     preview = null;
     try {
-      const found = await noteVersions(atRoot, ofNote);
+      const found = await noteVersions(atRoot, ofNote, PAGE);
       // A read begun earlier that answers later says less than the latest one.
-      if (mine === reads) versions = found;
+      if (mine === reads) {
+        versions = found.versions;
+        next = found.next;
+      }
     } catch (e) {
       if (mine === reads) failure = friendlyError(e);
+    }
+  }
+
+  async function showOlder() {
+    if (next === null || loadingOlder) return;
+    const mine = reads; // a new read of the list (another note, a new version) makes this one moot
+    loadingOlder = true;
+    try {
+      const found = await noteVersions(root, path, PAGE, next);
+      if (mine === reads) {
+        versions = [...versions, ...found.versions];
+        next = found.next;
+      }
+    } catch (e) {
+      if (mine === reads) failure = friendlyError(e);
+    } finally {
+      loadingOlder = false;
     }
   }
 
@@ -97,7 +110,7 @@
     <p class="empty">{emptyMessage()}</p>
   {:else}
     <ul class="list">
-      {#each listing.visible as version (version.id)}
+      {#each versions as version (version.id)}
         {@const current = isCurrent(version, versions, dirty)}
         <li class="entry" class:selected={selected?.id === version.id}>
           <button class="pick" onclick={() => show(version)} data-testid="version-entry">
@@ -118,10 +131,14 @@
       {/each}
     </ul>
 
-    {#if olderMessage(listing.older)}
+    {#if next !== null}
       <footer class="more">
-        <span>{olderMessage(listing.older)}</span>
-        <button class="show-more" onclick={() => (shown += PAGE)}>Show more</button>
+        <button
+          class="show-more"
+          onclick={showOlder}
+          disabled={loadingOlder}
+          data-testid="version-older"
+        >{loadingOlder ? "Loading…" : "Show older versions"}</button>
       </footer>
     {/if}
   {/if}
