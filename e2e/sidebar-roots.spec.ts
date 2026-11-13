@@ -10,6 +10,7 @@ import {
   tauriInvoke,
   answerFolderDialog,
   dialogsAsked,
+  rootIdOf,
 } from "./helpers";
 
 // Several notes folders in the sidebar at once. Each keeps its own notes; working in one makes it
@@ -300,5 +301,35 @@ test("Add notes folder… through its dialog: a pick joins the sidebar, closing 
     await loadVault(page, work);
     removeTempVault(work);
     removeTempVault(more);
+  }
+});
+
+test("Use with AI, off: the folder's menu says so, and the app refuses AI requests about it", async () => {
+  const work = createTempVault({ "w.md": "# w\n" });
+  const workName = new RegExp(work.split("/").pop()!);
+  const menu = () => section(workName).getByRole("button", { name: /Notes folder menu/ });
+  const useWithAi = page.getByRole("menuitemcheckbox", { name: /Use with AI/ });
+  try {
+    await loadVault(page, work);
+    await menu().click();
+    await expect(useWithAi).toHaveAttribute("aria-checked", "true");
+    await useWithAi.click();
+
+    await menu().click();
+    await expect(useWithAi).toHaveAttribute("aria-checked", "false");
+    await page.keyboard.press("Escape");
+    const rootId = await rootIdOf(page, work);
+    await expect(
+      tauriInvoke(page, "semantic_search", { rootId, query: "w", scope: null, limit: 5 }),
+    ).rejects.toThrow(/not used with AI/);
+
+    await menu().click();
+    await useWithAi.click(); // back on, for the specs after this one
+    await menu().click();
+    await expect(useWithAi).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
+  } finally {
+    await loadVault(page, work);
+    removeTempVault(work);
   }
 });

@@ -14,6 +14,8 @@
     onmove,
     onreveal,
     onremove,
+    usedWithAi,
+    onsetai,
   }: {
     /** The folder's name in the sidebar, for the menu's label. */
     name: string;
@@ -25,6 +27,9 @@
     /** Show the folder in the system's file manager. */
     onreveal: () => void;
     onremove: () => void;
+    /** Whether the folder is used with AI (indexed for it, searched by meaning, asked about). */
+    usedWithAi: boolean;
+    onsetai: (ai: boolean) => void;
   } = $props();
 
   let open = $state(false);
@@ -67,6 +72,17 @@
       <div class="sep" role="separator"></div>
       <button
         class="item"
+        role="menuitemcheckbox"
+        aria-checked={usedWithAi}
+        data-testid="root-use-with-ai"
+        title={usedWithAi
+          ? "Its notes are indexed for AI, searched by meaning and can be asked about."
+          : "Its notes are kept from AI: not indexed for it, not searched by meaning, not asked about."}
+        onclick={() => choose(() => onsetai(!usedWithAi))}
+      ><span class="check" aria-hidden="true">{usedWithAi ? "✓" : ""}</span>Use with AI</button>
+      <div class="sep" role="separator"></div>
+      <button
+        class="item"
         role="menuitem"
         title="The folder and its notes stay where they are."
         onclick={() => choose(onremove)}>Remove from sidebar</button>
@@ -75,6 +91,12 @@
 </div>
 
 <style>
+  /* The tick of a menu item that is on or off (Use with AI), in a fixed column. */
+  .check {
+    display: inline-block;
+    width: 1.1em;
+    color: var(--text-normal);
+  }
   .root-menu {
     position: relative;
     flex-shrink: 0;

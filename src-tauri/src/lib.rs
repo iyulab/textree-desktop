@@ -148,6 +148,7 @@ pub fn run() {
             tree_commands::workspace_remove,
             tree_commands::workspace_reorder,
             tree_commands::workspace_relabel,
+            tree_commands::workspace_set_ai,
             tree_commands::workspace_relocate,
             commands::list_tree,
             commands::read_note,

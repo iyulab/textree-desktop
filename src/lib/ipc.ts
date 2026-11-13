@@ -30,6 +30,8 @@ export interface WorkspaceRoot {
   id: RootId;
   path: string;
   label?: string;
+  /** Whether the folder is used with AI; absent means on. */
+  ai?: boolean;
 }
 
 /** The sidebar's notes folders. `readOnly`: a newer release wrote the list, and changes are not kept. */
@@ -63,6 +65,12 @@ export async function workspaceReorder(ids: RootId[]): Promise<Workspace> {
 /** Names a notes folder in the sidebar; an empty name goes back to the folder's own. */
 export async function workspaceRelabel(id: RootId, label: string): Promise<Workspace> {
   return invoke<Workspace>("workspace_relabel", { id, label });
+}
+
+/** Turns a notes folder's use with AI on or off. Off, it is not indexed for AI, searched by
+ *  meaning or asked about — the app refuses before the AI host hears of the folder. */
+export async function workspaceSetAi(id: RootId, ai: boolean): Promise<Workspace> {
+  return invoke<Workspace>("workspace_set_ai", { id, ai });
 }
 
 /** What became of a located folder's settings: moved with it, none to move, or kept where they

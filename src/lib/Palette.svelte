@@ -169,7 +169,11 @@
     };
   });
 
+  // Why semantic search answered with nothing (a folder kept from AI says so), or null.
+  let semanticRefusal = $state<string | null>(null);
+
   $effect(() => {
+    semanticRefusal = null;
     if (palette.mode !== "semantic") {
       semanticHits = [];
       searching = false;
@@ -197,10 +201,11 @@
             searching = false;
           }
         })
-        .catch(() => {
+        .catch((e) => {
           if (seq === searchSeq) {
             semanticHits = [];
             searching = false;
+            semanticRefusal = typeof e === "string" ? e : null;
           }
         });
     }, 120);
@@ -222,7 +227,9 @@
   let listState = $derived(
     paletteListState({ mode: palette.mode, term: palette.term, count, searching }),
   );
-  let statusText = $derived(paletteStatusText(listState, palette.mode, folderName, palette.contentScope));
+  let statusText = $derived(
+    semanticRefusal ?? paletteStatusText(listState, palette.mode, folderName, palette.contentScope),
+  );
   // With several notes folders, content search can look in all of them or only the open one.
   let scopeSwitch = $derived(palette.mode === "content" && folderName !== null);
 

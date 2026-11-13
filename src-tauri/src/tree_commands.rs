@@ -624,6 +624,15 @@ pub async fn workspace_relocate(
     off_main(move || crate::workspace_commands::workspace_relocate(id, path)).await
 }
 
+/// Turns a notes folder's use with AI on or off (see [`crate::workspace_commands::workspace_set_ai`]).
+#[tauri::command]
+pub async fn workspace_set_ai(
+    id: String,
+    ai: bool,
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(move || crate::workspace_commands::workspace_set_ai(id, ai)).await
+}
+
 /// Names a notes folder in the sidebar (see [`crate::workspace_commands::workspace_relabel`]).
 #[tauri::command]
 pub async fn workspace_relabel(

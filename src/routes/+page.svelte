@@ -14,6 +14,7 @@
     workspaceList,
     workspaceRemove,
     workspaceRelabel,
+    workspaceSetAi,
     workspaceRelocate,
     type WorkspaceRoot,
     workspaceReorder,
@@ -532,6 +533,8 @@
   let listOrder = $state<RootId[]>([]);
   // The names the person gave folders in the sidebar, by id.
   let listLabels = $state<Record<string, string | undefined>>({});
+  // The folders the person keeps from AI, by id (the device's list says so per folder).
+  let keptFromAi = $state<Set<string>>(new Set());
   // Counts the times the window was set to one folder alone (the test bridge): a folder opening in
   // the background from before then is not wanted in the sidebar.
   let aloneLoads = 0;
@@ -569,6 +572,7 @@
   function takeList(ws: Workspace): void {
     listOrder = ws.roots.map((r) => r.id);
     listLabels = Object.fromEntries(ws.roots.map((r) => [r.id, r.label]));
+    keptFromAi = new Set(ws.roots.filter((r) => r.ai === false).map((r) => r.id));
     shown = sortedByList(shown);
     missing = missing.filter((m) => listOrder.includes(m.id)); // one taken out of the sidebar
     notOpened = notOpened.filter((m) => listOrder.includes(m.id));
@@ -919,6 +923,15 @@
     relabeling = null;
     try {
       takeList(await workspaceRelabel(state.root, label));
+    } catch (e) {
+      opError = friendlyError(e);
+    }
+  }
+
+  /** Turns a folder's use with AI on or off. */
+  async function setUsedWithAi(state: FolderState, ai: boolean): Promise<void> {
+    try {
+      takeList(await workspaceSetAi(state.root, ai));
     } catch (e) {
       opError = friendlyError(e);
     }
@@ -2396,6 +2409,8 @@
                 onmove={(delta) => void moveInSidebar(f, delta)}
                 onreveal={() => void revealRoot(f.root).catch((e) => (opError = friendlyError(e)))}
                 onremove={() => void removeFromSidebar(f)}
+                usedWithAi={!keptFromAi.has(f.root)}
+                onsetai={(ai) => void setUsedWithAi(f, ai)}
               />
             </div>
             {#if !f.folds.isCollapsed("")}

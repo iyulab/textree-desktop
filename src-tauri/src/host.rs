@@ -848,6 +848,10 @@ fn scope_within(vault: &str, scope: Option<String>) -> Result<String, String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
+/// What AI requests about a folder kept from AI are answered with.
+pub const KEPT_FROM_AI: &str =
+    "This notes folder is not used with AI. Turn on \"Use with AI\" in its menu in the sidebar.";
+
 #[tauri::command]
 pub async fn semantic_search(
     root_id: String,
@@ -857,6 +861,9 @@ pub async fn semantic_search(
     host: State<'_, Arc<HostHandle>>,
 ) -> Result<Vec<SemanticHit>, String> {
     let vault = crate::workspace::path_of(&root_id)?;
+    if !crate::workspace_commands::used_with_ai(&vault) {
+        return Err(KEPT_FROM_AI.into());
+    }
     // Read cheap mutex fields before entering the blocking closure.
     let Some(endpoint) = host.endpoint() else {
         return Ok(Vec::new()); // host not up → empty, caller falls back / shows unavailable
@@ -1016,6 +1023,12 @@ pub async fn ask(
     host: State<'_, Arc<HostHandle>>,
 ) -> Result<(), String> {
     let vault = crate::workspace::path_of(&root_id)?;
+    if !crate::workspace_commands::used_with_ai(&vault) {
+        let _ = on_event.send(AskEvent::Error {
+            message: KEPT_FROM_AI.into(),
+        });
+        return Ok(());
+    }
     // Graceful degradation: host not up → inform the user, do not hard-error.
     let Some(endpoint) = host.endpoint() else {
         let _ = on_event.send(AskEvent::Error {
@@ -1104,6 +1117,9 @@ pub async fn ask(
 /// makes it switch — dropping the one in use, a reindex of it included. The note reaches its own
 /// folder's index when that folder is opened again and reindexed.
 pub fn index_note(handle: &HostHandle, vault: &str, path: &str) {
+    if !crate::workspace_commands::used_with_ai(vault) {
+        return; // the person keeps this folder from AI
+    }
     if !handle.is_current_vault(vault) {
         log::debug!("[host] {path} is a note of a folder that is not open; not indexed");
         return;
@@ -1123,6 +1139,9 @@ pub fn index_note(handle: &HostHandle, vault: &str, path: &str) {
 /// Fire-and-forget full vault reindex. Silent on any error (degrade, don't block).
 /// Runs without asking because it only reads: nothing a person wrote is altered.
 pub fn reindex_vault(handle: &HostHandle, vault: &str) {
+    if !crate::workspace_commands::used_with_ai(vault) {
+        return; // the person keeps this folder from AI
+    }
     let Some(host) = handle.endpoint() else {
         return;
     };

@@ -21,8 +21,10 @@ use tauri_kit_state::{Settings, Step, Versioned};
 /// The file in the workspace's state directory.
 pub const FILE: &str = "workspace.json";
 
-/// Steps from each format to the next. Format 1 is the first that says what it holds.
-const STEPS: [Step; 1] = [|_, _| Ok(())];
+/// Steps from each format to the next. Format 1 is the first that says what it holds; format 2
+/// adds `ai` to an entry — a release that knows only 1 must not write the file, since its entries
+/// would drop the field (only the top level of a file keeps what a release does not know).
+const STEPS: [Step; 2] = [|_, _| Ok(()), |_, _| Ok(())];
 const FORMATS: Versioned<'static> = Versioned::new(&STEPS);
 
 /// One notes folder of the sidebar.
@@ -33,6 +35,18 @@ pub struct Root {
     /// The name the person gave it in the sidebar, when not the folder's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// Whether the folder is used with AI — indexed for it, searched by meaning, asked about. On
+    /// unless the person turned it off.
+    #[serde(default = "on", skip_serializing_if = "is_on")]
+    pub ai: bool,
+}
+
+fn on() -> bool {
+    true
+}
+
+fn is_on(ai: &bool) -> bool {
+    *ai
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -86,6 +100,7 @@ impl Workspace {
             id: crate::workspace::id_for(path),
             path: path.to_string(),
             label: None,
+            ai: true,
         };
         self.settings.value_mut().roots.push(root.clone());
         self.save()?;
@@ -193,6 +208,22 @@ impl Workspace {
         Ok(true)
     }
 
+    /// Turns the use of a notes folder with AI on or off. Returns whether the folder is listed.
+    pub fn set_ai(&mut self, id: &str, ai: bool) -> io::Result<bool> {
+        let Some(root) = self
+            .settings
+            .value_mut()
+            .roots
+            .iter_mut()
+            .find(|r| r.id == id)
+        else {
+            return Ok(false);
+        };
+        root.ai = ai;
+        self.save()?;
+        Ok(true)
+    }
+
     fn save(&self) -> io::Result<()> {
         if self.writable {
             self.settings.save()
@@ -244,8 +275,41 @@ mod tests {
             )
             .unwrap()
             .trim(),
-            "1"
+            "2"
         );
+    }
+
+    #[test]
+    fn a_folder_kept_from_ai_stays_so_and_the_others_say_nothing_about_it() {
+        let d = dir();
+        let mut ws = Workspace::load(d.path()).unwrap();
+        let a = ws.add("/notes/a").unwrap();
+        ws.add("/notes/b").unwrap();
+        assert!(ws.set_ai(&a.id, false).unwrap());
+        assert!(!ws.set_ai("unknown", false).unwrap());
+        let again = Workspace::load(d.path()).unwrap();
+        assert!(!again.roots()[0].ai);
+        assert!(again.roots()[1].ai);
+        let text = std::fs::read_to_string(d.path().join(FILE)).unwrap();
+        assert_eq!(
+            text.matches("\"ai\"").count(),
+            1,
+            "only the folder that differs says so: {text}"
+        );
+    }
+
+    #[test]
+    fn a_list_from_before_ai_was_kept_reads_every_folder_as_used_with_ai() {
+        let d = dir();
+        std::fs::write(d.path().join(tauri_kit_state::FORMAT_FILE), "1").unwrap();
+        std::fs::write(
+            d.path().join(FILE),
+            r#"{"roots":[{"id":"x","path":"/notes/a"}]}"#,
+        )
+        .unwrap();
+        let ws = Workspace::load(d.path()).unwrap();
+        assert!(ws.writable());
+        assert!(ws.roots()[0].ai);
     }
 
     #[test]

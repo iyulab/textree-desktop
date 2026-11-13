@@ -20,6 +20,7 @@ pub struct WorkspaceOut {
 }
 
 fn workspace_out(ws: &crate::workspace_file::Workspace) -> WorkspaceOut {
+    remember_kept_from_ai(ws.roots());
     WorkspaceOut {
         roots: ws.roots().to_vec(),
         read_only: !ws.writable(),
@@ -86,6 +87,35 @@ pub fn workspace_remove(id: String) -> Result<WorkspaceOut, String> {
 /// Puts the sidebar's notes folders in the order `ids` names them.
 pub fn workspace_reorder(ids: Vec<String>) -> Result<WorkspaceOut, String> {
     workspace_change(|ws| ws.reorder(&ids))
+}
+
+/// Turns the use of a notes folder with AI on or off. Off, the folder is not indexed for AI, not
+/// searched by meaning and not asked about — decided here, at the app's edge, so the AI host never
+/// hears of the folder.
+pub fn workspace_set_ai(id: String, ai: bool) -> Result<WorkspaceOut, String> {
+    workspace_change(|ws| ws.set_ai(&id, ai).map(drop))
+}
+
+/// The folders kept from AI, as the device's list last said (by folder identity).
+static KEPT_FROM_AI: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
+    std::sync::LazyLock::new(Default::default);
+
+fn remember_kept_from_ai(roots: &[crate::workspace_file::Root]) {
+    let kept = roots
+        .iter()
+        .filter(|r| !r.ai)
+        .map(|r| crate::search::vault_identity(Path::new(&r.path)))
+        .collect();
+    *KEPT_FROM_AI.lock().unwrap_or_else(|p| p.into_inner()) = kept;
+}
+
+/// Whether the notes folder at `vault` may be used with AI. A folder the device's list does not
+/// hold, or holds without saying, is.
+pub fn used_with_ai(vault: &str) -> bool {
+    !KEPT_FROM_AI
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .contains(&crate::search::vault_identity(Path::new(vault)))
 }
 
 /// Names a notes folder in the sidebar; an empty name goes back to the folder's own.
@@ -248,6 +278,36 @@ fn carry_secret(from: &Path, to: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_folder_kept_from_ai_is_refused_at_the_edge_however_its_path_is_spelled() {
+        // Every command that rewrites the remembered set holds this turn; so does the test.
+        let _turn = list_turn();
+        let d = tempfile::tempdir().unwrap();
+        let kept = d.path().join("kept");
+        let used = d.path().join("used");
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::create_dir_all(&used).unwrap();
+        let root = |p: &std::path::Path, ai| crate::workspace_file::Root {
+            id: crate::workspace::id_for(&p.to_string_lossy()),
+            path: p.to_string_lossy().into_owned(),
+            label: None,
+            ai,
+        };
+        remember_kept_from_ai(&[root(&kept, false), root(&used, true)]);
+        assert!(!used_with_ai(&kept.to_string_lossy()));
+        assert!(
+            !used_with_ai(&kept.join(".").to_string_lossy()),
+            "another spelling of the same folder"
+        );
+        assert!(used_with_ai(&used.to_string_lossy()));
+        assert!(used_with_ai(&d.path().join("unlisted").to_string_lossy()));
+        remember_kept_from_ai(&[]);
+        assert!(
+            used_with_ai(&kept.to_string_lossy()),
+            "turned back on, it is used again"
+        );
+    }
     use tempfile::TempDir;
 
     #[test]
