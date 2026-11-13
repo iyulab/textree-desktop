@@ -3,6 +3,11 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>textree-host</AssemblyName>
     <RootNamespace>Textree.Host</RootNamespace>
+    <!-- sqlite-vec 0.1.7-alpha.2.1 ships native libraries for osx-arm64 and linux-arm64, but its
+         build check refuses any platform target other than x64/x86, so publishing for Apple
+         Silicon fails. The package's own switch turns that check off; the natives it carries are
+         used as they are. TODO(upstream: sqlite-vec accepts arm64 — drop this once a pinned package no longer needs it) -->
+    <EnableUnsupportedPlatformTargetCheck>false</EnableUnsupportedPlatformTargetCheck>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="FluxIndex.Core" />

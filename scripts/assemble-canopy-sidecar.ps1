@@ -3,7 +3,8 @@
 # runtime + the @iyulab/canopy release pinned in canopy-sidecar/, installed with its production
 # dependencies. The payload is bundled by Tauri as a resource (see tauri.conf.json) and invoked as
 # `node node_modules/@iyulab/canopy/dist/cli.js` at runtime (see canopy_from_resource_dir).
-# Idempotent: safe to re-run. Windows-first (win-x64). CI and the release build run exactly this.
+# Idempotent: safe to re-run. The Node runtime is the one for this machine's platform (win-x64 ·
+# darwin-arm64 · linux-x64). CI and the release build run exactly this.
 [CmdletBinding()]
 param(
   # A canopy source checkout to build and install instead of the pinned release — for trying a
@@ -58,18 +59,28 @@ if ($CanopyPath) {
   } finally { Pop-Location }
 }
 
-# 4. Fetch + cache the pinned Node runtime, extract node.exe into the stage.
-$nodeExe = Join-Path $stage 'node.exe'
+# 4. Fetch + cache the pinned Node runtime for this platform, put its executable into the stage
+#    (`node.exe` on Windows, `node` elsewhere — the name the app looks for).
+if ($IsWindows) { $nodePlatform = 'win-x64'; $archiveExt = 'zip'; $inArchive = 'node.exe' }
+elseif ($IsMacOS) { $nodePlatform = 'darwin-arm64'; $archiveExt = 'tar.gz'; $inArchive = 'bin/node' }
+else { $nodePlatform = 'linux-x64'; $archiveExt = 'tar.gz'; $inArchive = 'bin/node' }
+$nodeExe = Join-Path $stage (Split-Path -Leaf $inArchive)
 if (-not (Test-Path $nodeExe)) {
   New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
-  $zipName = "node-v$NodeVersion-win-x64"
-  $zip     = Join-Path $cacheDir "$zipName.zip"
-  if (-not (Test-Path $zip)) {
-    Invoke-WebRequest "https://nodejs.org/dist/v$NodeVersion/$zipName.zip" -OutFile $zip
+  $archiveName = "node-v$NodeVersion-$nodePlatform"
+  $archive     = Join-Path $cacheDir "$archiveName.$archiveExt"
+  if (-not (Test-Path $archive)) {
+    Invoke-WebRequest "https://nodejs.org/dist/v$NodeVersion/$archiveName.$archiveExt" -OutFile $archive
   }
-  $extract = Join-Path $cacheDir $zipName
-  if (-not (Test-Path $extract)) { Expand-Archive $zip -DestinationPath $cacheDir -Force }
-  Copy-Item (Join-Path $extract 'node.exe') $nodeExe -Force
+  $extract = Join-Path $cacheDir $archiveName
+  if (-not (Test-Path $extract)) {
+    if ($archiveExt -eq 'zip') { Expand-Archive $archive -DestinationPath $cacheDir -Force }
+    else {
+      tar -xzf $archive -C $cacheDir
+      if ($LASTEXITCODE -ne 0) { throw "extracting $archive failed ($LASTEXITCODE)" }
+    }
+  }
+  Copy-Item (Join-Path $extract $inArchive) $nodeExe -Force
 }
 
 # 5. Record which renderer this payload is (sidecar-provenance.mjs; the E2E run reports it).
