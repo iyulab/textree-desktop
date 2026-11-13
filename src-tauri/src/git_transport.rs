@@ -587,11 +587,13 @@ mod tests {
 
     #[test]
     fn a_body_that_keeps_arriving_is_not_cut_however_long_it_takes() {
-        // Ten bytes two seconds apart: twenty seconds in all, four times the silence allowed.
+        // Twenty bytes a second apart: twenty seconds in all, four times the silence allowed. Each
+        // gap is a fifth of that silence, so a machine busy enough to hold the sending thread back
+        // a few seconds does not turn a body that keeps arriving into one that stopped.
         let port = answering(
-            b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\n",
-            b"0123456789",
-            Some(Duration::from_secs(2)),
+            b"HTTP/1.1 200 OK\r\nContent-Length: 20\r\n\r\n",
+            b"01234567890123456789",
+            Some(Duration::from_secs(1)),
         );
         let started = std::time::Instant::now();
         let response = agent()
@@ -604,7 +606,7 @@ mod tests {
             .into_reader()
             .read_to_string(&mut body)
             .unwrap();
-        assert_eq!(body, "0123456789");
+        assert_eq!(body, "01234567890123456789");
         assert!(
             started.elapsed() > IDLE * 3,
             "the test must outlast the silence allowed"
