@@ -37,7 +37,13 @@ export default {
     { name: "restore", cmd: `dotnet restore ${HOST_SOLUTION}` },
     { name: "pins", cmd: "npm run pins:check" },
     { name: "notices", cmd: "npm run notices:check" }, // reads the host's restored graph
-    { name: "host-test", cmd: `dotnet test ${HOST_SOLUTION} --no-restore`, local: true },
+    // A test host that crashes (rather than a test that fails) leaves only "Test Run Aborted";
+    // --blame-crash keeps the test that was running and a dump under .cache/host-test-results.
+    {
+      name: "host-test",
+      cmd: `dotnet test ${HOST_SOLUTION} --no-restore --blame-crash --results-directory .cache/host-test-results`,
+      local: true,
+    },
     { name: "fmt", cmd: `cargo fmt --manifest-path ${CARGO_MANIFEST} --check` },
     { name: "cargo-test", cmd: `cargo test --manifest-path ${CARGO_MANIFEST}` },
     { name: "clippy", cmd: `cargo clippy --manifest-path ${CARGO_MANIFEST} --all-targets -- -D warnings`, local: true },
