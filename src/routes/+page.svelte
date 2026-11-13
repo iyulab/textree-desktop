@@ -52,7 +52,7 @@
     addAlternativeVersion,
     type NoteAlternative,
     type TreeNode,
-    type SearchHit,
+    type FolderHit,
     type MoveOut,
   } from "$lib/ipc";
   import { worthShowing } from "$lib/migrationNotice.helpers";
@@ -73,6 +73,7 @@
   import { decodePicked, NOT_ACROSS_FOLDERS } from "$lib/treeDrag.helpers";
   import { inListOrder, isFolderNotFound, isNestingRefusal, movedRoot, sidebarName } from "$lib/workspace.helpers";
   import { moveVaultLists } from "$lib/vaultLocal.helpers";
+  import { contentSearchFolders, type ContentScope } from "$lib/palette.helpers";
   import RootMenu from "$lib/RootMenu.svelte";
   import Editor from "$lib/Editor.svelte";
   import Backlinks from "$lib/Backlinks.svelte";
@@ -1932,16 +1933,30 @@
     return null;
   }
 
-  /** The tree node a note's `.md` path opens: the note itself, or the folder whose own note it is. */
-  function nodePathOfNote(notePath: string): string {
-    return findNodeByNotePath(tree, notePath)?.path ?? notePath;
-  }
-
-  /** Palette content search: hits name notes; a folder's own note opens as its folder. */
-  async function searchContentFromPalette(query: string): Promise<SearchHit[]> {
-    if (!root) return [];
-    const hits = await searchContent(root, query);
-    return hits.map((h) => ({ ...h, path: nodePathOfNote(h.path) }));
+  /**
+   * Palette content search, over every shown notes folder or the open one alone (`scope`): hits
+   * name notes, a folder's own note opens as its folder, and with several folders shown each hit
+   * names its folder.
+   */
+  async function searchContentFromPalette(
+    query: string,
+    scope: ContentScope,
+  ): Promise<(FolderHit & { folder?: string })[]> {
+    const asked = contentSearchFolders(scope, shown, here);
+    if (asked.length === 0) return [];
+    const hits = await searchContent(
+      asked.map((f) => f.root),
+      query,
+    );
+    return hits.map((h) => {
+      const f = asked.find((x) => x.root === h.rootId) ?? null;
+      const treeOf = f?.tree ?? tree;
+      return {
+        ...h,
+        path: findNodeByNotePath(treeOf, h.path)?.path ?? h.path,
+        folder: shown.length > 1 && f ? sidebarName({ path: f.path, label: listLabels[f.root] }) : undefined,
+      };
+    });
   }
 
   /**

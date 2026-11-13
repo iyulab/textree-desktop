@@ -1367,27 +1367,59 @@ pub fn save_attachment(
     Ok(link)
 }
 
-/// Off the main thread: the index is held for the whole of a first-open rebuild, and a search made
+/// A content search hit and the notes folder it is in.
+#[derive(Debug, serde::Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderHit {
+    pub root_id: String,
+    #[serde(flatten)]
+    pub hit: SearchHit,
+}
+
+/// Content search over the notes folders named, in that order: each folder's index is asked, and
+/// the hits are put in one list, best first, at most `limit` ([`crate::search::merge_ranked`]). A
+/// folder that is not open (or has no index yet) adds nothing.
+///
+/// Off the main thread: an index is held for the whole of a first-open rebuild, and a search made
 /// meanwhile waits for it.
 #[tauri::command]
 pub async fn search_content(
-    root_id: String,
+    root_ids: Vec<String>,
     query: String,
     limit: usize,
     indexes: State<'_, Indexes>,
-) -> Result<Vec<SearchHit>, String> {
-    let root = crate::workspace::path_of(&root_id)?;
-    let Some(index) = indexes.of(Path::new(&root)) else {
-        return Ok(Vec::new()); // the folder is not open → no results (graceful)
-    };
-    off_main(move || {
-        let guard = index.0.lock().unwrap_or_else(|e| e.into_inner());
-        match guard.as_ref() {
-            Some(state) => state.search(&query, limit).map_err(|e| e.to_string()),
-            None => Ok(Vec::new()), // no index → empty results (graceful)
+) -> Result<Vec<FolderHit>, String> {
+    let mut asked = Vec::with_capacity(root_ids.len());
+    for id in root_ids {
+        let root = crate::workspace::path_of(&id)?;
+        if let Some(index) = indexes.of(Path::new(&root)) {
+            asked.push((id, index));
         }
-    })
-    .await
+    }
+    off_main(move || search_folders(&asked, &query, limit)).await
+}
+
+/// The body of [`search_content`], over indexes already looked up.
+pub fn search_folders(
+    asked: &[(String, std::sync::Arc<IndexHandle>)],
+    query: &str,
+    limit: usize,
+) -> Result<Vec<FolderHit>, String> {
+    let mut lists = Vec::with_capacity(asked.len());
+    for (id, index) in asked {
+        let guard = index.0.lock().unwrap_or_else(|e| e.into_inner());
+        let hits = match guard.as_ref() {
+            Some(state) => state
+                .search_scored(query, limit)
+                .map_err(|e| e.to_string())?,
+            None => Vec::new(), // no index → nothing from this folder (graceful)
+        };
+        lists.push((id.clone(), hits));
+    }
+    Ok(crate::search::merge_ranked(lists, limit)
+        .into_iter()
+        .map(|(root_id, hit)| FolderHit { root_id, hit })
+        .collect())
 }
 
 pub fn rebuild_index(root: String, index: &IndexHandle) -> Result<(), String> {
@@ -2801,6 +2833,79 @@ pub(crate) mod tests {
 
     use super::*;
     use tempfile::TempDir;
+
+    fn folder_index(notes: &[(&str, &str)]) -> (TempDir, TempDir, std::sync::Arc<IndexHandle>) {
+        let vault = TempDir::new().unwrap();
+        let idx = TempDir::new().unwrap();
+        for (name, body) in notes {
+            std::fs::write(vault.path().join(name), body).unwrap();
+        }
+        let mut state = IndexState::open_or_create(idx.path(), vault.path()).unwrap();
+        state.rebuild(vault.path()).unwrap();
+        let handle = std::sync::Arc::new(IndexHandle::default());
+        *handle.0.lock().unwrap() = Some(state);
+        (vault, idx, handle)
+    }
+
+    #[test]
+    fn content_search_over_several_folders_names_each_hits_folder() {
+        let (_wv, _wi, work) = folder_index(&[
+            ("plan.md", "harbor harbor harbor"),
+            ("todo.md", "groceries"),
+        ]);
+        let (_hv, _hi, home) = folder_index(&[("trip.md", "a harbor walk")]);
+        let empty = std::sync::Arc::new(IndexHandle::default()); // a folder whose index is not ready
+        let asked = vec![
+            ("work".to_string(), work),
+            ("none".to_string(), empty),
+            ("home".to_string(), home),
+        ];
+
+        let hits = search_folders(&asked, "harbor", 10).unwrap();
+        let found: Vec<_> = hits
+            .iter()
+            .map(|h| (h.root_id.as_str(), h.hit.path.as_str()))
+            .collect();
+        assert_eq!(
+            found.len(),
+            2,
+            "one hit from each folder that has it: {found:?}"
+        );
+        assert!(found.contains(&("work", "plan.md")) && found.contains(&("home", "trip.md")));
+        assert_eq!(
+            found[0],
+            ("work", "plan.md"),
+            "the stronger match comes first"
+        );
+
+        assert_eq!(
+            search_folders(&asked, "harbor", 1).unwrap().len(),
+            1,
+            "the limit is over all folders"
+        );
+        assert!(search_folders(&asked, "groceries", 10)
+            .unwrap()
+            .iter()
+            .all(|h| h.root_id == "work"));
+    }
+
+    #[test]
+    fn a_folder_hit_reaches_the_screen_with_its_folder_beside_the_hits_fields() {
+        let json = serde_json::to_value(FolderHit {
+            root_id: "r1".into(),
+            hit: SearchHit {
+                path: "a.md".into(),
+                title: "a".into(),
+                snippet: "s".into(),
+                ranges: vec![(0, 1)],
+            },
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"rootId": "r1", "path": "a.md", "title": "a", "snippet": "s", "ranges": [[0, 1]]})
+        );
+    }
 
     #[test]
     fn the_screen_gets_the_tree_with_paths_relative_to_the_folder() {

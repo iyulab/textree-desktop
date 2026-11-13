@@ -56,14 +56,33 @@ test("two notes folders side by side: a note of the same name opens from its own
     await section(workName).getByRole("treeitem", { name: /plan/ }).click();
     await expect(page.locator(".cm-content")).toContainText("work plan");
 
-    // Content search looks only in the folder the window is in, and says which.
+    // Content search looks in every notes folder the sidebar shows, and each hit names its folder.
+    const workLabel = work.split("/").pop()!;
+    const homeLabel = home.split("/").pop()!;
     await page.keyboard.press("Control+p");
+    await page.getByTestId("palette-input").fill("/plan");
+    const scope = page.getByTestId("palette-scope");
+    await expect(scope.getByRole("radio", { name: "All notes folders" })).toHaveAttribute("aria-checked", "true");
+    const items = page.getByTestId("palette-item");
+    await expect(items).toHaveCount(2);
+    await expect(items.filter({ hasText: homeLabel })).toHaveCount(1);
+    await expect(items.filter({ hasText: workLabel })).toHaveCount(1);
+
+    // Tab: only the folder the window is in.
+    await page.keyboard.press("Tab");
+    await expect(scope.getByRole("radio", { name: "This notes folder" })).toHaveAttribute("aria-checked", "true");
+    await expect(items).toHaveCount(1);
+    await expect(items.first()).toContainText(workLabel);
     await page.getByTestId("palette-input").fill("/");
-    await expect(page.getByTestId("palette-status")).toHaveText(
-      `Searches the notes in ${work.split("/").pop()} only`,
-    );
-    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("palette-status")).toHaveText(`Searches the notes in ${workLabel} only`);
+
+    // Back to all of them; a hit in the other folder opens there.
+    await page.keyboard.press("Tab");
+    await page.getByTestId("palette-input").fill("/home plan");
+    await expect(items.filter({ hasText: homeLabel }).first()).toBeVisible();
+    await items.filter({ hasText: homeLabel }).first().dispatchEvent("mousedown");
     await expect(page.getByTestId("palette-overlay")).toHaveCount(0);
+    await expect(page.locator(".cm-content")).toContainText("home plan");
   } finally {
     await loadVault(page, work); // alone again, for the specs after this one
     removeTempVault(work);

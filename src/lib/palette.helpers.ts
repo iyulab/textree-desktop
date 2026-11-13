@@ -41,24 +41,42 @@ export function paletteListState(args: {
 }
 
 /**
+ * Where content search looks when the sidebar shows several notes folders: every one of them
+ * (`all`, the default) or only the open one (`here`). Semantic search always looks in the open one.
+ */
+export type ContentScope = "all" | "here";
+
+/**
+ * The folders a content search asks, in the sidebar's order: all of them, or the open one alone.
+ * With no folder open there is nothing to ask.
+ */
+export function contentSearchFolders<T>(scope: ContentScope, shown: readonly T[], here: T | null): T[] {
+  if (here === null) return [];
+  return scope === "all" && shown.length > 1 ? [...shown] : [here];
+}
+
+/**
  * The status row under content or semantic results, or `null` for none. Finding a note by name
- * looks in every notes folder the sidebar shows, but content and semantic search look only in the
- * open one — so with several shown (`folder` names the open one) the row says where it looked,
- * and says it before anything is typed.
+ * looks in every notes folder the sidebar shows; content search looks in all of them or only the
+ * open one (`scope`), and semantic search only in the open one — so with several shown (`folder`
+ * names the open one) the row says where it looked, and says it before anything is typed. Looking
+ * in all of them needs no word before typing: the scope switch above the list says it.
  */
 export function paletteStatusText(
   state: PaletteListState,
   mode: PaletteMode,
   folder: string | null,
+  scope: ContentScope = "here",
 ): string | null {
-  const scoped = folder !== null && (mode === "content" || mode === "semantic");
+  const several = folder !== null && (mode === "content" || mode === "semantic");
+  const everywhere = several && mode === "content" && scope === "all";
   switch (state) {
     case "searching":
-      return scoped ? `Searching ${folder}…` : "Searching…";
+      return everywhere ? "Searching all notes folders…" : several ? `Searching ${folder}…` : "Searching…";
     case "no-results":
-      return scoped ? `No matches in ${folder}` : "No matches found";
+      return everywhere ? "No matches in any notes folder" : several ? `No matches in ${folder}` : "No matches found";
     case "empty":
-      return scoped ? `Searches the notes in ${folder} only` : null;
+      return several && !everywhere ? `Searches the notes in ${folder} only` : null;
     case "results":
       return null;
   }

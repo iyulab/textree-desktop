@@ -478,13 +478,21 @@ export interface SearchHit {
   ranges: [number, number][];
 }
 
-/** Body full-text search. Empty array if the index is missing or the query is empty. */
+/** A content search hit and the notes folder it is in. */
+export interface FolderHit extends SearchHit {
+  rootId: RootId;
+}
+
+/**
+ * Body full-text search over the notes folders named, best first across them, at most `limit` in
+ * all. A folder without an index adds nothing; an empty query finds nothing.
+ */
 export async function searchContent(
-  rootId: RootId,
+  rootIds: RootId[],
   query: string,
   limit = 50,
-): Promise<SearchHit[]> {
-  return invoke<SearchHit[]>("search_content", { rootId, query, limit });
+): Promise<FolderHit[]> {
+  return invoke<FolderHit[]>("search_content", { rootIds, query, limit });
 }
 
 /** Full reindex (>reindex command). */

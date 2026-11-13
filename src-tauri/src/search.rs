@@ -145,14 +145,29 @@ fn index_dir_recursive(writer: &IndexWriter, f: &Fields, root: &Path, dir: &Path
     }
 }
 
-/// Multi-field query over body·title. Attaches a body snippet·highlight ranges to each hit.
-/// Empty/whitespace query yields empty results.
+/// [`search_scored`] without the scores — what the tests read.
+#[cfg(test)]
 pub fn search(
     index: &Index,
     f: &Fields,
     query: &str,
     limit: usize,
 ) -> tantivy::Result<Vec<SearchHit>> {
+    Ok(search_scored(index, f, query, limit)?
+        .into_iter()
+        .map(|(_, hit)| hit)
+        .collect())
+}
+
+/// Multi-field query over body·title, best first, each hit with its relevance score — what lets
+/// the hits of several folders' indexes be put in one order ([`merge_ranked`]). Attaches a body
+/// snippet·highlight ranges to each hit. Empty/whitespace query yields empty results.
+pub fn search_scored(
+    index: &Index,
+    f: &Fields,
+    query: &str,
+    limit: usize,
+) -> tantivy::Result<Vec<(f32, SearchHit)>> {
     if query.trim().is_empty() {
         return Ok(Vec::new());
     }
@@ -168,21 +183,48 @@ pub fn search(
     snippet_gen.set_max_num_chars(160);
 
     let mut hits = Vec::with_capacity(top.len());
-    for (_score, addr) in top {
+    for (score, addr) in top {
         let doc: TantivyDocument = searcher.doc(addr)?;
         let path = first_text(&doc, f.path);
         let title = first_text(&doc, f.title);
         let snip = snippet_gen.snippet_from_doc(&doc);
         let fragment = snip.fragment().to_string();
         let ranges = byte_ranges_to_char(&fragment, snip.highlighted());
-        hits.push(SearchHit {
-            path,
-            title,
-            snippet: fragment,
-            ranges,
-        });
+        hits.push((
+            score,
+            SearchHit {
+                path,
+                title,
+                snippet: fragment,
+                ranges,
+            },
+        ));
     }
     Ok(hits)
+}
+
+/// The hits of several folders in one list: best score first, at most `limit`. Each folder's list
+/// is already best first; equal scores keep the folders' order (the order they were given in — the
+/// sidebar's), so the same query gives the same list. Every index scores with the same function
+/// over the same fields, so the scores are put side by side as they are.
+pub fn merge_ranked<K: Clone>(
+    lists: Vec<(K, Vec<(f32, SearchHit)>)>,
+    limit: usize,
+) -> Vec<(K, SearchHit)> {
+    let mut all: Vec<(f32, usize, usize, K, SearchHit)> = lists
+        .into_iter()
+        .enumerate()
+        .flat_map(|(folder, (key, hits))| {
+            hits.into_iter()
+                .enumerate()
+                .map(move |(rank, (score, hit))| (score, folder, rank, key.clone(), hit))
+        })
+        .collect();
+    all.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+    all.into_iter()
+        .take(limit)
+        .map(|(_, _, _, key, hit)| (key, hit))
+        .collect()
 }
 
 fn first_text(doc: &TantivyDocument, field: Field) -> String {
@@ -324,8 +366,17 @@ impl IndexState {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn search(&self, query: &str, limit: usize) -> tantivy::Result<Vec<SearchHit>> {
         search(&self.index, &self.fields, query, limit)
+    }
+
+    pub fn search_scored(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> tantivy::Result<Vec<(f32, SearchHit)>> {
+        search_scored(&self.index, &self.fields, query, limit)
     }
 }
 
@@ -586,5 +637,52 @@ mod tests {
         assert_eq!(a1, a2, "same root yields the same directory");
         assert_ne!(a1, b, "different roots yield different directories");
         assert!(a1.starts_with(app.join("index")));
+    }
+
+    fn hit(path: &str) -> SearchHit {
+        SearchHit {
+            path: path.into(),
+            title: path.into(),
+            snippet: String::new(),
+            ranges: vec![],
+        }
+    }
+
+    #[test]
+    fn merged_hits_go_best_first_across_folders_and_stop_at_the_limit() {
+        let merged = merge_ranked(
+            vec![
+                ("a", vec![(3.0, hit("a1")), (1.0, hit("a2"))]),
+                ("b", vec![(2.0, hit("b1")), (0.5, hit("b2"))]),
+            ],
+            3,
+        );
+        let order: Vec<_> = merged.iter().map(|(k, h)| (*k, h.path.as_str())).collect();
+        assert_eq!(order, vec![("a", "a1"), ("b", "b1"), ("a", "a2")]);
+    }
+
+    #[test]
+    fn equal_scores_keep_the_folders_order_then_each_folders_own() {
+        let merged = merge_ranked(
+            vec![
+                ("b", vec![(1.0, hit("b1")), (1.0, hit("b2"))]),
+                ("a", vec![(1.0, hit("a1"))]),
+            ],
+            10,
+        );
+        let order: Vec<_> = merged.iter().map(|(_, h)| h.path.as_str()).collect();
+        assert_eq!(
+            order,
+            vec!["b1", "b2", "a1"],
+            "the order folders were given in decides ties"
+        );
+    }
+
+    #[test]
+    fn a_folder_with_nothing_found_or_no_folders_adds_nothing() {
+        assert!(merge_ranked::<&str>(vec![], 5).is_empty());
+        let merged = merge_ranked(vec![("a", vec![]), ("b", vec![(1.0, hit("b1"))])], 5);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].0, "b");
     }
 }
