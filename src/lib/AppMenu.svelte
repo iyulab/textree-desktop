@@ -8,6 +8,7 @@
   import Icon from "./Icon.svelte";
   import { groupCommands } from "./appMenu.helpers";
   import { formatKeybinding } from "./keybinding.helpers";
+  import { onMac } from "./platform";
   import type { Command } from "./commands";
 
   let {
@@ -64,7 +65,7 @@
           <button class="item" role="menuitem" data-testid="app-menu-item" onclick={() => run(cmd)}>
             <span class="item-title">{cmd.title}</span>
             {#if cmd.keybinding}
-              <kbd class="kbd">{formatKeybinding(cmd.keybinding)}</kbd>
+              <kbd class="kbd">{formatKeybinding(cmd.keybinding, onMac)}</kbd>
             {/if}
           </button>
         {/each}
@@ -77,7 +78,7 @@
         onclick={searchAll}
       >
         <span class="item-title">Search all…</span>
-        <kbd class="kbd">Ctrl+P</kbd>
+        <kbd class="kbd">{formatKeybinding("mod+p", onMac)}</kbd>
       </button>
     </div>
   {/if}

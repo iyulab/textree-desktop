@@ -1,6 +1,8 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Icon from "./Icon.svelte";
+  import { formatKeybinding } from "./keybinding.helpers";
+  import { onMac } from "./platform";
 
   let {
     label,
@@ -46,7 +48,9 @@
      is required because the flex children cover the bar; a bare attribute would only drag when
      the mousedown target is .titlebar itself. Real <button>s below still short-circuit and stay
      clickable. -->
-<div class="titlebar" data-tauri-drag-region="deep">
+<!-- On macOS the system draws the window controls at the top left, over this bar (`mac` leaves
+     room for them), and the bar draws none of its own. -->
+<div class="titlebar" class:mac={onMac} data-tauri-drag-region="deep">
   <div class="tb-left">
     <button
       class="tb-icon-btn"
@@ -66,12 +70,17 @@
     </span>
   </div>
 
-  <button class="tb-center" onclick={onOpenPalette} title="Search or run a command (Ctrl+P)">
+  <button
+    class="tb-center"
+    onclick={onOpenPalette}
+    title={`Search or run a command (${formatKeybinding("mod+p", onMac)})`}
+  >
     <Icon name="search" />
     <span class="tb-context">{label || "Textree"}</span>
   </button>
 
   <div class="tb-right">
+    {#if !onMac}
     <button class="tb-win-btn" onclick={minimize} title="Minimize" aria-label="Minimize"
       ><Icon name="minus" /></button>
     <button class="tb-win-btn" onclick={toggleMax}
@@ -79,6 +88,7 @@
       ><Icon name={maximized ? "restore" : "square"} /></button>
     <button class="tb-win-btn tb-close" onclick={close} title="Close" aria-label="Close"
       ><Icon name="x" /></button>
+    {/if}
   </div>
 </div>
 
@@ -101,6 +111,8 @@
     padding: 0 var(--sp-2);
   }
   .tb-left { flex: 1; }
+  /* Room for the system's window controls (three buttons and their margins, ~68px) on macOS. */
+  .titlebar.mac .tb-left { padding-left: 76px; }
   .tb-right { flex: 1; justify-content: flex-end; }
   .tb-brand {
     display: inline-flex;
