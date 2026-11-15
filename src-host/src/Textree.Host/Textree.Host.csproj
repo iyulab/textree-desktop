@@ -6,7 +6,7 @@
     <!-- sqlite-vec 0.1.7-alpha.2.1 ships native libraries for osx-arm64 and linux-arm64, but its
          build check refuses any platform target other than x64/x86, so publishing for Apple
          Silicon fails. The package's own switch turns that check off; the natives it carries are
-         used as they are. TODO(upstream: sqlite-vec accepts arm64 — drop this once a pinned package no longer needs it) -->
+         used as they are. TODO(upstream: https://github.com/asg017/sqlite-vec/issues/367 — drop this once a pinned package accepts arm64) -->
     <EnableUnsupportedPlatformTargetCheck>false</EnableUnsupportedPlatformTargetCheck>
   </PropertyGroup>
   <ItemGroup>
