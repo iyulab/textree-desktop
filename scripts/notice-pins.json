@@ -31,12 +31,6 @@
       "sha256": "2710a622a896bba67356913d4d0492cab5465f61b2ecce6d880aeb483834fb50"
     }
   ],
-  "Google.Protobuf@3.30.2": [
-    {
-      "source": "https://raw.githubusercontent.com/protocolbuffers/protobuf/43e1626812c1b543e56a7bec59dc09eb18248bd2/LICENSE",
-      "sha256": "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d"
-    }
-  ],
   "Microsoft.Data.Sqlite.Core@11.0.0": [
     {
       "source": "https://raw.githubusercontent.com/dotnet/dotnet/297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f/LICENSE.TXT",
@@ -77,12 +71,6 @@
     {
       "source": "https://raw.githubusercontent.com/ivanakcheurov/ntextcat/1eb333ee76690a79a2eac1ecb45ff1377b1e2735/license.MIT",
       "sha256": "7c32af9d750f53c3d00051c2a3ebd87dbc1970c9cf7b3c4587f7e3a508add425"
-    }
-  ],
-  "OpenAI@2.14.0": [
-    {
-      "source": "https://raw.githubusercontent.com/openai/openai-dotnet/2e77b08828145f658ec04e49aec87abb1543c553/LICENSE",
-      "sha256": "5b1ac9960dc46756e316a2962c77fb8cbdee8fa87c9ab1825671235fac6a1f96"
     }
   ],
   "ownedbytes@0.9.0": [
@@ -227,12 +215,6 @@
       "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
     }
   ],
-  "Google.GenAI@1.27.0": [
-    {
-      "source": "https://raw.githubusercontent.com/googleapis/dotnet-genai/2a9d172558cf4461391bce9fd1a3e6668e51d4c6/LICENSE",
-      "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
-    }
-  ],
   "HtmlAgilityPack@1.13.1": [
     {
       "source": "https://raw.githubusercontent.com/zzzprojects/html-agility-pack/248dea385ee4ebe16b6bb8e8ec63836029d4b780/LICENSE",
@@ -267,6 +249,18 @@
     {
       "source": "https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT",
       "sha256": "ae48df11a335dc1a615f4f938b69cba73bcf4485c4f97af49b38efb0f216353b"
+    }
+  ],
+  "OpenAI@2.15.0": [
+    {
+      "source": "https://raw.githubusercontent.com/openai/openai-dotnet/df2ac26b0f466aa022d5418833cdf70d86cfd40a/LICENSE",
+      "sha256": "5b1ac9960dc46756e316a2962c77fb8cbdee8fa87c9ab1825671235fac6a1f96"
+    }
+  ],
+  "Google.GenAI@2.0.0": [
+    {
+      "source": "https://raw.githubusercontent.com/googleapis/dotnet-genai/f72b7e6a218363abc383a58dc7b97e60235ca04b/LICENSE",
+      "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
     }
   ]
 }

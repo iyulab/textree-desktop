@@ -633,48 +633,47 @@ The helper that indexes notes and runs local models is a self-contained .NET pro
 runtime ships inside it, as the runtime packs listed below, whose own third-party notices are
 reproduced in THIRD-PARTY-LICENSES.txt with the rest.
 
-The 74 NuGet packages below put code into the helper (runtime or native assets).
+The 72 NuGet packages below put code into the helper (runtime or native assets).
 
 | Component | Version | License | Upstream |
 | --- | --- | --- | --- |
-| `Anthropic` | 13.3.0 | Apache-2.0 | https://www.github.com/anthropics/anthropic-sdk-csharp |
+| `Anthropic` | 13.6.0 | Apache-2.0 | https://www.github.com/anthropics/anthropic-sdk-csharp |
 | `ChildProcessGuard` | 1.5.0 | MIT | https://github.com/iyulab/ChildProcessGuard |
 | `CsvHelper` | 34.0.0 | MS-PL OR Apache-2.0 | https://github.com/JoshClose/CsvHelper |
-| `FileFlux` | 0.68.0 | MIT | https://github.com/iyulab/FileFlux |
-| `FileFlux.Core` | 0.68.0 | MIT | https://github.com/iyulab/FileFlux |
+| `FileFlux` | 0.69.0 | MIT | https://github.com/iyulab/FileFlux |
+| `FileFlux.Core` | 0.69.0 | MIT | https://github.com/iyulab/FileFlux |
 | `Flux.Abstractions` | 0.27.0 | MIT | https://github.com/iyulab/flux-abstractions |
-| `FluxCurator` | 0.19.0 | MIT | https://github.com/iyulab/FluxCurator |
-| `FluxCurator.Core` | 0.19.0 | MIT | https://github.com/iyulab/FluxCurator |
-| `FluxFeed` | 0.59.0 | MIT | https://github.com/iyulab/FluxFeed |
+| `FluxCurator` | 0.20.0 | MIT | https://github.com/iyulab/FluxCurator |
+| `FluxCurator.Core` | 0.20.0 | MIT | https://github.com/iyulab/FluxCurator |
+| `FluxFeed` | 0.59.1 | MIT | https://github.com/iyulab/FluxFeed |
 | `FluxGuard` | 0.27.0 | MIT | https://github.com/iyulab/FluxGuard |
 | `FluxGuard.Remote` | 0.27.0 | MIT | https://github.com/iyulab/FluxGuard |
-| `FluxImprover` | 0.23.0 | MIT | https://github.com/iyulab/FluxImprover |
-| `FluxIndex.Core` | 0.106.0 | MIT | https://github.com/iyulab/FluxIndex |
-| `FluxIndex.Providers.LMSupply` | 0.106.0 | MIT | https://github.com/iyulab/FluxIndex |
-| `FluxIndex.SDK` | 0.106.0 | MIT | https://github.com/iyulab/FluxIndex |
-| `FluxIndex.Storage.SQLite` | 0.106.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxImprover` | 0.24.1 | MIT | https://github.com/iyulab/FluxImprover |
+| `FluxIndex.Core` | 0.107.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.Providers.LMSupply` | 0.107.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.SDK` | 0.107.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.Storage.SQLite` | 0.107.0 | MIT | https://github.com/iyulab/FluxIndex |
 | `Google.Apis` | 1.69.0 | Apache-2.0 | https://github.com/googleapis/google-api-dotnet-client |
 | `Google.Apis.Auth` | 1.69.0 | Apache-2.0 | https://github.com/googleapis/google-api-dotnet-client |
 | `Google.Apis.Core` | 1.69.0 | Apache-2.0 | https://github.com/googleapis/google-api-dotnet-client |
-| `Google.GenAI` | 1.27.0 | Apache-2.0 | https://github.com/googleapis/dotnet-genai |
-| `Google.Protobuf` | 3.30.2 | BSD-3-Clause | https://github.com/protocolbuffers/protobuf |
+| `Google.GenAI` | 2.0.0 | Apache-2.0 | https://github.com/googleapis/dotnet-genai |
 | `HtmlAgilityPack` | 1.13.1 | MIT | https://github.com/zzzprojects/html-agility-pack/ |
-| `IronHive.Abstractions` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Extensions.AI` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.Anthropic` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.GoogleAI` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.OpenAI` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.OpenAI.Compatible` | 0.75.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronProw.Core` | 0.19.0 | MIT | https://github.com/iyulab/iron-prow |
-| `IronProw.IronHive` | 0.19.0 | MIT | https://github.com/iyulab/iron-prow |
-| `IronProw.LMSupply` | 0.19.0 | MIT | https://github.com/iyulab/iron-prow |
-| `LMSupply.Core` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Embedder` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Generator` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Generator.Onnx` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Llama` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Reranker` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
-| `LMSupply.Text.Core` | 0.141.0 | MIT | https://github.com/iyulab/lm-supply |
+| `IronHive.Abstractions` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Extensions.AI` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.Anthropic` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.GoogleAI` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.OpenAI` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.OpenAI.Compatible` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronProw.Core` | 0.20.0 | MIT | https://github.com/iyulab/iron-prow |
+| `IronProw.IronHive` | 0.20.0 | MIT | https://github.com/iyulab/iron-prow |
+| `IronProw.LMSupply` | 0.20.0 | MIT | https://github.com/iyulab/iron-prow |
+| `LMSupply.Core` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Embedder` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Generator` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Generator.Onnx` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Llama` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Reranker` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
+| `LMSupply.Text.Core` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
 | `Markdig` | 1.6.0 | BSD-2-Clause | https://github.com/xoofx/markdig |
 | `Microsoft.AspNetCore.App.Runtime.win-x64` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
 | `Microsoft.Data.Sqlite.Core` | 11.0.0 | MIT | https://github.com/dotnet/dotnet |
@@ -686,12 +685,11 @@ The 74 NuGet packages below put code into the helper (runtime or native assets).
 | `Microsoft.Extensions.DependencyModel` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
 | `Microsoft.ML.OnnxRuntime.Managed` | 1.31.1 | MIT | https://github.com/microsoft/onnxruntime |
 | `Microsoft.ML.OnnxRuntimeGenAI.Managed` | 0.19.0 | MIT | https://github.com/microsoft/onnxruntime-genai/ |
-| `Microsoft.ML.Tokenizers` | 2.0.1 | MIT | https://github.com/dotnet/machinelearning |
+| `Microsoft.ML.Tokenizers` | 3.0.0 | MIT | https://github.com/dotnet/machinelearning |
 | `Microsoft.NETCore.App.Runtime.win-x64` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
 | `Newtonsoft.Json` | 13.0.3 | MIT | https://github.com/JamesNK/Newtonsoft.Json |
 | `NTextCat` | 0.3.65 | MIT | https://github.com/ivanakcheurov/ntextcat |
-| `OpenAI` | 2.14.0 | MIT | https://github.com/openai/openai-dotnet |
-| `Polly.Core` | 8.6.6 | BSD-3-Clause | https://github.com/App-vNext/Polly |
+| `OpenAI` | 2.15.0 | MIT | https://github.com/openai/openai-dotnet |
 | `SQLite` | 3.53.4 | LicenseRef-Public-Domain | https://sqlite.org/ |
 | `sqlite-vec` | 0.1.7-alpha.2.1 | MIT | https://github.com/asg017/sqlite-vec |
 | `SQLitePCLRaw.config.e_sqlite3` | 3.0.5 | Apache-2.0 | https://github.com/ericsink/SQLitePCL.raw |
