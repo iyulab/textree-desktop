@@ -100,13 +100,29 @@ pub fn workspace_set_ai(id: String, ai: bool) -> Result<WorkspaceOut, String> {
 static KEPT_FROM_AI: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
     std::sync::LazyLock::new(Default::default);
 
+/// The same folders as the list names them — what the AI helper was told when it indexed them.
+static KEPT_FROM_AI_PATHS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
 fn remember_kept_from_ai(roots: &[crate::workspace_file::Root]) {
+    *KEPT_FROM_AI_PATHS.lock().unwrap_or_else(|p| p.into_inner()) = roots
+        .iter()
+        .filter(|r| !r.ai)
+        .map(|r| r.path.clone())
+        .collect();
     let kept = roots
         .iter()
         .filter(|r| !r.ai)
         .map(|r| crate::search::vault_identity(Path::new(&r.path)))
         .collect();
     *KEPT_FROM_AI.lock().unwrap_or_else(|p| p.into_inner()) = kept;
+}
+
+/// The folders kept from AI, as the device's list names them.
+pub fn kept_from_ai() -> Vec<String> {
+    KEPT_FROM_AI_PATHS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone()
 }
 
 /// Whether the notes folder at `vault` may be used with AI. A folder the device's list does not
@@ -302,7 +318,13 @@ mod tests {
         );
         assert!(used_with_ai(&used.to_string_lossy()));
         assert!(used_with_ai(&d.path().join("unlisted").to_string_lossy()));
+        assert_eq!(
+            kept_from_ai(),
+            vec![kept.to_string_lossy().into_owned()],
+            "the AI helper is told the folder as the list names it — the name it indexed it under"
+        );
         remember_kept_from_ai(&[]);
+        assert!(kept_from_ai().is_empty());
         assert!(
             used_with_ai(&kept.to_string_lossy()),
             "turned back on, it is used again"

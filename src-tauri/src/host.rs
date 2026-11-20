@@ -167,6 +167,14 @@ impl HostHandle {
             .unwrap_or_else(|e| e.into_inner())
             .clone()
     }
+    /// The name the AI helper knows `vault` by: the open folder's own spelling when `vault` is that
+    /// folder, else `vault` as given.
+    pub fn indexed_name(&self, vault: &str) -> String {
+        match self.current_vault() {
+            Some(open) if self.is_current_vault(vault) => open,
+            _ => vault.to_string(),
+        }
+    }
     /// Whether `vault` is the folder open now, however its path is spelled.
     pub fn is_current_vault(&self, vault: &str) -> bool {
         use crate::search::vault_identity;
@@ -469,6 +477,10 @@ fn poll_health(handle: Arc<HostHandle>, host: Client, my_gen: u64) {
                 // (lazy spawn means the host is never Ready at the first open_vault).
                 if let Some(vault) = handle.current_vault() {
                     reindex_vault(&handle, &vault);
+                }
+                // A folder kept from AI while the helper was not running still has its index.
+                for vault in crate::workspace_commands::kept_from_ai() {
+                    forget_vault(&handle, &handle.indexed_name(&vault));
                 }
             }
             PollAction::GiveUp | PollAction::Exited => {
@@ -1154,6 +1166,26 @@ pub fn reindex_vault(handle: &HostHandle, vault: &str) {
         .post_json("/reindex", &payload.to_string());
 }
 
+/// Fire-and-forget: the AI helper drops everything it indexed from `vault` (the person keeps the
+/// folder from AI). The index is a derived cache on this device, so nothing is lost; it is rebuilt if
+/// the folder is used with AI again. When the helper is not running now, it is asked when it is next
+/// ready (the ready step of [`poll_health`]), and a file it could not remove yet is retried then too.
+pub fn forget_vault(handle: &HostHandle, vault: &str) {
+    let Some(host) = handle.endpoint() else {
+        return;
+    };
+    if !matches!(handle.status(), HostStatus::Ready) {
+        return;
+    }
+    let payload = serde_json::json!({ "vaultPath": vault });
+    if let Err(e) = host
+        .within(Duration::from_secs(10))
+        .post_json("/forget", &payload.to_string())
+    {
+        log::debug!("[host] could not drop a kept folder's index now: {e}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1306,6 +1338,19 @@ mod tests {
             winners, 1,
             "exactly one concurrent caller may claim the spawn"
         );
+    }
+
+    #[test]
+    fn the_helper_is_told_the_open_folder_by_the_name_it_was_indexed_under() {
+        let d = tempfile::tempdir().unwrap();
+        let open = d.path().to_string_lossy().into_owned();
+        let handle = HostHandle::default();
+        handle.set_current_vault(open.clone());
+
+        let other_spelling = d.path().join(".").to_string_lossy().into_owned();
+        assert_eq!(handle.indexed_name(&other_spelling), open);
+        let elsewhere = d.path().join("elsewhere").to_string_lossy().into_owned();
+        assert_eq!(handle.indexed_name(&elsewhere), elsewhere);
     }
 
     #[test]

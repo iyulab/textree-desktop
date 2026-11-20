@@ -249,6 +249,10 @@ app.MapPost("/reindex", (ReindexRequest req) =>
     _ = Task.Run(async () =>
     {
         try { await mgr.ReindexAsync(req.VaultPath, CancellationToken.None); }
+        catch (OperationCanceledException)
+        {
+            reindexLog.LogDebug("Reindex stopped: the folder is no longer the one indexed");
+        }
         catch (Exception ex)
         {
             reindexLog.LogError(ex, "Reindex failed for {Vault}", req.VaultPath);
@@ -257,6 +261,17 @@ app.MapPost("/reindex", (ReindexRequest req) =>
         }
     });
     return Results.Accepted();
+});
+
+// The person keeps this folder from AI: drop everything indexed from it. Answers 200 when nothing is
+// left, 409 when a file could not be removed yet (the app asks again on the next start).
+app.MapPost("/forget", async (ForgetRequest req) =>
+{
+    if (string.IsNullOrWhiteSpace(req.VaultPath))
+        return Results.BadRequest("VaultPath required");
+    return await mgr.ForgetAsync(req.VaultPath)
+        ? Results.Ok(new { status = "forgotten" })
+        : Results.Json(new { status = "busy" }, statusCode: StatusCodes.Status409Conflict);
 });
 
 app.MapPost("/search", async (SearchRequest req, CancellationToken ct) =>

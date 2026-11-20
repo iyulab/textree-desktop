@@ -629,8 +629,30 @@ pub async fn workspace_relocate(
 pub async fn workspace_set_ai(
     id: String,
     ai: bool,
+    app: AppHandle,
 ) -> Result<crate::workspace_commands::WorkspaceOut, String> {
-    off_main(move || crate::workspace_commands::workspace_set_ai(id, ai)).await
+    use tauri::Manager;
+    let host = app.state::<Arc<crate::host::HostHandle>>().inner().clone();
+    off_main(move || {
+        let out = crate::workspace_commands::workspace_set_ai(id.clone(), ai)?;
+        // Kept from AI: what was already indexed from the folder goes too. Used again: the folder
+        // open now is indexed again (another one is, when it is opened).
+        if let Some(root) = out.roots.iter().find(|r| r.id == id) {
+            let vault = host.indexed_name(&root.path);
+            // Not waited on: the menu answers at once, the helper works behind it.
+            tauri::async_runtime::spawn_blocking(move || {
+                if ai {
+                    if host.is_current_vault(&vault) {
+                        crate::host::reindex_vault(&host, &vault);
+                    }
+                } else {
+                    crate::host::forget_vault(&host, &vault);
+                }
+            });
+        }
+        Ok(out)
+    })
+    .await
 }
 
 /// Names a notes folder in the sidebar (see [`crate::workspace_commands::workspace_relabel`]).

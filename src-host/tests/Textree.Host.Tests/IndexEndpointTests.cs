@@ -40,6 +40,20 @@ public sealed class IndexEndpointTests
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
+    [Fact]
+    public async Task Forget_rejects_a_blank_folder_and_forgets_one_that_was_never_indexed()
+    {
+        using var factory = new ChatEndpointTests.Factory(new NoopGenerator());
+        var client = factory.CreateClient();
+
+        var blank = await client.PostAsJsonAsync("/forget", new { vaultPath = "" });
+        var never = await client.PostAsJsonAsync("/forget",
+            new { vaultPath = Path.Combine(Path.GetTempPath(), "never-indexed-" + Guid.NewGuid().ToString("n")) });
+
+        Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, never.StatusCode);
+    }
+
     private sealed class NoopGenerator : ITextGenerator
     {
         public bool Ready => true;
