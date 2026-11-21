@@ -26,10 +26,25 @@ const WAIT: Duration = Duration::from_secs(30);
 /// for gone. A pack may take as long as it takes while it keeps arriving; a connection that has
 /// died without closing (a computer gone to sleep, a dropped route) would otherwise be waited on
 /// for good, and the folder would stop being backed up until the app restarts.
-#[cfg(not(test))]
 const IDLE: Duration = Duration::from_secs(60);
+
 #[cfg(test)]
-const IDLE: Duration = Duration::from_secs(5);
+thread_local! {
+    /// The silence allowed on this thread's exchanges. Tests share the product's limit, so a real
+    /// round trip through a busy machine is never taken for a dead server; the tests of the limit
+    /// itself shorten it with [`short_idle`]. ureq and libgit2 wait on the calling thread, so the
+    /// limit follows the test that set it and no other.
+    static TEST_IDLE: std::cell::Cell<Duration> = const { std::cell::Cell::new(IDLE) };
+}
+
+/// The silence allowed before the server is taken for gone — [`IDLE`], or in tests what the
+/// calling thread set.
+fn idle() -> Duration {
+    #[cfg(test)]
+    return TEST_IDLE.with(|d| d.get());
+    #[cfg(not(test))]
+    IDLE
+}
 
 /// The HTTP client every exchange goes through: ureq's own connectors, with each wait for the
 /// server cut off at [`IDLE`].
@@ -72,11 +87,11 @@ impl ureq::unversioned::transport::Connector<Box<dyn ureq::unversioned::transpor
 #[derive(Debug)]
 struct IdleTransport(Box<dyn ureq::unversioned::transport::Transport>);
 
-/// The phase's own deadline, or [`IDLE`] from now when that comes first.
+/// The phase's own deadline, or the silence allowed ([`idle`]) from now when that comes first.
 fn within_idle(
     timeout: ureq::unversioned::transport::NextTimeout,
 ) -> ureq::unversioned::transport::NextTimeout {
-    let idle = ureq::unversioned::transport::time::Duration::from(IDLE);
+    let idle = ureq::unversioned::transport::time::Duration::from(idle());
     if timeout.after > idle {
         ureq::unversioned::transport::NextTimeout {
             after: idle,
@@ -560,8 +575,17 @@ mod tests {
         port
     }
 
+    /// The silence the tests of the limit itself allow — short, so they end quickly.
+    const SHORT_IDLE: Duration = Duration::from_secs(5);
+
+    /// Shortens the silence allowed on this thread to [`SHORT_IDLE`] for the rest of the test.
+    fn short_idle() {
+        TEST_IDLE.with(|d| d.set(SHORT_IDLE));
+    }
+
     #[test]
     fn a_server_that_stops_sending_partway_is_given_up_on() {
+        short_idle();
         let port = answering(
             b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nxx",
             b"",
@@ -580,13 +604,14 @@ mod tests {
         );
         let waited = started.elapsed();
         assert!(
-            waited >= IDLE && waited < IDLE + Duration::from_secs(10),
+            waited >= SHORT_IDLE && waited < SHORT_IDLE + Duration::from_secs(10),
             "gave up after {waited:?}"
         );
     }
 
     #[test]
     fn a_body_that_keeps_arriving_is_not_cut_however_long_it_takes() {
+        short_idle();
         // Twenty bytes a second apart: twenty seconds in all, four times the silence allowed. Each
         // gap is a fifth of that silence, so a machine busy enough to hold the sending thread back
         // a few seconds does not turn a body that keeps arriving into one that stopped.
@@ -608,13 +633,14 @@ mod tests {
             .unwrap();
         assert_eq!(body, "01234567890123456789");
         assert!(
-            started.elapsed() > IDLE * 3,
+            started.elapsed() > SHORT_IDLE * 3,
             "the test must outlast the silence allowed"
         );
     }
 
     #[test]
     fn a_remote_that_stops_answering_ends_the_fetch_and_says_it_could_not_be_reached() {
+        short_idle();
         let port = answering(
             b"HTTP/1.1 200 OK\r\nContent-Type: application/x-git-upload-pack-advertisement\r\nContent-Length: 4000\r\n\r\n001e# service=git-upload-pack\n",
             b"",
@@ -629,7 +655,7 @@ mod tests {
         let started = std::time::Instant::now();
         let err = with_credentials(None, || remote.fetch(&[NOTES], None, None)).unwrap_err();
         assert!(
-            started.elapsed() < IDLE + Duration::from_secs(10),
+            started.elapsed() < SHORT_IDLE + Duration::from_secs(10),
             "took {:?}",
             started.elapsed()
         );
