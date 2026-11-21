@@ -87,7 +87,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       # The host's fast-moving package families are held to their current line — the pinned ones
       # and the ones that arrive only through them, read from the restored graph. Falling behind is

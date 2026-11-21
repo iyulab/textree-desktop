@@ -18488,7 +18488,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------------
-Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14
+Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15
 License: MIT
 Upstream: https://github.com/dotnet/dotnet
 
@@ -19633,7 +19633,7 @@ License: MIT
 Upstream: https://github.com/dotnet/dotnet
 License text from: https://raw.githubusercontent.com/dotnet/dotnet/297acf930fb0f5c07fd4e51d78e521b4ad2e5d1f/LICENSE.TXT
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 ------------------------------------------------------------------------------
 Microsoft.EntityFrameworkCore 10.0.14
@@ -19641,7 +19641,7 @@ License: MIT
 Upstream: https://github.com/dotnet/dotnet
 License text from: https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 ------------------------------------------------------------------------------
 Microsoft.EntityFrameworkCore.Abstractions 10.0.14
@@ -19649,7 +19649,7 @@ License: MIT
 Upstream: https://github.com/dotnet/dotnet
 License text from: https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 ------------------------------------------------------------------------------
 Microsoft.EntityFrameworkCore.Relational 10.0.14
@@ -19657,7 +19657,7 @@ License: MIT
 Upstream: https://github.com/dotnet/dotnet
 License text from: https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 ------------------------------------------------------------------------------
 Microsoft.EntityFrameworkCore.Sqlite.Core 10.0.14
@@ -19665,7 +19665,7 @@ License: MIT
 Upstream: https://github.com/dotnet/dotnet
 License text from: https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 ------------------------------------------------------------------------------
 Microsoft.Extensions.AI.Abstractions 10.11.0
@@ -19703,7 +19703,7 @@ License: MIT
 Upstream: https://github.com/dotnet/dotnet
 License text from: https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 .NET Runtime uses third-party libraries or other resources that may be
 distributed under licenses different than the .NET Runtime software.
@@ -34079,7 +34079,7 @@ Microsoft.ML.Tokenizers 2.0.1
 License: MIT
 Upstream: https://github.com/dotnet/machinelearning
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 ML.NET uses third-party libraries or other resources that may be
 distributed under licenses different than the ML.NET software.
@@ -34322,11 +34322,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Microsoft.NETCore.App.Runtime.win-x64 10.0.14
+Microsoft.NETCore.App.Runtime.win-x64 10.0.15
 License: MIT
 Upstream: https://github.com/dotnet/dotnet
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 Same license text as Microsoft.Extensions.DependencyModel 10.0.14.
 
@@ -34775,7 +34775,7 @@ System.CodeDom 7.0.0
 License: MIT
 Upstream: https://github.com/dotnet/runtime
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 .NET Runtime uses third-party libraries or other resources that may be
 distributed under licenses different than the .NET Runtime software.
@@ -35928,7 +35928,7 @@ System.Management 7.0.2
 License: MIT
 Upstream: https://github.com/dotnet/runtime
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 Same license text as System.CodeDom 7.0.0.
 
@@ -35938,7 +35938,7 @@ License: MIT
 Upstream: https://github.com/dotnet/dotnet
 License text from: https://raw.githubusercontent.com/dotnet/dotnet/f7d90799ce4ef09a0bb257852a57248d2a8fb8dd/LICENSE.TXT
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 Same license text as Microsoft.Extensions.DependencyModel 10.0.14.
 
@@ -35948,7 +35948,7 @@ License: MIT
 Upstream: https://github.com/dotnet/dotnet
 License text from: https://raw.githubusercontent.com/dotnet/dotnet/0427b9abbead3fa64c6655eb4290c537397131fa/LICENSE.TXT
 
-Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.14.
+Same license text as Microsoft.AspNetCore.App.Runtime.win-x64 10.0.15.
 
 Same license text as Microsoft.Extensions.DependencyModel 10.0.14.
 
