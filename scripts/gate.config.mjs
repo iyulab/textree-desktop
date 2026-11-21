@@ -15,6 +15,7 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runningDevApps } from "./dev-processes.mjs";
+import { HOST_EXE } from "./sidecar-provenance.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HOST_SOLUTION = "src-host/TextreeHost.slnx";
@@ -48,13 +49,13 @@ export default {
     { name: "cargo-test", cmd: `cargo test --manifest-path ${CARGO_MANIFEST}` },
     { name: "clippy", cmd: `cargo clippy --manifest-path ${CARGO_MANIFEST} --all-targets -- -D warnings`, local: true },
     ship({ name: "e2e", cmd: "npm run e2e:run" }),
-    ship({ name: "smoke", cmd: "npm run host:smoke -- --exe src-tauri/resources/host/textree-host.exe" }),
+    ship({ name: "smoke", cmd: `npm run host:smoke -- --exe ${HOST_EXE}` }),
   ],
 
   preflight(selected) {
     for (const [sidecar, assembledBy] of [
       ["src-tauri/resources/canopy/node_modules/@iyulab/canopy/dist/cli.js", "assemble-canopy"],
-      ["src-tauri/resources/host/textree-host.exe", "assemble-host"],
+      [HOST_EXE, "assemble-host"],
     ]) {
       if (!existsSync(join(REPO, sidecar)) && !selected.some((s) => s.name === assembledBy)) {
         console.warn(`[gate] warning: ${sidecar} is missing — assemble the sidecars first or the Rust steps may fail`);

@@ -47,14 +47,26 @@ export function isFormFieldTag(tagName: string | null | undefined): boolean {
   return t === "INPUT" || t === "TEXTAREA" || t === "SELECT";
 }
 
-/** Renders a binding as a Windows-first label, e.g. "mod+shift+n" → "Ctrl+Shift+N". */
-export function formatKeybinding(binding: string): string {
+/**
+ * Renders a binding as the system writes shortcuts: "mod+shift+n" → "Ctrl+Shift+N", or on macOS
+ * (`mac`) → "⇧⌘N".
+ */
+export function formatKeybinding(binding: string, mac = false): string {
   const tokens = parts(binding);
+  const keyToken = tokens.find((t) => t !== "mod" && t !== "shift" && t !== "alt");
+  const key = keyToken ? (keyToken.length === 1 ? keyToken.toUpperCase() : keyToken) : "";
+  if (mac) {
+    // The order and symbols macOS menus use: ⌥ ⇧ ⌘ then the key, run together.
+    let out = "";
+    if (tokens.includes("alt")) out += "⌥";
+    if (tokens.includes("shift")) out += "⇧";
+    if (tokens.includes("mod")) out += "⌘";
+    return out + key;
+  }
   const out: string[] = [];
   if (tokens.includes("mod")) out.push("Ctrl");
   if (tokens.includes("shift")) out.push("Shift");
   if (tokens.includes("alt")) out.push("Alt");
-  const keyToken = tokens.find((t) => t !== "mod" && t !== "shift" && t !== "alt");
-  if (keyToken) out.push(keyToken.length === 1 ? keyToken.toUpperCase() : keyToken);
+  if (key) out.push(key);
   return out.join("+");
 }

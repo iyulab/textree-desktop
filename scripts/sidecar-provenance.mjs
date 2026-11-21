@@ -37,8 +37,11 @@ import { CANOPY_CLI, CANOPY_MANIFEST_DIR, CANOPY_STAGE, canopyPin } from "./cano
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+/** The staged host executable — named as the platform names executables (the app looks for this name). */
+export const HOST_EXE = `src-tauri/resources/host/textree-host${process.platform === "win32" ? ".exe" : ""}`;
+
 export const SIDECARS = {
-  host: { exe: "src-tauri/resources/host/textree-host.exe", source: "src-host" },
+  host: { exe: HOST_EXE, source: "src-host" },
 };
 const APP_CONFIG = join(REPO, "src-tauri", "tauri.conf.json");
 

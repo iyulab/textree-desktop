@@ -4,6 +4,7 @@
   import type { FolderNav } from "./nav.svelte";
   import { fuzzyMatch, type Match } from "./fuzzy";
   import { formatKeybinding } from "./keybinding.helpers";
+  import { onMac } from "./platform";
   import { paletteListState, paletteStatusText, type ContentScope } from "./palette.helpers";
   import type { Command } from "./commands";
   import { semanticSearch, hostStatus, prepareAiModel, type FolderHit, type SemanticHit, type HostStatus } from "./ipc";
@@ -383,7 +384,7 @@
                   >{/each}
               </span>
               {#if m.item.keybinding}
-                <kbd class="kbd">{formatKeybinding(m.item.keybinding)}</kbd>
+                <kbd class="kbd">{formatKeybinding(m.item.keybinding, onMac)}</kbd>
               {/if}
             </li>
           {/each}

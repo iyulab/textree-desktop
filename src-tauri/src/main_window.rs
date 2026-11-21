@@ -48,9 +48,18 @@ pub fn create(app: &mut App) -> tauri::Result<()> {
         log::error!("the configuration has no window labelled {MAIN}");
         return Ok(());
     };
-    let window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
-        .general_autofill_enabled(false)
-        .build()?;
+    let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+        .general_autofill_enabled(false);
+    // On macOS the window keeps the system's own controls, at the top left where people look for
+    // them, over the app's title bar; the bar draws everything else (see TitleBar.svelte). Elsewhere
+    // the bar draws the controls too (`decorations: false` in the configuration).
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .decorations(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(14.0, 20.0));
+    let window = builder.build()?;
     #[cfg(windows)]
     windows::hold(app, &window);
     #[cfg(not(windows))]

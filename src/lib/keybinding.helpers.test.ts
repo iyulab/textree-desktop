@@ -61,3 +61,10 @@ test("isFormFieldTag: the editor and other elements do not (editor Ctrl+N is int
   expect(isFormFieldTag(null)).toBe(false);
   expect(isFormFieldTag(undefined)).toBe(false);
 });
+
+test("formatKeybinding: on macOS, the symbols and order the system's menus use", () => {
+  expect(formatKeybinding("mod+n", true)).toBe("⌘N");
+  expect(formatKeybinding("mod+shift+n", true)).toBe("⇧⌘N");
+  expect(formatKeybinding("mod+alt+shift+s", true)).toBe("⌥⇧⌘S");
+  expect(formatKeybinding("mod+n", false)).toBe("Ctrl+N");
+});
