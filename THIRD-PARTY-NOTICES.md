@@ -297,14 +297,14 @@ distributed.
 | `tao` | 0.37.1 | Apache-2.0 | https://github.com/tauri-apps/tao |
 | `tauri` | 2.12.4 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | `tauri-codegen` | 2.7.3 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
-| `tauri-kit-credentials` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-diagnostics` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-dialog` | 0.32.0 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-fs` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-sidecar` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-state` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-watch` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
-| `tauri-kit-webview` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-credentials` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-diagnostics` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-dialog` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-fs` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-sidecar` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-state` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-watch` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `tauri-kit-webview` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `tauri-macros` | 2.7.3 | Apache-2.0 OR MIT | https://github.com/tauri-apps/tauri |
 | `tauri-plugin-dialog` | 2.8.3 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-fs` | 2.7.1 | Apache-2.0 OR MIT | https://github.com/tauri-apps/plugins-workspace |
@@ -702,9 +702,9 @@ The 74 NuGet packages below put code into the helper (runtime or native assets).
 | `System.Management` | 7.0.2 | MIT | https://github.com/dotnet/runtime |
 | `System.Memory.Data` | 10.0.10 | MIT | https://github.com/dotnet/dotnet |
 | `System.Numerics.Tensors` | 10.0.14 | MIT | https://github.com/dotnet/dotnet |
-| `TauriKit.Diagnostics` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
-| `TauriKit.Sidecar.Loopback` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
-| `TauriKit.Sidecar.Loopback.AspNetCore` | 0.32.1 | MIT | https://github.com/iyulab/tauri-kit |
+| `TauriKit.Diagnostics` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `TauriKit.Sidecar.Loopback` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
+| `TauriKit.Sidecar.Loopback.AspNetCore` | 0.34.0 | MIT | https://github.com/iyulab/tauri-kit |
 | `Tiktoken.Core` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |
 | `Tiktoken.Encodings.Abstractions` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |
 | `Tiktoken.Encodings.cl100k` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |

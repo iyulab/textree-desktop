@@ -1015,7 +1015,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1217,7 +1217,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2862,7 +2862,7 @@ version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "680998035259dcfcafe653688bf2aa6d3e2dc05e98be6ab46afb089dc84f1df8"
 dependencies = [
- "proc-macro-crate 1.3.1",
+ "proc-macro-crate 3.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -3696,7 +3696,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3753,7 +3753,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4693,9 +4693,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-kit-credentials"
-version = "0.32.1"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11a27c0c5495082766f6e50ed9d5fed60b66be52db6d067df85a4e4049a34965"
+checksum = "2410102269ea57200ab784d317cfa662b3699d634c19d7ced3fbce8aa8242282"
 dependencies = [
  "apple-native-keyring-store",
  "keyring-core",
@@ -4705,9 +4705,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-kit-diagnostics"
-version = "0.32.1"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d1febb3ff19938f230488b4e33fbc0a954b162711e30f90c9c05f24eae58c14"
+checksum = "2534643283aabcd0e1c5d0d5a08e978ddac1422acad4bda24967efc7045616de"
 dependencies = [
  "getrandom 0.4.3",
  "libc",
@@ -4721,9 +4721,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-kit-dialog"
-version = "0.32.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acbbb95112cb7cc281c9f3e8d5e920efa3a371b6927cb7760e44de549f517be2"
+checksum = "0657ada70097dc4a38253058a12181f46eca2e3d0b696e3dc2ea598189e988b3"
 dependencies = [
  "serde",
  "serde_json",
@@ -4732,9 +4732,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-kit-fs"
-version = "0.32.1"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adc1e6e11722774755b45ba9c4ae1122152de3d035a5344ed881c5c940115d54"
+checksum = "48b9eab7c913d5fd02fc41bd07aa45038402906c43299a55ee35c9bb956c15c4"
 dependencies = [
  "dunce",
  "libc",
@@ -4744,9 +4744,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-kit-sidecar"
-version = "0.32.1"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0de7c3ac2bfb754ea3edfcb02eb897c2eb9937c3e6843a7b99864400be459bac"
+checksum = "f7b5a0fe9f5dc0f7af419acf04536a7930ecbc396c48e8fd1bd70ad04f28f851"
 dependencies = [
  "getrandom 0.4.3",
  "libc",
@@ -4758,9 +4758,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-kit-state"
-version = "0.32.1"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ad1d5887fd7de055bc3945158df27e2f3c3a419f5eb33f5e909d465ab94e1c0"
+checksum = "fb6f4f8c372a871a7e7dc9d58f1d1914808296bbdc9608f1b1f4355df180e039"
 dependencies = [
  "getrandom 0.4.3",
  "serde",
@@ -4770,9 +4770,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-kit-watch"
-version = "0.32.1"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed4b2cd2526db6937e5eefa0c8f912464169279137a7338afdc02c1477d06b0c"
+checksum = "e3ee60800e3ac0ede71967e537370a8f2bc2f553e5da8a68c72751842e7ab4bf"
 dependencies = [
  "notify",
  "tauri-kit-fs",
@@ -4780,15 +4780,16 @@ dependencies = [
 
 [[package]]
 name = "tauri-kit-webview"
-version = "0.32.1"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ad0d5b2404dfcda8ef3acd5e3e9e7c8eefd9641cae05f267ba1ad1e952b135d"
+checksum = "73b67ebc891abcc3e905106d19d6249be5b18b65670a3c9580a66af3ca936458"
 dependencies = [
  "block2",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-web-kit",
+ "serde_json",
  "webview2-com",
  "windows",
  "windows-core",
@@ -5077,10 +5078,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5901,7 +5902,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6325,7 +6326,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
