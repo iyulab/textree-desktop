@@ -786,8 +786,10 @@
   async function openListedFolders(roots: WorkspaceRoot[]): Promise<void> {
     const since = aloneLoads;
     const waiting = roots.filter((r) => !opening.some((o) => o.id === r.id));
+    // Each folder is on one row: one tried again is opening, no longer not found or not opened.
     opening = [...opening, ...waiting];
     notOpened = notOpened.filter((n) => !waiting.some((r) => r.id === n.id));
+    missing = missing.filter((m) => !waiting.some((r) => r.id === m.id));
     try {
       for (const r of waiting) {
         if (since !== aloneLoads) return; // the window was set to one folder meanwhile
@@ -800,12 +802,18 @@
           }),
         );
         const still = () => since === aloneLoads && !stopped;
+        // Its row stops being «opening» in the same step it becomes the folder or «not found».
+        const done = () => (opening = opening.filter((o) => o.id !== r.id));
         const attempt = openFolder(r.path, still, () => false, false).then(
           (state) => {
-            if (state && still()) show(state);
+            if (state && still()) {
+              done();
+              show(state);
+            }
           },
           (e) => {
             if (!still()) return;
+            done();
             // A folder of the list that is not there (a disconnected drive) is shown as not found.
             if (isFolderNotFound(e)) markMissing(r);
             else console.warn(`Could not open the notes folder ${r.path}:`, e);
