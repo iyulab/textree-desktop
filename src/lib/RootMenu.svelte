@@ -18,6 +18,7 @@
     onremove,
     usedWithAi,
     onsetai,
+    trigger = "more",
   }: {
     /** The folder's name in the sidebar, for the menu's label. */
     name: string;
@@ -33,6 +34,9 @@
     /** Whether the folder is used with AI (indexed for it, searched by meaning, asked about). */
     usedWithAi: boolean;
     onsetai: (ai: boolean) => void;
+    /** The button's mark: ⋮ beside a folder of several, ▾ by the only folder's name — where the app's own ⋮
+     *  menu sits next to it on the same row. */
+    trigger?: "more" | "chevron";
   } = $props();
 
   let open = $state(false);
@@ -61,7 +65,7 @@
     aria-label={`Notes folder menu — ${name}`}
     title="Notes folder menu"
     onclick={() => (open = !open)}
-  ><Icon name="more-vertical" size={14} /></button>
+  ><Icon name={trigger === "chevron" ? "chevron-down" : "more-vertical"} size={14} /></button>
 
   {#if open}
     <div class="backdrop" role="presentation" onclick={() => (open = false)} onkeydown={() => {}}></div>

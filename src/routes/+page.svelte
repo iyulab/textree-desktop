@@ -2269,6 +2269,7 @@
       {#if root}
         <button
           class="vault-name"
+          class:fit={here && sidebarEntries.length <= 1}
           onclick={chooseVault}
           title={`Add notes folder… — this one: ${rootPath}`}
         ><Icon name="folder" /><span class="vault-label">{vaultName(rootPath ?? "")}</span></button>
@@ -2278,6 +2279,7 @@
                the folder, so a menu left open does not carry over to the next one. -->
           {#key one.root}
             <RootMenu
+              trigger="chevron"
               name={vaultName(rootPath ?? "")}
               onreveal={() => void revealRoot(one.root).catch((e) => (opError = friendlyError(e)))}
               usedWithAi={!keptFromAi.has(one.root)}
@@ -3008,6 +3010,13 @@
     align-items: center;
     gap: var(--sp-1);
     margin-bottom: var(--sp-2);
+  }
+  /* The only folder's menu (▾) sits right after its name; the app's menu keeps the far end. */
+  .vault-name.fit {
+    flex: 0 1 auto;
+  }
+  .sidebar-head :global(.app-menu) {
+    margin-left: auto;
   }
   .vault-name {
     flex: 1;
