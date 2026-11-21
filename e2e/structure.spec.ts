@@ -31,19 +31,20 @@ test("＋note → instant Untitled note, header focused, typing renames the file
     // No dialog — an "Untitled" note is created, opened, and the header title input is focused.
     await expect(page.locator(".title-input")).toBeFocused();
     await expect(page.locator(".title-input")).toHaveValue("Untitled");
-    expect(exists(vault, "Untitled.md")).toBe(true);
+    await expect.poll(() => exists(vault, "Untitled.md")).toBe(true);
 
     // The pre-selected "Untitled" text is replaced by typing the first char (not fill,
     // which would replace regardless of selection) → proves focusSelect's select-all.
     await page.locator(".title-input").pressSequentially("new-note");
     await page.locator(".title-input").press("Enter");
     await expect(page.getByRole("treeitem", { name: /new-note/ })).toBeVisible();
-    expect(exists(vault, "new-note.md")).toBe(true);
-    expect(exists(vault, "Untitled.md")).toBe(false);
+    await expect.poll(() => exists(vault, "new-note.md")).toBe(true);
+    await expect.poll(() => exists(vault, "Untitled.md")).toBe(false);
 
-    // A second New note auto-numbers.
+    // A second New note is «Untitled» again — the first was renamed. The file is written after the click
+    // returns, so it is waited for.
     await page.getByRole("button", { name: "New note" }).click();
-    expect(exists(vault, "Untitled.md")).toBe(true);
+    await expect.poll(() => exists(vault, "Untitled.md")).toBe(true);
   } finally {
     removeTempVault(vault);
   }
