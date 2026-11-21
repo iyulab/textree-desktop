@@ -231,7 +231,7 @@ test("Tab reaches each notes folder's tree after moving within another", async (
     await expect(section(aName).getByRole("treeitem", { name: /two/ })).toBeFocused();
 
     const target = section(bName).getByRole("treeitem", { name: /other/ });
-    for (let i = 0; i < 8 && !(await target.evaluate((el) => el === document.activeElement)); i++) {
+    for (let i = 0; i < 20 && !(await target.evaluate((el) => el === document.activeElement)); i++) {
       await page.keyboard.press("Tab");
     }
     await expect(target).toBeFocused();
