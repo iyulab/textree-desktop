@@ -92,8 +92,20 @@ pub fn workspace_reorder(ids: Vec<String>) -> Result<WorkspaceOut, String> {
 /// Turns the use of a notes folder with AI on or off. Off, the folder is not indexed for AI, not
 /// searched by meaning and not asked about — decided here, at the app's edge, so the AI host never
 /// hears of the folder.
+///
+/// A folder the list does not hold is refused, not passed over: the switch would show unchanged and
+/// a folder meant to be kept from AI would go on being used with it.
 pub fn workspace_set_ai(id: String, ai: bool) -> Result<WorkspaceOut, String> {
-    workspace_change(|ws| ws.set_ai(&id, ai).map(drop))
+    workspace_change(|ws| {
+        if ws.set_ai(&id, ai)? {
+            Ok(())
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "This notes folder is not in the sidebar's list.",
+            ))
+        }
+    })
 }
 
 /// The folders kept from AI, as the device's list last said (by folder identity).
@@ -331,6 +343,12 @@ mod tests {
         );
     }
     use tempfile::TempDir;
+
+    #[test]
+    fn use_with_ai_is_refused_for_a_folder_the_list_does_not_hold() {
+        let err = workspace_set_ai("not-a-listed-folder".into(), false).unwrap_err();
+        assert!(err.contains("not in the sidebar's list"), "{err}");
+    }
 
     #[test]
     fn the_workspace_keeps_each_opened_folder_once_and_registers_them() {
