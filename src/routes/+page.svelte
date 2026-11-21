@@ -403,7 +403,9 @@
   $effect(() => {
     if (root) {
       backedUp = false;
-      void refreshBackup();
+      // Untracked: asking also refreshes every shown folder's answer, which reads and writes
+      // `backedUpOf` — tracked here, that write would wake this effect again, without end.
+      untrack(() => void refreshBackup());
     }
   });
   const backup = $derived(backupStatus(backedUp));
