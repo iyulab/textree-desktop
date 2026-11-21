@@ -836,8 +836,13 @@ pub fn open_vault(
     log::info!("open_vault: {} ({} top-level nodes)", root, tree.len());
 
     let own = app.state::<tauri_kit_watch::OwnWrites>().inner().clone();
-    // This folder's index, which its watch keeps in step; installed below with the folder.
-    let index = Arc::new(IndexHandle::default());
+    // This folder's index, which its watch keeps in step; installed below with the folder. A folder
+    // opened again while it is open keeps the index it has: a second one on the same directory would
+    // find the first holding its lock, fail, and leave the folder without search.
+    let open_index = app.state::<Indexes>().of(&root_path);
+    let index = open_index
+        .clone()
+        .unwrap_or_else(|| Arc::new(IndexHandle::default()));
     let host = app.state::<Arc<host::HostHandle>>().inner().clone();
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let emitter = app.clone();
@@ -889,29 +894,39 @@ pub fn open_vault(
     // Install the index (app data directory, per-vault hash). On failure only search is disabled —
     // graceful degradation (editing, tree, and file search remain intact without the index).
     let dir = crate::search::index_dir(&app_data, &root_path);
-    match IndexState::open_or_create(&dir, &root_path) {
-        Ok(state) => {
-            let was_empty = state.is_empty().unwrap_or(true);
-            *index.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(state);
-            if was_empty {
-                // Full build in the background (non-blocking for the UI).
-                let index_arc = index.clone();
-                let root_for_build = root_path.clone();
-                tauri::async_runtime::spawn_blocking(move || {
-                    if let Some(st) = index_arc
-                        .0
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .as_mut()
-                    {
-                        let _ = st.rebuild(&root_for_build);
-                    }
-                });
+    // The index it already has is not waited on: a full build holds it for as long as it runs, and
+    // a busy index is one that is there.
+    let has_index = open_index.is_some()
+        && match index.0.try_lock() {
+            Ok(held) => held.is_some(),
+            Err(std::sync::TryLockError::WouldBlock) => true,
+            Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner().is_some(),
+        };
+    if !has_index {
+        match IndexState::open_or_create(&dir, &root_path) {
+            Ok(state) => {
+                let was_empty = state.is_empty().unwrap_or(true);
+                *index.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(state);
+                if was_empty {
+                    // Full build in the background (non-blocking for the UI).
+                    let index_arc = index.clone();
+                    let root_for_build = root_path.clone();
+                    tauri::async_runtime::spawn_blocking(move || {
+                        if let Some(st) = index_arc
+                            .0
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .as_mut()
+                        {
+                            let _ = st.rebuild(&root_for_build);
+                        }
+                    });
+                }
             }
-        }
-        Err(e) => {
-            log::warn!("failed to open index (search disabled): {e}");
-            *index.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            Err(e) => {
+                log::warn!("failed to open index (search disabled): {e}");
+                *index.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            }
         }
     }
 
