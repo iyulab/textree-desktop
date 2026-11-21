@@ -2272,6 +2272,19 @@
           onclick={chooseVault}
           title={`Add notes folder… — this one: ${rootPath}`}
         ><Icon name="folder" /><span class="vault-label">{vaultName(rootPath ?? "")}</span></button>
+        {#if here && sidebarEntries.length <= 1}
+          {@const one = here}
+          <!-- One folder: its menu sits by its name, with what has meaning for a single folder. Keyed by
+               the folder, so a menu left open does not carry over to the next one. -->
+          {#key one.root}
+            <RootMenu
+              name={vaultName(rootPath ?? "")}
+              onreveal={() => void revealRoot(one.root).catch((e) => (opError = friendlyError(e)))}
+              usedWithAi={!keptFromAi.has(one.root)}
+              onsetai={(ai) => void setUsedWithAi(one, ai)}
+            />
+          {/key}
+        {/if}
       {/if}
       <AppMenu {commands} onRunCommand={(c) => c.run()} onOpenPalette={() => palette.show()} />
     </div>

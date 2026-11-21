@@ -1,15 +1,17 @@
 <script lang="ts">
   /*
    * ⋮ menu of one notes folder in the sidebar: name it, move it up or down, show it in the
-   * system's file manager, take it out of the sidebar. The folder and its notes are never touched by any of these.
+   * system's file manager, use it with AI or not, take it out of the sidebar. The folder and its notes are never
+   * touched by any of these. With one folder the sidebar shows no names or order and the window always works in a
+   * folder, so naming, moving and removing are not given — their items are left out.
    */
   import Icon from "./Icon.svelte";
   import { fileManagerAction } from "./workspace.helpers";
 
   let {
     name,
-    canMoveUp,
-    canMoveDown,
+    canMoveUp = false,
+    canMoveDown = false,
     onrename,
     onmove,
     onreveal,
@@ -19,14 +21,15 @@
   }: {
     /** The folder's name in the sidebar, for the menu's label. */
     name: string;
-    canMoveUp: boolean;
-    canMoveDown: boolean;
-    onrename: () => void;
+    canMoveUp?: boolean;
+    canMoveDown?: boolean;
+    /** Left out with one folder in the sidebar: rename, move and remove have no meaning then. */
+    onrename?: () => void;
     /** −1 up, +1 down. */
-    onmove: (delta: number) => void;
+    onmove?: (delta: number) => void;
     /** Show the folder in the system's file manager. */
     onreveal: () => void;
-    onremove: () => void;
+    onremove?: () => void;
     /** Whether the folder is used with AI (indexed for it, searched by meaning, asked about). */
     usedWithAi: boolean;
     onsetai: (ai: boolean) => void;
@@ -63,11 +66,17 @@
   {#if open}
     <div class="backdrop" role="presentation" onclick={() => (open = false)} onkeydown={() => {}}></div>
     <div class="menu" role="menu" aria-label={name}>
-      <button class="item" role="menuitem" onclick={() => choose(onrename)}>Rename in sidebar…</button>
-      <button class="item" role="menuitem" disabled={!canMoveUp} onclick={() => choose(() => onmove(-1))}
-        >Move up</button>
-      <button class="item" role="menuitem" disabled={!canMoveDown} onclick={() => choose(() => onmove(1))}
-        >Move down</button>
+      {#if onrename}
+        {@const rename = onrename}
+        <button class="item" role="menuitem" onclick={() => choose(rename)}>Rename in sidebar…</button>
+      {/if}
+      {#if onmove}
+        {@const move = onmove}
+        <button class="item" role="menuitem" disabled={!canMoveUp} onclick={() => choose(() => move(-1))}
+          >Move up</button>
+        <button class="item" role="menuitem" disabled={!canMoveDown} onclick={() => choose(() => move(1))}
+          >Move down</button>
+      {/if}
       <button class="item" role="menuitem" onclick={() => choose(onreveal)}>{revealLabel}</button>
       <div class="sep" role="separator"></div>
       <button
@@ -80,12 +89,15 @@
           : "Its notes are kept from AI: not indexed for it, not searched by meaning, not asked about."}
         onclick={() => choose(() => onsetai(!usedWithAi))}
       ><span class="check" aria-hidden="true">{usedWithAi ? "✓" : ""}</span>Use with AI</button>
-      <div class="sep" role="separator"></div>
-      <button
-        class="item"
-        role="menuitem"
-        title="The folder and its notes stay where they are."
-        onclick={() => choose(onremove)}>Remove from sidebar</button>
+      {#if onremove}
+        {@const remove = onremove}
+        <div class="sep" role="separator"></div>
+        <button
+          class="item"
+          role="menuitem"
+          title="The folder and its notes stay where they are."
+          onclick={() => choose(remove)}>Remove from sidebar</button>
+      {/if}
     </div>
   {/if}
 </div>

@@ -308,12 +308,22 @@ test("Add notes folder… through its dialog: a pick joins the sidebar, closing 
 test("Use with AI, off: the folder's menu says so, and the app refuses AI requests about it", async () => {
   const work = createTempVault({ "w.md": "# w\n" });
   const workName = new RegExp(work.split("/").pop()!);
-  const menu = () => section(workName).getByRole("button", { name: /Notes folder menu/ });
+  // Alone in the sidebar the folder has no section; its menu sits by its name at the sidebar's head.
+  const menu = () => page.getByRole("button", { name: new RegExp(`Notes folder menu — ${workName.source}`) });
   const useWithAi = page.getByRole("menuitemcheckbox", { name: /Use with AI/ });
+  let listed: string | undefined;
   try {
     await loadVault(page, work);
+    // The app keeps every folder it opens in the device's list; the test bridge's open does not.
+    const out = await tauriInvoke<{ roots: { id: string; path: string }[] }>(page, "workspace_add", { path: work });
+    listed = await rootIdOf(page, work);
+    expect(out.roots.map((r) => r.id)).toContain(listed);
     await menu().click();
     await expect(useWithAi).toHaveAttribute("aria-checked", "true");
+    // Naming, moving and removing have no meaning for the only folder.
+    for (const item of [/Rename in sidebar/, /Move up/, /Move down/, /Remove from sidebar/]) {
+      await expect(page.getByRole("menuitem", { name: item })).toHaveCount(0);
+    }
     await useWithAi.click();
 
     await menu().click();
@@ -330,6 +340,8 @@ test("Use with AI, off: the folder's menu says so, and the app refuses AI reques
     await expect(useWithAi).toHaveAttribute("aria-checked", "true");
     await page.keyboard.press("Escape");
   } finally {
+    await page.keyboard.press("Escape"); // a menu a failure left open must not cover the next spec
+    if (listed) await tauriInvoke(page, "workspace_remove", { id: listed }).catch(() => {});
     await loadVault(page, work);
     removeTempVault(work);
   }
