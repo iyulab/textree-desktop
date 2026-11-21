@@ -1,40 +1,33 @@
 /*
- * Tree UI state — collapse set + keyboard focus path.
+ * Tree UI state.
  *
- * Collapse is a presentation-layer preference, so it persists in localStorage, one list per vault
- * (paths are relative to the vault).
- * Focus (roving tabindex) is session state and does not persist.
+ * `FolderFolds` — which folders of one notes folder are collapsed. A presentation-layer preference,
+ * so it persists in localStorage, one list per notes folder (paths are relative to it). One instance
+ * per open folder (`folderState.svelte.ts`).
+ * `tree` — keyboard focus and the "cut" node: one per sidebar, session state, not persisted.
  */
 
+import type { PickedNode } from "./treeDrag.helpers";
 import { readVaultList, writeVaultList } from "./vaultLocal.helpers";
 
-const COLLAPSE_KEY = "textree-tree-collapsed";
+export const COLLAPSE_KEY = "textree-tree-collapsed";
 
 const storage = () => (typeof localStorage === "undefined" ? undefined : localStorage);
 
-class TreeStore {
+export class FolderFolds {
   collapsed = $state<Set<string>>(new Set());
-  /** The vault whose folders `collapsed` names. */
-  private root: string | null = null;
-  /** Path of the node under keyboard focus (roving tabindex basis). null = unset (falls back to the first item). */
-  focused = $state<string | null>(null);
-  /** Path of the node "cut" for keyboard move (Ctrl+X). Moved/adopted onto the paste (Ctrl+V) target. */
-  cut = $state<string | null>(null);
+
+  /** `path`: where the folder is on disk — this device remembers its collapsed folders by it. */
+  constructor(private readonly path: string) {
+    this.collapsed = new Set(readVaultList(storage(), COLLAPSE_KEY, path));
+  }
 
   isCollapsed(path: string): boolean {
     return this.collapsed.has(path);
   }
 
-  /** A vault opened: its folders collapse as they were left on this device. */
-  load(root: string): void {
-    this.root = root;
-    this.collapsed = new Set(readVaultList(storage(), COLLAPSE_KEY, root));
-    this.focused = null;
-    this.cut = null;
-  }
-
   private persist(): void {
-    if (this.root !== null) writeVaultList(storage(), COLLAPSE_KEY, this.root, [...this.collapsed]);
+    writeVaultList(storage(), COLLAPSE_KEY, this.path, [...this.collapsed]);
   }
 
   /** A folder moved or was renamed: it stays collapsed, and so do the folders under it. */
@@ -65,14 +58,28 @@ class TreeStore {
     if (this.collapsed.has(path)) this.expand(path);
     else this.collapse(path);
   }
+}
 
-  setFocused(path: string | null): void {
-    this.focused = path;
+class TreeFocus {
+  /** The node under keyboard focus, with its notes folder (roving tabindex basis). null = unset (each
+   *  folder's first item takes Tab). */
+  focused = $state<PickedNode | null>(null);
+  /** The node "cut" for keyboard move (Ctrl+X), with its notes folder. Moved/adopted onto the paste (Ctrl+V) target. */
+  cut = $state<PickedNode | null>(null);
+
+  /** A notes folder opened in place of another: what was focused or cut belonged to it. */
+  reset(): void {
+    this.focused = null;
+    this.cut = null;
   }
 
-  setCut(path: string | null): void {
-    this.cut = path;
+  setFocused(picked: PickedNode | null): void {
+    this.focused = picked;
+  }
+
+  setCut(picked: PickedNode | null): void {
+    this.cut = picked;
   }
 }
 
-export const tree = new TreeStore();
+export const tree = new TreeFocus();

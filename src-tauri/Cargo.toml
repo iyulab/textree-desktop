@@ -24,6 +24,9 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2.7.1"
+# Folder dialogs go through one route, which a build made for end-to-end runs (the `e2e` feature)
+# answers from a file the test writes. Without the feature the crate holds no such code.
+tauri-kit-dialog = "0.32"
 # Atomic note writes (temp + rename), so a crash mid-write cannot truncate a note.
 tempfile = "3"
 # Crash-safe writes of this app's own settings, outside the notes folder.
@@ -68,6 +71,11 @@ zip = { version = "8", default-features = false, features = ["deflate"] }
 # `https` and no `ssh` — so no TLS or SSH native libraries enter the binary. The
 # `dependency_policy` test enforces that. See THIRD-PARTY-NOTICES.md.
 git2 = { version = "0.21", features = ["vendored-libgit2"] }
+
+[features]
+# Builds made for end-to-end runs: dialogs are answered from the file the test names, so a run of
+# the built app gets past them with nobody at the screen. Never in a shipped build.
+e2e = ["tauri-kit-dialog/test-answers"]
 
 [target."cfg(windows)".dependencies]
 tauri-plugin-updater = "2.10.1"

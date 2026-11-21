@@ -30,6 +30,8 @@ export interface WorkspaceRoot {
   id: RootId;
   path: string;
   label?: string;
+  /** Whether the folder is used with AI; absent means on. */
+  ai?: boolean;
 }
 
 /** The sidebar's notes folders. `readOnly`: a newer release wrote the list, and changes are not kept. */
@@ -50,8 +52,61 @@ export async function workspaceAdd(path: string): Promise<Workspace> {
   return invoke<Workspace>("workspace_add", { path });
 }
 
+/** Takes a notes folder out of the sidebar. The folder and its notes stay where they are. */
+export async function workspaceRemove(id: RootId): Promise<Workspace> {
+  return invoke<Workspace>("workspace_remove", { id });
+}
+
+/** Puts the sidebar's notes folders in the order `ids` names them. */
+export async function workspaceReorder(ids: RootId[]): Promise<Workspace> {
+  return invoke<Workspace>("workspace_reorder", { ids });
+}
+
+/** Names a notes folder in the sidebar; an empty name goes back to the folder's own. */
+export async function workspaceRelabel(id: RootId, label: string): Promise<Workspace> {
+  return invoke<Workspace>("workspace_relabel", { id, label });
+}
+
+/** Turns a notes folder's use with AI on or off. Off, it is not indexed for AI, searched by
+ *  meaning or asked about — the app refuses before the AI host hears of the folder. */
+export async function workspaceSetAi(id: RootId, ai: boolean): Promise<Workspace> {
+  return invoke<Workspace>("workspace_set_ai", { id, ai });
+}
+
+/** What became of a located folder's settings: moved with it, none to move, or kept where they
+ *  were because its new place already had its own (those are used — nothing is overwritten). */
+export type SettingsCarried = "moved" | "none" | "keptApart";
+
+/** The sidebar's list after a folder was pointed at its new place, and the folder's id now. */
+export interface Relocated {
+  workspace: Workspace;
+  id: RootId;
+  settings: SettingsCarried;
+}
+
+/** Points a notes folder of the sidebar at where it now is («Locate…»): it keeps its place, its
+ *  name and its settings. */
+export async function workspaceRelocate(id: RootId, path: string): Promise<Relocated> {
+  return invoke<Relocated>("workspace_relocate", { id, path });
+}
+
+/** The folder dialog titled `title`: the folder picked, or `null` when it was closed without one. */
+export async function chooseFolder(title: string): Promise<string | null> {
+  return invoke<string | null>("choose_folder", { title });
+}
+
 export async function openVault(rootId: RootId): Promise<TreeNode[]> {
   return invoke<TreeNode[]>("open_vault", { rootId });
+}
+
+/** Shows a notes folder in the system's file manager. */
+export async function revealRoot(rootId: RootId): Promise<void> {
+  return invoke<void>("reveal_root", { rootId });
+}
+
+/** Lets a folder the window no longer shows go: its search index and watch. Nothing on disk changes. */
+export async function closeRoot(rootId: RootId): Promise<void> {
+  return invoke<void>("close_root", { rootId });
 }
 
 /** Resolved default vault: its absolute path, and whether the preferred (Documents) location was
@@ -442,13 +497,21 @@ export interface SearchHit {
   ranges: [number, number][];
 }
 
-/** Body full-text search. Empty array if the index is missing or the query is empty. */
+/** A content search hit and the notes folder it is in. */
+export interface FolderHit extends SearchHit {
+  rootId: RootId;
+}
+
+/**
+ * Body full-text search over the notes folders named, best first across them, at most `limit` in
+ * all. A folder without an index adds nothing; an empty query finds nothing.
+ */
 export async function searchContent(
-  rootId: RootId,
+  rootIds: RootId[],
   query: string,
   limit = 50,
-): Promise<SearchHit[]> {
-  return invoke<SearchHit[]>("search_content", { rootId, query, limit });
+): Promise<FolderHit[]> {
+  return invoke<FolderHit[]>("search_content", { rootIds, query, limit });
 }
 
 /** Full reindex (>reindex command). */

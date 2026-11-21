@@ -42,3 +42,23 @@ export function writeVaultList(store: Storage | undefined, base: string, root: s
     // Storage may be unavailable or full: the list is a convenience.
   }
 }
+
+/**
+ * Moves the device-local lists kept for the notes folder at `from` (under each of `bases`) to the
+ * folder's new path `to` — after it was located somewhere else. A list the new path already has is
+ * kept, not overwritten; the old one is then left as it was.
+ */
+export function moveVaultLists(store: Storage | undefined, bases: readonly string[], from: string, to: string): void {
+  if (!store) return;
+  for (const base of bases) {
+    try {
+      const [old, now] = [vaultListKey(base, from), vaultListKey(base, to)];
+      const kept = store.getItem(old);
+      if (kept === null || old === now || store.getItem(now) !== null) continue;
+      store.setItem(now, kept);
+      store.removeItem(old);
+    } catch {
+      // Storage may be unavailable or full: the lists are a convenience.
+    }
+  }
+}

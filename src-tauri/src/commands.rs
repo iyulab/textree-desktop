@@ -69,7 +69,7 @@ pub(crate) fn clear_temp_dir(root: &Path) {
 /// Atomic write for a file that is not inside the vault, so the temp file goes beside the
 /// destination. A rename is only atomic within one volume, and settings live wherever the
 /// person's home is — which is often not the volume the notes are on.
-fn atomic_write_beside(path: &Path, content: &str) -> io::Result<()> {
+pub(crate) fn atomic_write_beside(path: &Path, content: &str) -> io::Result<()> {
     atomic_bytes_beside(path, content.as_bytes())
 }
 
@@ -352,7 +352,7 @@ pub fn ensure_default_vault(app: AppHandle) -> Result<DefaultVault, String> {
 /// Outside the notes folder on purpose: a preference is not a note, it is not something anyone
 /// wants to see in their folder, and it should not travel when the notes do. Keyed per folder,
 /// because "which notes are favourites" only means anything about one set of notes.
-fn personal_dir(root: &Path) -> Result<PathBuf, String> {
+pub(crate) fn personal_dir(root: &Path) -> Result<PathBuf, String> {
     Ok(personal_home()?
         .join(".textree")
         .join("vaults")
@@ -360,58 +360,15 @@ fn personal_dir(root: &Path) -> Result<PathBuf, String> {
 }
 
 /// The base the person's settings are kept under (`~` — or, for a test run, a place of its own).
-fn personal_home() -> Result<PathBuf, String> {
+pub(crate) fn personal_home() -> Result<PathBuf, String> {
     crate::dev_env::var_os("TEXTREE_PERSONAL_BASE")
         .map(PathBuf::from)
         .or_else(personal_base)
         .ok_or_else(|| "cannot find a place to keep settings".to_string())
 }
 
-/// The sidebar's notes folders, as the screen reads them.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspaceOut {
-    pub roots: Vec<crate::workspace_file::Root>,
-    /// Changes are not kept: the list was written by a newer release.
-    pub read_only: bool,
-    /// Where an unreadable list was moved this launch.
-    pub set_aside: Option<String>,
-}
-
-fn workspace_out(ws: &crate::workspace_file::Workspace) -> WorkspaceOut {
-    WorkspaceOut {
-        roots: ws.roots().to_vec(),
-        read_only: !ws.writable(),
-        set_aside: ws.set_aside().map(|p| p.display().to_string()),
-    }
-}
-
-/// The sidebar's notes folders as kept on this device. Each one is registered, so commands can
-/// name it by its id before it is opened.
-pub fn workspace_list() -> Result<WorkspaceOut, String> {
-    let ws = crate::workspace_file::Workspace::load(&crate::workspace_file::dir_under(
-        &personal_home()?,
-    ))
-    .map_err(|e| e.to_string())?;
-    for root in ws.roots() {
-        crate::workspace::register(&root.path);
-    }
-    Ok(workspace_out(&ws))
-}
-
-/// Keeps the notes folder at `path` in the list — every folder the window opens, so the first
-/// launch with a list takes the folder an earlier release opened last.
-pub fn workspace_add(path: String) -> Result<WorkspaceOut, String> {
-    let mut ws = crate::workspace_file::Workspace::load(&crate::workspace_file::dir_under(
-        &personal_home()?,
-    ))
-    .map_err(|e| e.to_string())?;
-    ws.add(&path).map_err(|e| e.to_string())?;
-    for root in ws.roots() {
-        crate::workspace::register(&root.path);
-    }
-    Ok(workspace_out(&ws))
-}
+/// What opening or locating a notes folder says when there is no folder at its path.
+pub(crate) const NOT_FOUND: &str = "Notes folder not found";
 
 #[cfg(not(test))]
 fn personal_base() -> Option<PathBuf> {
@@ -496,7 +453,7 @@ pub fn write_sidecar(root: String, rel: String, content: String) -> Result<(), S
     atomic_write_beside(&path, &content).map_err(|e| e.to_string())
 }
 
-const NEWER_SETTINGS: &str =
+pub(crate) const NEWER_SETTINGS: &str =
     "this folder's settings were saved by a newer Textree and are kept as they are";
 
 /// What opening this folder's settings found.
@@ -824,18 +781,16 @@ fn refresh_indexes(app: &AppHandle, root: PathBuf, path: PathBuf) {
     });
 }
 
-/// Which opening of a folder is the latest. Opening runs off the main thread, so a folder that
-/// does not answer no longer holds the window — and the person can open another one meanwhile.
-/// Then the later one is what they want: the earlier one, when it finally gets through, installs
-/// nothing.
-static OPENS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Which opening of each folder is the latest (see [`crate::open_roots::Openings`]).
+static OPENS: std::sync::LazyLock<crate::open_roots::Openings> =
+    std::sync::LazyLock::new(Default::default);
 
 /// Taken while an opening puts its folder in place, so two cannot interleave that.
 static INSTALLING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// What an opening that another one overtook reports. The window, having started the later one,
-/// does not show it.
-pub(crate) const SUPERSEDED: &str = "another folder was opened meanwhile";
+/// What an opening that a later opening of the same folder, or its closing, overtook reports. The
+/// window, having started the later one, does not show it.
+pub(crate) const SUPERSEDED: &str = "the folder was opened again or closed meanwhile";
 
 /// Development builds only: while the file named by `TEXTREE_E2E_OPEN_STALL_FLAG` exists and holds
 /// this folder's path, opening it waits before reading anything — how the end-to-end tests make a
@@ -854,15 +809,16 @@ fn stall_opening(root: &str) {
 #[inline(always)]
 fn stall_opening(_: &str) {}
 
-/// Starts an opening; the number it returns is what [`open_vault`] checks before installing.
-pub(crate) fn begin_open() -> u64 {
-    OPENS.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+/// Starts an opening of `root`; the number it returns is what [`open_vault`] checks before
+/// installing.
+pub(crate) fn begin_open(root: &str) -> u64 {
+    OPENS.begin(Path::new(root))
 }
 
 /// Opens a folder: reads its tree, installs its search index, points the semantic index at it and
 /// watches it. Everything that reads the folder runs first, where it may take as long as the
 /// folder takes; only then, briefly and one opening at a time, is the folder put in place — and
-/// only if no later opening started meanwhile.
+/// only if the folder was not opened again, or closed, meanwhile. Other open folders stay open.
 pub fn open_vault(
     root: String,
     root_id: String,
@@ -871,14 +827,22 @@ pub fn open_vault(
 ) -> Result<Vec<TreeNode>, String> {
     stall_opening(&root);
     let root_path = PathBuf::from(&root);
+    if !root_path.is_dir() {
+        return Err(NOT_FOUND.into());
+    }
     // Sweep orphaned atomic-write temps (crash/power-loss leftovers) so they don't linger and sync.
     clear_temp_dir(&root_path);
     let tree = vault::build_tree(&root_path).map_err(|e| e.to_string())?;
     log::info!("open_vault: {} ({} top-level nodes)", root, tree.len());
 
     let own = app.state::<tauri_kit_watch::OwnWrites>().inner().clone();
-    // This folder's index, which its watch keeps in step; installed below with the folder.
-    let index = Arc::new(IndexHandle::default());
+    // This folder's index, which its watch keeps in step; installed below with the folder. A folder
+    // opened again while it is open keeps the index it has: a second one on the same directory would
+    // find the first holding its lock, fail, and leave the folder without search.
+    let open_index = app.state::<Indexes>().of(&root_path);
+    let index = open_index
+        .clone()
+        .unwrap_or_else(|| Arc::new(IndexHandle::default()));
     let host = app.state::<Arc<host::HostHandle>>().inner().clone();
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let emitter = app.clone();
@@ -922,37 +886,47 @@ pub fn open_vault(
         )?;
 
     let _installing = INSTALLING.lock().unwrap_or_else(|e| e.into_inner());
-    if OPENS.load(std::sync::atomic::Ordering::SeqCst) != ticket {
-        log::info!("open_vault: {root} was overtaken by a later opening; not installed");
+    if !OPENS.is_latest(&root_path, ticket) {
+        log::info!("open_vault: {root} was opened again or closed meanwhile; not installed");
         return Err(SUPERSEDED.into()); // the watch it started stops as it drops
     }
 
     // Install the index (app data directory, per-vault hash). On failure only search is disabled —
     // graceful degradation (editing, tree, and file search remain intact without the index).
     let dir = crate::search::index_dir(&app_data, &root_path);
-    match IndexState::open_or_create(&dir, &root_path) {
-        Ok(state) => {
-            let was_empty = state.is_empty().unwrap_or(true);
-            *index.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(state);
-            if was_empty {
-                // Full build in the background (non-blocking for the UI).
-                let index_arc = index.clone();
-                let root_for_build = root_path.clone();
-                tauri::async_runtime::spawn_blocking(move || {
-                    if let Some(st) = index_arc
-                        .0
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .as_mut()
-                    {
-                        let _ = st.rebuild(&root_for_build);
-                    }
-                });
+    // The index it already has is not waited on: a full build holds it for as long as it runs, and
+    // a busy index is one that is there.
+    let has_index = open_index.is_some()
+        && match index.0.try_lock() {
+            Ok(held) => held.is_some(),
+            Err(std::sync::TryLockError::WouldBlock) => true,
+            Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner().is_some(),
+        };
+    if !has_index {
+        match IndexState::open_or_create(&dir, &root_path) {
+            Ok(state) => {
+                let was_empty = state.is_empty().unwrap_or(true);
+                *index.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(state);
+                if was_empty {
+                    // Full build in the background (non-blocking for the UI).
+                    let index_arc = index.clone();
+                    let root_for_build = root_path.clone();
+                    tauri::async_runtime::spawn_blocking(move || {
+                        if let Some(st) = index_arc
+                            .0
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .as_mut()
+                        {
+                            let _ = st.rebuild(&root_for_build);
+                        }
+                    });
+                }
             }
-        }
-        Err(e) => {
-            log::warn!("failed to open index (search disabled): {e}");
-            *index.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            Err(e) => {
+                log::warn!("failed to open index (search disabled): {e}");
+                *index.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            }
         }
     }
 
@@ -964,18 +938,27 @@ pub fn open_vault(
         host::reindex_vault(&host, &vault_str);
     });
 
-    // The folder's index and watch go in its own entries. The window shows one folder at a time
-    // until the sidebar lists several (TODO(S1b Task 5): keep every folder the sidebar shows), so
-    // the others are let go here — their watches stop as they drop, and leftover changes from them
-    // do not reach the window.
-    let indexes = app.state::<Indexes>();
-    indexes.install(&root_path, index);
-    drop(indexes.keep_only(&root_path));
-    let watchers = app.state::<Watchers>();
-    drop(watchers.install(&root_path, watcher));
-    drop(watchers.keep_only(&root_path));
+    // The folder's index and watch go in its own entries; other open folders keep theirs.
+    drop(app.state::<Indexes>().install(&root_path, index));
+    drop(app.state::<Watchers>().install(&root_path, watcher));
 
     Ok(tree)
+}
+
+/// Closes a folder: its search index and watch are let go, and an opening of it still under way
+/// installs nothing. Nothing on the disk changes.
+pub fn close_root(root: String, app: AppHandle) {
+    let root_path = PathBuf::from(&root);
+    let (index, watcher) = {
+        let _installing = INSTALLING.lock().unwrap_or_else(|e| e.into_inner());
+        OPENS.end(&root_path);
+        (
+            app.state::<Indexes>().remove(&root_path),
+            app.state::<Watchers>().remove(&root_path),
+        )
+    };
+    drop((index, watcher)); // the watch stops as it drops, outside the lock
+    log::info!("close_root: {root}");
 }
 
 // ── Structural edits (M4) — delegated to fs_ops ────────────────────────────────
@@ -1399,27 +1382,59 @@ pub fn save_attachment(
     Ok(link)
 }
 
-/// Off the main thread: the index is held for the whole of a first-open rebuild, and a search made
+/// A content search hit and the notes folder it is in.
+#[derive(Debug, serde::Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderHit {
+    pub root_id: String,
+    #[serde(flatten)]
+    pub hit: SearchHit,
+}
+
+/// Content search over the notes folders named, in that order: each folder's index is asked, and
+/// the hits are put in one list, best first, at most `limit` ([`crate::search::merge_ranked`]). A
+/// folder that is not open (or has no index yet) adds nothing.
+///
+/// Off the main thread: an index is held for the whole of a first-open rebuild, and a search made
 /// meanwhile waits for it.
 #[tauri::command]
 pub async fn search_content(
-    root_id: String,
+    root_ids: Vec<String>,
     query: String,
     limit: usize,
     indexes: State<'_, Indexes>,
-) -> Result<Vec<SearchHit>, String> {
-    let root = crate::workspace::path_of(&root_id)?;
-    let Some(index) = indexes.of(Path::new(&root)) else {
-        return Ok(Vec::new()); // the folder is not open → no results (graceful)
-    };
-    off_main(move || {
-        let guard = index.0.lock().unwrap_or_else(|e| e.into_inner());
-        match guard.as_ref() {
-            Some(state) => state.search(&query, limit).map_err(|e| e.to_string()),
-            None => Ok(Vec::new()), // no index → empty results (graceful)
+) -> Result<Vec<FolderHit>, String> {
+    let mut asked = Vec::with_capacity(root_ids.len());
+    for id in root_ids {
+        let root = crate::workspace::path_of(&id)?;
+        if let Some(index) = indexes.of(Path::new(&root)) {
+            asked.push((id, index));
         }
-    })
-    .await
+    }
+    off_main(move || search_folders(&asked, &query, limit)).await
+}
+
+/// The body of [`search_content`], over indexes already looked up.
+pub fn search_folders(
+    asked: &[(String, std::sync::Arc<IndexHandle>)],
+    query: &str,
+    limit: usize,
+) -> Result<Vec<FolderHit>, String> {
+    let mut lists = Vec::with_capacity(asked.len());
+    for (id, index) in asked {
+        let guard = index.0.lock().unwrap_or_else(|e| e.into_inner());
+        let hits = match guard.as_ref() {
+            Some(state) => state
+                .search_scored(query, limit)
+                .map_err(|e| e.to_string())?,
+            None => Vec::new(), // no index → nothing from this folder (graceful)
+        };
+        lists.push((id.clone(), hits));
+    }
+    Ok(crate::search::merge_ranked(lists, limit)
+        .into_iter()
+        .map(|(root_id, hit)| FolderHit { root_id, hit })
+        .collect())
 }
 
 pub fn rebuild_index(root: String, index: &IndexHandle) -> Result<(), String> {
@@ -1662,98 +1677,6 @@ pub fn publish_preview(vault_path: String) -> Result<PublishPreview, String> {
     })
 }
 
-// ── Remote (exchange recorded notes with a remote the person connected) ─────────────────────
-
-/// The remote this folder exchanges notes with, as this machine remembers it.
-pub fn remote_connection(root: String) -> Result<Option<crate::remote::Connection>, String> {
-    let path = personal_dir(Path::new(&root))?.join(crate::remote::CONNECTION_FILE);
-    match std::fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(&text)
-            .map(Some)
-            .map_err(|e| format!("the remote settings could not be read: {e}")),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-/// Connects this folder to a remote. The remote is reached with the secret first, and remembered
-/// only when that worked — a connection that was saved but cannot be used would fail later, far
-/// from where it was set up.
-pub fn connect_remote(
-    root: String,
-    url: String,
-    username: String,
-    secret: String,
-) -> Result<(), String> {
-    let root_p = Path::new(&root);
-    let url = url.trim().to_string();
-    crate::git_transport::check_url(&url).map_err(|e| e.message().to_string())?;
-    let username = match username.trim() {
-        "" => "textree".to_string(),
-        name => name.to_string(),
-    };
-    let dir = personal_dir(root_p)?;
-    if !crate::state_dir::writable(&dir).map_err(|e| e.to_string())? {
-        return Err(NEWER_SETTINGS.into());
-    }
-    let prepared = crate::git_engine::prepare(root_p).map_err(|e| e.message().to_string())?;
-    let credentials = crate::git_transport::Credentials {
-        username: username.clone(),
-        secret: secret.clone(),
-    };
-    crate::remote::fetch(prepared.repo(), &url, Some(credentials))
-        .map_err(|e| e.message().to_string())?;
-
-    let connection = crate::remote::Connection { url, username };
-    let text = serde_json::to_string_pretty(&connection).map_err(|e| e.to_string())?;
-    crate::remote::set_secret(&folder_key(root_p), &secret)?;
-    atomic_write_beside(&dir.join(crate::remote::CONNECTION_FILE), &text).map_err(|e| e.to_string())
-}
-
-/// Whether this folder's recorded notes are somewhere besides this machine: it is connected to a
-/// remote, and the remote held everything recorded here when they last exchanged. Asks nothing
-/// over the network, and makes no repository where none is.
-pub fn notes_backed_up(root: String) -> Result<bool, String> {
-    if remote_connection(root.clone())?.is_none() {
-        return Ok(false);
-    }
-    match history_repo(Path::new(&root))? {
-        Some(prepared) => {
-            crate::remote::backed_up(prepared.repo()).map_err(|e| e.message().to_string())
-        }
-        // Nothing recorded yet: nothing that could be lost.
-        None => Ok(true),
-    }
-}
-
-/// Forgets this folder's remote on this machine. Nothing on the remote changes.
-pub fn disconnect_remote(root: String) -> Result<(), String> {
-    let root_p = Path::new(&root);
-    let path = personal_dir(root_p)?.join(crate::remote::CONNECTION_FILE);
-    match std::fs::remove_file(&path) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e.to_string()),
-    }
-    crate::remote::clear_secret(&folder_key(root_p))
-}
-
-/// One exchange with this folder's remote: takes in what arrived where it can, and sends what
-/// was recorded here.
-pub fn sync_remote(root: String, locks: &NoteLocks) -> Result<crate::remote::Exchange, String> {
-    let root_p = Path::new(&root);
-    let connection = remote_connection(root.clone())?
-        .ok_or_else(|| "this folder is not connected to a remote".to_string())?;
-    let credentials = crate::remote::secret(&folder_key(root_p)).map(|secret| {
-        crate::git_transport::Credentials {
-            username: connection.username.clone(),
-            secret,
-        }
-    });
-    let prepared = crate::git_engine::prepare(root_p).map_err(|e| e.message().to_string())?;
-    crate::remote::exchange(&prepared, root_p, &connection.url, credentials, locks)
-}
-
 /// Opens the OS app log directory in the system file explorer. Useful for diagnostic sharing.
 /// Creates the directory if it does not yet exist (e.g. before the first app run that writes a log).
 #[tauri::command]
@@ -1954,7 +1877,7 @@ pub struct RestoredNote {
 ///
 /// `Ok(None)` is the ordinary answer for a folder nothing has been recorded in. Looking at what
 /// was recorded is not recording, and it must not turn a plain folder into a repository.
-fn history_repo(root: &Path) -> Result<Option<crate::git_engine::VaultRepo>, String> {
+pub(crate) fn history_repo(root: &Path) -> Result<Option<crate::git_engine::VaultRepo>, String> {
     crate::git_engine::open_existing(root).map_err(|e| e.message().to_string())
 }
 
@@ -2669,6 +2592,23 @@ fn note_alternative(
     }))
 }
 
+/// The open alternative `id` of a note in this folder. An enclosing repository may hold alternatives
+/// of notes in other folders beside it; this folder's commands neither read nor change those.
+fn own_alternative(
+    prepared: &crate::git_engine::VaultRepo,
+    id: &str,
+) -> Result<crate::alternatives::Alternative, String> {
+    let alternative =
+        crate::alternatives::get(prepared.repo(), id).map_err(|e| e.message().to_string())?;
+    if prepared
+        .path_in_vault(Path::new(&alternative.path))
+        .is_none()
+    {
+        return Err("no such alternative".into());
+    }
+    Ok(alternative)
+}
+
 /// The repository of a folder something has been recorded in, refusing while it is busy.
 fn writable_history(root: &Path) -> Result<crate::git_engine::VaultRepo, String> {
     let prepared =
@@ -2723,7 +2663,7 @@ pub fn alternative_text(root: String, id: String) -> Result<String, String> {
     let prepared =
         history_repo(Path::new(&root))?.ok_or_else(|| "no such alternative".to_string())?;
     let repo = prepared.repo();
-    let alternative = crate::alternatives::get(repo, &id).map_err(|e| e.message().to_string())?;
+    let alternative = own_alternative(&prepared, &id)?;
     let bytes = crate::alternatives::content(repo, &alternative)
         .map_err(|e| e.message().to_string())?
         .unwrap_or_default();
@@ -2744,6 +2684,7 @@ pub fn add_alternative_version(
     let _turn = crate::drafts::TURN
         .lock()
         .unwrap_or_else(|e| e.into_inner());
+    own_alternative(&prepared, &id)?;
     let oid =
         crate::alternatives::record(repo, &id, text.as_bytes(), &message, &author, &committer)
             .map_err(|e| e.message().to_string())?;
@@ -2808,7 +2749,7 @@ pub fn set_aside_alternative(root: String, id: String) -> Result<(), String> {
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     let drafts = drafts_dir(root_p)?;
-    let alternative = crate::alternatives::get(repo, &id).map_err(|e| e.message().to_string())?;
+    let alternative = own_alternative(&prepared, &id)?;
     add_draft_as_version(repo, &drafts, &alternative)?;
     crate::alternatives::end(repo, &id).map_err(|e| e.message().to_string())?;
     forget_draft(&drafts, &id);
@@ -2865,8 +2806,7 @@ fn forget_draft(drafts: &Path, id: &str) {
 pub fn alternative_draft(root: String, id: String) -> Result<Option<String>, String> {
     let root_p = Path::new(&root);
     let prepared = history_repo(root_p)?.ok_or_else(|| "no such alternative".to_string())?;
-    let alternative =
-        crate::alternatives::get(prepared.repo(), &id).map_err(|e| e.message().to_string())?;
+    let alternative = own_alternative(&prepared, &id)?;
     crate::drafts::read(&draft_file(&drafts_dir(root_p)?, &alternative)?).map_err(|e| e.to_string())
 }
 
@@ -2880,8 +2820,7 @@ pub fn write_alternative_draft(root: String, id: String, text: String) -> Result
     let _turn = crate::drafts::TURN
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let alternative =
-        crate::alternatives::get(prepared.repo(), &id).map_err(|e| e.message().to_string())?;
+    let alternative = own_alternative(&prepared, &id)?;
     atomic_write_beside(&draft_file(&drafts_dir(root_p)?, &alternative)?, &text)
         .map_err(|e| e.to_string())
 }
@@ -2963,25 +2902,83 @@ pub fn restore_deleted(root: String, rel: String) -> Result<RestoredNote, String
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 
-    #[test]
-    fn the_workspace_keeps_each_opened_folder_once_and_registers_them() {
-        workspace_add("/notes/workspace-test-a".into()).unwrap();
-        workspace_add("/notes/workspace-test-b".into()).unwrap();
-        let listed = workspace_add("/notes/workspace-test-a".into()).unwrap();
-        let paths: Vec<_> = listed.roots.iter().map(|r| r.path.as_str()).collect();
-        assert_eq!(
-            paths,
-            ["/notes/workspace-test-a", "/notes/workspace-test-b"]
-        );
-        assert!(!listed.read_only);
-        for root in workspace_list().unwrap().roots {
-            assert_eq!(crate::workspace::path_of(&root.id).unwrap(), root.path);
-        }
-    }
     use super::*;
     use tempfile::TempDir;
+
+    fn folder_index(notes: &[(&str, &str)]) -> (TempDir, TempDir, std::sync::Arc<IndexHandle>) {
+        let vault = TempDir::new().unwrap();
+        let idx = TempDir::new().unwrap();
+        for (name, body) in notes {
+            std::fs::write(vault.path().join(name), body).unwrap();
+        }
+        let mut state = IndexState::open_or_create(idx.path(), vault.path()).unwrap();
+        state.rebuild(vault.path()).unwrap();
+        let handle = std::sync::Arc::new(IndexHandle::default());
+        *handle.0.lock().unwrap() = Some(state);
+        (vault, idx, handle)
+    }
+
+    #[test]
+    fn content_search_over_several_folders_names_each_hits_folder() {
+        let (_wv, _wi, work) = folder_index(&[
+            ("plan.md", "harbor harbor harbor"),
+            ("todo.md", "groceries"),
+        ]);
+        let (_hv, _hi, home) = folder_index(&[("trip.md", "a harbor walk")]);
+        let empty = std::sync::Arc::new(IndexHandle::default()); // a folder whose index is not ready
+        let asked = vec![
+            ("work".to_string(), work),
+            ("none".to_string(), empty),
+            ("home".to_string(), home),
+        ];
+
+        let hits = search_folders(&asked, "harbor", 10).unwrap();
+        let found: Vec<_> = hits
+            .iter()
+            .map(|h| (h.root_id.as_str(), h.hit.path.as_str()))
+            .collect();
+        assert_eq!(
+            found.len(),
+            2,
+            "one hit from each folder that has it: {found:?}"
+        );
+        assert!(found.contains(&("work", "plan.md")) && found.contains(&("home", "trip.md")));
+        assert_eq!(
+            found[0],
+            ("work", "plan.md"),
+            "the stronger match comes first"
+        );
+
+        assert_eq!(
+            search_folders(&asked, "harbor", 1).unwrap().len(),
+            1,
+            "the limit is over all folders"
+        );
+        assert!(search_folders(&asked, "groceries", 10)
+            .unwrap()
+            .iter()
+            .all(|h| h.root_id == "work"));
+    }
+
+    #[test]
+    fn a_folder_hit_reaches_the_screen_with_its_folder_beside_the_hits_fields() {
+        let json = serde_json::to_value(FolderHit {
+            root_id: "r1".into(),
+            hit: SearchHit {
+                path: "a.md".into(),
+                title: "a".into(),
+                snippet: "s".into(),
+                ranges: vec![(0, 1)],
+            },
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"rootId": "r1", "path": "a.md", "title": "a", "snippet": "s", "ranges": [[0, 1]]})
+        );
+    }
 
     #[test]
     fn the_screen_gets_the_tree_with_paths_relative_to_the_folder() {
@@ -3512,7 +3509,7 @@ mod tests {
         );
     }
 
-    fn seed_note(root: &Path, rel: &str, body: &str) -> String {
+    pub(crate) fn seed_note(root: &Path, rel: &str, body: &str) -> String {
         let target = root.join(rel);
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).unwrap();
@@ -3754,177 +3751,6 @@ mod tests {
                 next: None
             }
         );
-    }
-
-    /// A bare repository behind `git http-backend`, reachable only with the test server's
-    /// secret. `None` when git is not installed.
-    fn remote_for_test(tmp: &Path) -> Option<String> {
-        git2::Repository::init_bare(tmp.join("repo.git"))
-            .unwrap()
-            .config()
-            .unwrap()
-            .set_bool("http.receivepack", true)
-            .unwrap();
-        crate::git_transport::test_server::serve(tmp.to_path_buf())
-    }
-
-    #[test]
-    fn a_remote_that_refuses_the_secret_is_not_remembered() {
-        let tmp = TempDir::new().unwrap();
-        let Some(url) = remote_for_test(tmp.path()) else {
-            eprintln!("skipped: git is not installed");
-            return;
-        };
-        let root = tmp.path().join("notes");
-        std::fs::create_dir_all(&root).unwrap();
-        let root_s = root.to_string_lossy().to_string();
-
-        let err =
-            connect_remote(root_s.clone(), url, "someone".into(), "wrong".into()).unwrap_err();
-        assert!(err.contains("refused these credentials"), "{err}");
-        assert_eq!(remote_connection(root_s.clone()).unwrap(), None);
-        assert!(crate::remote::secret(&folder_key(&root)).is_none());
-    }
-
-    #[test]
-    fn plain_http_to_another_machine_is_refused_before_anything_is_sent() {
-        let tmp = TempDir::new().unwrap();
-        let root_s = tmp.path().to_string_lossy().to_string();
-        let err = connect_remote(
-            root_s.clone(),
-            "http://example.com/notes.git".into(),
-            "".into(),
-            "t".into(),
-        )
-        .unwrap_err();
-        assert!(err.contains("https"), "{err}");
-        assert!(!tmp.path().join(".git").exists());
-    }
-
-    /// The same exchange against a real hosted repository, over https. Run by hand:
-    /// `TEXTREE_CHECK_REPO=<https address of an empty private repository>`
-    /// `TEXTREE_CHECK_TOKEN=<token with write access>`
-    /// `cargo test --lib a_hosted_repository -- --ignored --nocapture`
-    #[test]
-    #[ignore = "needs a real hosted repository and a token"]
-    fn a_hosted_repository_carries_notes_between_two_folders() {
-        let (Ok(url), Ok(token)) = (
-            std::env::var("TEXTREE_CHECK_REPO"),
-            std::env::var("TEXTREE_CHECK_TOKEN"),
-        ) else {
-            panic!("set TEXTREE_CHECK_REPO and TEXTREE_CHECK_TOKEN");
-        };
-        let tmp = TempDir::new().unwrap();
-        let locks = NoteLocks::default();
-        let here = tmp.path().join("here");
-        let there = tmp.path().join("there");
-        std::fs::create_dir_all(&here).unwrap();
-        std::fs::create_dir_all(&there).unwrap();
-        let (here_s, there_s) = (
-            here.to_string_lossy().to_string(),
-            there.to_string_lossy().to_string(),
-        );
-
-        let stamp = format!("# Check\n\n{}\n", std::process::id());
-        seed_note(&here, "check.md", &stamp);
-        commit_notes(
-            here_s.clone(),
-            vec![here.join("check.md").to_string_lossy().to_string()],
-            "check".into(),
-        )
-        .unwrap();
-        connect_remote(here_s.clone(), url.clone(), "".into(), token.clone()).unwrap();
-        let sent = sync_remote(here_s.clone(), &locks).unwrap();
-        assert!(sent.sent, "{sent:?}");
-        assert!(notes_backed_up(here_s.clone()).unwrap());
-
-        connect_remote(there_s.clone(), url, "".into(), token).unwrap();
-        let got = sync_remote(there_s.clone(), &locks).unwrap();
-        assert!(got.received.contains(&"check.md".to_string()), "{got:?}");
-        assert_eq!(
-            std::fs::read_to_string(there.join("check.md")).unwrap(),
-            stamp
-        );
-
-        disconnect_remote(here_s).unwrap();
-        disconnect_remote(there_s).unwrap();
-    }
-
-    #[test]
-    fn two_folders_connected_to_one_remote_exchange_what_they_recorded() {
-        use crate::git_transport::test_server::{SECRET, USER};
-        let tmp = TempDir::new().unwrap();
-        let Some(url) = remote_for_test(tmp.path()) else {
-            eprintln!("skipped: git is not installed");
-            return;
-        };
-        let locks = NoteLocks::default();
-        let here = tmp.path().join("here");
-        let there = tmp.path().join("there");
-        std::fs::create_dir_all(&here).unwrap();
-        std::fs::create_dir_all(&there).unwrap();
-        let (here_s, there_s) = (
-            here.to_string_lossy().to_string(),
-            there.to_string_lossy().to_string(),
-        );
-
-        seed_note(&here, "manual.md", "# Manual\n");
-        commit_notes(
-            here_s.clone(),
-            vec![here.join("manual.md").to_string_lossy().to_string()],
-            "first".into(),
-        )
-        .unwrap();
-        connect_remote(here_s.clone(), url.clone(), USER.into(), SECRET.into()).unwrap();
-        assert_eq!(
-            remote_connection(here_s.clone()).unwrap(),
-            Some(crate::remote::Connection {
-                url: url.clone(),
-                username: USER.into()
-            })
-        );
-        let sent = sync_remote(here_s.clone(), &locks).unwrap();
-        assert!(sent.sent, "{sent:?}");
-
-        assert!(
-            notes_backed_up(here_s.clone()).unwrap(),
-            "sent, so kept on the remote"
-        );
-        seed_note(&here, "faq.md", "# FAQ\n");
-        commit_notes(
-            here_s.clone(),
-            vec![here.join("faq.md").to_string_lossy().to_string()],
-            "second".into(),
-        )
-        .unwrap();
-        assert!(
-            !notes_backed_up(here_s.clone()).unwrap(),
-            "recorded since, only here"
-        );
-        assert!(sync_remote(here_s.clone(), &locks).unwrap().sent);
-        assert!(notes_backed_up(here_s.clone()).unwrap());
-
-        // A new machine: an empty folder connected to the remote receives everything.
-        assert!(!notes_backed_up(there_s.clone()).unwrap(), "not connected");
-        connect_remote(there_s.clone(), url, USER.into(), SECRET.into()).unwrap();
-        let got = sync_remote(there_s.clone(), &locks).unwrap();
-        assert_eq!(
-            got.received,
-            vec!["faq.md".to_string(), "manual.md".to_string()]
-        );
-        assert!(
-            notes_backed_up(there_s.clone()).unwrap(),
-            "what arrived is on the remote already"
-        );
-        assert_eq!(
-            std::fs::read_to_string(there.join("manual.md")).unwrap(),
-            "# Manual\n"
-        );
-
-        disconnect_remote(here_s.clone()).unwrap();
-        disconnect_remote(there_s.clone()).unwrap();
-        assert_eq!(remote_connection(here_s).unwrap(), None);
-        assert!(crate::remote::secret(&folder_key(&there)).is_none());
     }
 
     #[test]
@@ -5143,6 +4969,38 @@ mod tests {
             "other take",
             "the last state on disk came back"
         );
+    }
+
+    #[test]
+    fn a_folder_neither_reads_nor_changes_the_alternatives_of_a_folder_beside_it() {
+        // Two notes folders inside one repository share where alternatives are kept.
+        let tmp = TempDir::new().unwrap();
+        git2::Repository::init(tmp.path()).unwrap();
+        let (here, beside) = (tmp.path().join("here"), tmp.path().join("beside"));
+        std::fs::create_dir_all(&here).unwrap();
+        std::fs::create_dir_all(&beside).unwrap();
+        record_note(&here, "own.md", "own");
+        let theirs = record_note(&beside, "n.md", "first");
+        let (here_s, beside_s) = (
+            here.to_string_lossy().to_string(),
+            beside.to_string_lossy().to_string(),
+        );
+        let started = start_alternative(beside_s.clone(), theirs).unwrap();
+        let id = started.id.clone();
+
+        assert!(list_alternatives(here_s.clone()).unwrap().is_empty());
+        assert!(alternative_text(here_s.clone(), id.clone()).is_err());
+        assert!(
+            add_alternative_version(here_s.clone(), id.clone(), "x".into(), "m".into()).is_err()
+        );
+        assert!(write_alternative_draft(here_s.clone(), id.clone(), "typed".into()).is_err());
+        assert!(alternative_draft(here_s.clone(), id.clone()).is_err());
+        assert!(set_aside_alternative(here_s, id.clone()).is_err());
+
+        let still = list_alternatives(beside_s.clone()).unwrap();
+        assert_eq!(still.len(), 1, "still open in its own folder");
+        assert!(!still[0].differs, "and unchanged");
+        assert_eq!(alternative_text(beside_s, id).unwrap(), "first");
     }
 
     #[test]

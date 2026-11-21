@@ -70,8 +70,8 @@ export interface NoteSaveDeps {
   activePath: () => string | null;
   /** Replace a note's content only while it still holds `expected`. */
   write: (root: string, path: string, text: string, expected: string) => Promise<WriteOutcome>;
-  /** A save landed. */
-  saved?: (path: string, text: string) => void;
+  /** A save landed in `root` — the folder the edit was typed in, which may no longer be open. */
+  saved?: (root: string, path: string, text: string) => void;
   /** An edit was made (anything said about the note as it was no longer holds). */
   edited?: () => void;
   /** The open note was found gone. */
@@ -146,7 +146,7 @@ export class NoteSave {
   // The vault each edit was typed in. Another vault can open before its turn comes, and then the
   // vault open at the time it is written is not the one it belongs to — and a note there may well
   // have the same name.
-  #vaultOf = new WeakMap<PendingEdit, string>();
+  #typedIn = new WeakMap<PendingEdit, string>();
   // Edits to a note already left, as opposed to the open note's own.
   #left = new WeakSet<PendingEdit>();
   // What an edit was typed on top of: the edit to the same note before it, not on disk yet when this
@@ -199,7 +199,7 @@ export class NoteSave {
     const prev = this.#pending;
     const edit = { path, text, base: prev ? prev.base : this.#synced };
     const root = this.deps.root();
-    if (root) this.#vaultOf.set(edit, root);
+    if (root) this.#typedIn.set(edit, root);
     if (prev) this.#prev.set(edit, prev);
     this.#pending = edit;
     this.#syncDirty();
@@ -272,7 +272,7 @@ export class NoteSave {
 
   #strand(root: string, edit: PendingEdit): void {
     const entry: Stranded = { root, edit, id: null, gone: false, keeping: null };
-    this.#vaultOf.set(edit, root);
+    this.#typedIn.set(edit, root);
     this.#stranded.push(entry);
     this.#warnedOnClose = false; // new edits waiting: the next close warns about them again
     this.#keepOutlasting(entry);
@@ -314,7 +314,7 @@ export class NoteSave {
     for (const { id, path, text, base } of kept) {
       if (this.#stranded.some((k) => k.id === id)) continue;
       const edit = { path, text, base };
-      this.#vaultOf.set(edit, root);
+      this.#typedIn.set(edit, root);
       this.#stranded.push({ root, edit, id, gone: false, keeping: null });
     }
   }
@@ -589,7 +589,7 @@ export class NoteSave {
     if (this.#pending) waiting.add(this.#pending);
     for (const edit of waiting) {
       // An edit to a note left keeps the vault it was typed in, which may no longer be the open one.
-      const vault = this.#vaultOf.get(edit) ?? root;
+      const vault = this.#typedIn.get(edit) ?? root;
       if (this.#done.has(edit) || this.#stranded.some((k) => k.edit === edit) || !vault) continue;
       this.#strand(vault, edit);
     }
@@ -604,7 +604,7 @@ export class NoteSave {
 
   /** Whether `edit` was typed in the vault open now (an edit from before any vault counts as here). */
   #here(edit: PendingEdit): boolean {
-    const typedIn = this.#vaultOf.get(edit);
+    const typedIn = this.#typedIn.get(edit);
     return typedIn === undefined || typedIn === this.deps.root();
   }
 
@@ -640,7 +640,7 @@ export class NoteSave {
 
   /** The vault `edit` was typed in. */
   #rootOf(edit: PendingEdit): string | null {
-    return this.#vaultOf.get(edit) ?? this.deps.root();
+    return this.#typedIn.get(edit) ?? this.deps.root();
   }
 
   /** Queues the edits to a note being left, in that note's turn. */
@@ -697,7 +697,7 @@ export class NoteSave {
   }
 
   async #writeOnce(job: PendingEdit, rootOf?: string): Promise<void> {
-    const root = rootOf ?? this.#vaultOf.get(job) ?? this.deps.root();
+    const root = rootOf ?? this.#typedIn.get(job) ?? this.deps.root();
     if (!root) return;
     const retry = rootOf !== undefined;
     const s = this.state;
@@ -743,8 +743,8 @@ export class NoteSave {
       if (retry) {
         // Kept edits landed. Whatever was said about them no longer holds, unless others remain.
         if (this.#stranded.length === 0 && !this.state.saveFailure) this.state.saveError = null;
+        this.deps.saved?.(root, job.path, job.text);
         if (root !== this.deps.root()) return;
-        this.deps.saved?.(job.path, job.text);
         // The note was opened again meanwhile and shows what disk held before: disk now holds the
         // kept edits, so the screen and the save baseline follow — unless the person is typing in it,
         // whose edits then meet this change as any other change on disk.
@@ -755,9 +755,9 @@ export class NoteSave {
         }
         return;
       }
+      this.deps.saved?.(root, job.path, job.text);
       // Written into a vault no longer open: nothing on screen is about it.
       if (root !== this.deps.root()) return;
-      this.deps.saved?.(job.path, job.text);
       if (this.#left.has(job) && job.path === active) {
         // Edits to a note left, landing after it was opened again — from a read that may have come
         // before them. Nothing typed since: the screen follows the disk, if it is behind. Something

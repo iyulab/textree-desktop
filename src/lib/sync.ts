@@ -34,8 +34,10 @@ export interface SyncHandlers {
   isDirty: () => boolean;
   /** The last content the editor and disk were known to agree on (last loaded or last saved). */
   synced: () => string;
-  /** Replace with the refreshed tree. */
-  setTree: (tree: TreeNode[]) => void;
+  /** Whether the folder `root` names is open: its tree is kept up to date. */
+  isOpen: (root: RootId) => boolean;
+  /** Replace that folder's tree with the refreshed one. */
+  setTree: (root: RootId, tree: TreeNode[]) => void;
   /** Reload a clean note with the disk content (FS is the truth). */
   reloadActive: (diskContent: string) => void;
   /** The open note was removed/moved externally. */
@@ -48,17 +50,17 @@ export interface SyncHandlers {
 
 /** Handle a single fs change (refresh tree + apply to the open note). */
 async function handleChange(handlers: SyncHandlers, event: FsEvent): Promise<void> {
-  const root = handlers.root();
-  // A change in a folder no longer open says nothing about this one, even for a note of the same name.
-  if (!root || event.rootId !== root) return;
-  const payload: FsChange = { kind: event.kind, path: event.rel };
-
-  // 1) Refresh the tree on any change (reflect create/remove/rename).
+  // 1) Refresh the tree of the folder it happened in, on any change (reflect create/remove/rename).
+  if (!handlers.isOpen(event.rootId)) return; // a folder no longer open
   try {
-    handlers.setTree(await listTree(root));
+    handlers.setTree(event.rootId, await listTree(event.rootId));
   } catch {
     // A tree refresh failure is non-fatal — recovered on the next event.
   }
+  // A change in another folder says nothing about the open note, even one of the same name.
+  const root = handlers.root();
+  if (!root || event.rootId !== root) return;
+  const payload: FsChange = { kind: event.kind, path: event.rel };
 
   // 2) Process the body only if the open note is affected.
   const active = handlers.activePath();
@@ -91,15 +93,15 @@ async function handleChange(handlers: SyncHandlers, event: FsEvent): Promise<voi
  * completely alone, so a rescan never disturbs typing focus or shows a false banner.
  */
 async function handleRescan(handlers: SyncHandlers, rootId: RootId): Promise<void> {
-  const root = handlers.root();
-  // A rescan of a folder no longer open says nothing about this one.
-  if (!root || root !== rootId) return;
-
+  if (!handlers.isOpen(rootId)) return; // a folder no longer open
   try {
-    handlers.setTree(await listTree(root));
+    handlers.setTree(rootId, await listTree(rootId));
   } catch {
     // A tree refresh failure is non-fatal — recovered on the next event.
   }
+  // A rescan of another folder says nothing about the open note.
+  const root = handlers.root();
+  if (!root || root !== rootId) return;
 
   const active = handlers.activePath();
   if (!active) return;

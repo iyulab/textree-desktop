@@ -14,6 +14,10 @@ export interface UpdateInfo {
  * proceed even if the update check fails (graceful degradation).
  */
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  // A development or end-to-end build is not what the published update replaces: offering it would
+  // install the released app over the one being worked on, and what the window shows would depend
+  // on whether a newer release happens to be out.
+  if (import.meta.env.DEV || import.meta.env.VITE_TEXTREE_E2E === "1") return null;
   try {
     const update = await check();
     if (!update) return null;

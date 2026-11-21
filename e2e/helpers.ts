@@ -1,6 +1,6 @@
 import { chromium, expect, type Browser, type Page, type Locator } from "@playwright/test";
 import { resolve, join } from "node:path";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
+import { appendFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 
@@ -35,6 +35,27 @@ export function stallOpening(vaultPath: string): void {
 /** Let a hanging opening go on. */
 export function releaseOpening(): void {
   rmSync(E2E_OPEN_STALL_FLAG, { force: true });
+}
+
+/** The answers the app's dialogs take (the build has the `e2e` feature). Keep in sync with scripts/dev-e2e.mjs. */
+const DIALOG_ANSWERS = join(tmpdir(), "textree-e2e-dialog-answers.jsonl");
+
+/** The next folder dialog picks `folder` (`null`: it is closed without a pick). */
+export function answerFolderDialog(folder: string | null): void {
+  const answer = folder === null ? { kind: "cancel" } : { kind: "folder", path: folder };
+  appendFileSync(DIALOG_ANSWERS, `${JSON.stringify(answer)}\n`, "utf8");
+}
+
+/** The titles of the dialogs the app has asked in this run, oldest first. */
+export function dialogsAsked(): string[] {
+  try {
+    return readFileSync(`${DIALOG_ANSWERS}.asked`, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => (JSON.parse(line) as { title: string }).title);
+  } catch {
+    return [];
+  }
 }
 
 function cdpEndpoint(): string {

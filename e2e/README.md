@@ -65,6 +65,12 @@ the hold at all.
 path, opening that folder waits before reading it. Specs use `stallOpening(path)` /
 `releaseOpening()`.
 
+Dialogs never open: `dev:e2e` builds the app with the `e2e` feature and sets
+`TAURI_KIT_DIALOG_ANSWERS`, so each folder dialog takes the next answer from that file instead of
+showing anything. A spec queues one with `answerFolderDialog(path)` (or `null` for closing it) before
+the click that opens the dialog, and `dialogsAsked()` lists the titles asked so far. A dialog with no
+answer queued fails the call rather than waiting for someone at the screen.
+
 > ⚠️ The old `$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` route no longer works — WebView2
 > Runtime 150+ ignores the loader environment variable, so the CDP port silently never opens.
 > Setting `additionalBrowserArgs` replaces wry's default arguments, which is why the overlay

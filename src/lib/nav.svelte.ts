@@ -1,7 +1,8 @@
 import type { RootId } from "./ipc";
 /*
- * Navigation store — favorites, recent, manual order.
- * Favorites/order are kept with the app per vault; recent lives in localStorage (device-bound).
+ * Navigation state of one notes folder — favorites, recent, manual order.
+ * Favorites/order are kept with the app per folder; recent lives in localStorage (device-bound).
+ * One instance per open folder (`folderState.svelte.ts`), bound to it for its whole life.
  *
  * Pure logic (mergeOrder/dedupePushFront/RECENT_MAX) lives in nav.helpers.ts —
  * split into a runes-free module so it can be tested directly under vitest (node environment).
@@ -17,41 +18,41 @@ import { readVaultList, writeVaultList } from "./vaultLocal.helpers";
 // Re-export so components can import the order helper alongside from `$lib/nav.svelte`.
 export { mergeOrder } from "./nav.helpers";
 
-const RECENT_KEY = "textree-recent";
+export const RECENT_KEY = "textree-recent";
 
 const storage = () => (typeof localStorage === "undefined" ? undefined : localStorage);
 
-class NavStore {
+export class FolderNav {
   favorites = $state<string[]>([]);
   /** Notes opened lately in this vault, on this device. */
   recent = $state<string[]>([]);
   /** parentPath → child path order. */
   order = $state<Record<string, string[]>>({});
-  /** Current vault (target of persist IPC). null means not loaded. */
-  private root: RootId | null = null;
-  /** Where that vault is on disk: this device remembers its recent notes by it. */
-  private path: string | null = null;
   /** Files not to write this time: saved by a newer release, or unreadable and not set aside. */
   private kept = new Set<string>();
   // Favorites and order are separate files: a failed write of one is retried when the other is
   // written, not only when the same one is.
   private writer = new RetryingWriter(
     (rel, body) =>
-      this.root === null || this.kept.has(rel) ? Promise.resolve() : writeSidecar(this.root, rel, body),
+      this.kept.has(rel) ? Promise.resolve() : writeSidecar(this.root, rel, body),
     // Non-blocking: the in-memory state stays as the person left it.
     (rel, e) => console.warn(`Sidecar write failed (${rel}):`, e),
   );
 
+  /** `path`: where the folder is on disk — this device remembers its recent notes by it. */
+  constructor(
+    private readonly root: RootId,
+    private readonly path: string,
+  ) {}
+
   /**
-   * Called on vault open/switch — reloads favorites/order from the sidecar. `readOnly`: a newer
+   * Called when the folder opens — reads favorites/order from the sidecar. `readOnly`: a newer
    * release saved them; shown as defaults, never written over. Returns the names of files that
    * could not be read and were kept aside.
    */
-  async load(root: RootId, path: string, readOnly = false): Promise<string[]> {
-    this.writer.reset(); // owed writes belong to the folder being left
-    this.root = root;
-    this.path = path;
-    this.recent = readVaultList(storage(), RECENT_KEY, path);
+  async load(readOnly = false): Promise<string[]> {
+    const root = this.root;
+    this.recent = readVaultList(storage(), RECENT_KEY, this.path);
     this.kept = new Set();
     const setAside: string[] = [];
     const favorites = readOnly ? null : await readSettings(root, "favorites.json", isStringList);
@@ -81,7 +82,7 @@ class NavStore {
 
   pushRecent(path: string): void {
     this.recent = dedupePushFront(this.recent, path, RECENT_MAX);
-    if (this.path !== null) writeVaultList(storage(), RECENT_KEY, this.path, this.recent);
+    writeVaultList(storage(), RECENT_KEY, this.path, this.recent);
   }
 
   async setOrder(parent: string, paths: string[]): Promise<void> {
@@ -97,7 +98,7 @@ class NavStore {
     const changed = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b);
     if (changed(recent, this.recent)) {
       this.recent = recent;
-      if (this.path !== null) writeVaultList(storage(), RECENT_KEY, this.path, recent);
+      writeVaultList(storage(), RECENT_KEY, this.path, recent);
     }
     const writes: Promise<void>[] = [];
     if (changed(favorites, this.favorites)) {
@@ -110,7 +111,4 @@ class NavStore {
     }
     await Promise.all(writes);
   }
-
 }
-
-export const nav = new NavStore();

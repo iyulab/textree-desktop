@@ -1,12 +1,12 @@
 <script lang="ts">
   import type { RootId } from "./ipc";
   import { palette } from "./paletteStore.svelte";
-  import { nav } from "./nav.svelte";
+  import type { FolderNav } from "./nav.svelte";
   import { fuzzyMatch, type Match } from "./fuzzy";
   import { formatKeybinding } from "./keybinding.helpers";
-  import { paletteListState } from "./palette.helpers";
+  import { paletteListState, paletteStatusText, type ContentScope } from "./palette.helpers";
   import type { Command } from "./commands";
-  import { semanticSearch, hostStatus, prepareAiModel, type SearchHit, type SemanticHit, type HostStatus } from "./ipc";
+  import { semanticSearch, hostStatus, prepareAiModel, type FolderHit, type SemanticHit, type HostStatus } from "./ipc";
   import { resolveSemanticAiUi } from "./semanticAiUi.helpers";
   import { getAiConsent, setAiConsent } from "./aiConsent";
   import { getByoConfig } from "./byoConfig";
@@ -14,10 +14,16 @@
   import { formatModelDownload } from "./modelDownload.helpers";
   import type { DownloadSnapshot } from "./modelDownload.helpers";
 
+  /** A content hit; `folder` names its notes folder when the sidebar shows several. */
+  type ContentHit = FolderHit & { folder?: string };
+
   interface FileEntry {
     name: string;
     path: string;
     kind: "leaf" | "container";
+    /** The notes folder it is in; `folder` names it when the sidebar shows several. */
+    root?: string;
+    folder?: string;
   }
 
   let {
@@ -28,14 +34,21 @@
     onSearchContent,
     vaultRoot = null,
     scopePath = null,
+    nav = null,
+    folderName = null,
   }: {
     files: FileEntry[];
     commands: Command[];
-    onOpenFile: (path: string) => void;
+    /** `root`: the notes folder of a note listed from several (else the open folder). */
+    onOpenFile: (path: string, root?: RootId) => void;
     onRunCommand: (cmd: Command) => void;
-    onSearchContent: (query: string) => Promise<SearchHit[]>;
+    onSearchContent: (query: string, scope: ContentScope) => Promise<ContentHit[]>;
     vaultRoot?: RootId | null;
     scopePath?: string | null;
+    /** Favorites and recent notes of the open notes folder (null before one opens). */
+    nav?: FolderNav | null;
+    /** The open notes folder's name when the sidebar shows several — where semantic search looks, and content search when told to. */
+    folderName?: string | null;
   } = $props();
 
   let fileMatches = $derived<Match<FileEntry>[]>(
@@ -44,10 +57,10 @@
       : palette.term === ""
         ? // Empty query: surface favorites first, then recent (excluding ones already favorited).
           [
-            ...nav.favorites,
-            ...nav.recent.filter((p) => !nav.favorites.includes(p)),
+            ...(nav?.favorites ?? []),
+            ...(nav?.recent ?? []).filter((p) => !nav?.favorites.includes(p)),
           ]
-            .map((p) => files.find((f) => f.path === p))
+            .map((p) => files.find((f) => f.path === p && (f.root === undefined || f.root === vaultRoot)))
             .filter((f): f is FileEntry => f !== undefined)
             .map((item) => ({ item, score: 0, ranges: [] as [number, number][] }))
         : fuzzyMatch(palette.term, files, (f) => f.name),
@@ -56,7 +69,7 @@
     palette.mode === "command" ? fuzzyMatch(palette.term, commands, (c) => c.title) : [],
   );
   // Content search uses the backend IPC (async) — debounce + apply only the last response (race prevention).
-  let contentHits = $state<SearchHit[]>([]);
+  let contentHits = $state<ContentHit[]>([]);
   let searchSeq = 0;
   // True while a content query is debouncing/in flight — lets the list distinguish "searching"
   // from a settled "no matches" (both would otherwise render zero rows).
@@ -69,6 +82,7 @@
       return;
     }
     const term = palette.term;
+    const scope = palette.contentScope;
     if (term === "") {
       contentHits = [];
       searching = false;
@@ -77,7 +91,7 @@
     searching = true;
     const seq = ++searchSeq;
     const t = setTimeout(() => {
-      void onSearchContent(term)
+      void onSearchContent(term, scope)
         .then((hits) => {
           if (seq === searchSeq) {
             contentHits = hits; // apply only the latest request
@@ -155,7 +169,11 @@
     };
   });
 
+  // Why semantic search answered with nothing (a folder kept from AI says so), or null.
+  let semanticRefusal = $state<string | null>(null);
+
   $effect(() => {
+    semanticRefusal = null;
     if (palette.mode !== "semantic") {
       semanticHits = [];
       searching = false;
@@ -183,10 +201,11 @@
             searching = false;
           }
         })
-        .catch(() => {
+        .catch((e) => {
           if (seq === searchSeq) {
             semanticHits = [];
             searching = false;
+            semanticRefusal = typeof e === "string" ? e : null;
           }
         });
     }, 120);
@@ -208,6 +227,11 @@
   let listState = $derived(
     paletteListState({ mode: palette.mode, term: palette.term, count, searching }),
   );
+  let statusText = $derived(
+    semanticRefusal ?? paletteStatusText(listState, palette.mode, folderName, palette.contentScope),
+  );
+  // With several notes folders, content search can look in all of them or only the open one.
+  let scopeSwitch = $derived(palette.mode === "content" && folderName !== null);
 
   function highlight(text: string, ranges: [number, number][]): { t: string; on: boolean }[] {
     const out: { t: string; on: boolean }[] = [];
@@ -234,10 +258,16 @@
 
   function commit(): void {
     if (count === 0) return;
-    if (palette.mode === "file") onOpenFile(fileMatches[palette.selected].item.path);
+    if (palette.mode === "file") {
+      const { path, root } = fileMatches[palette.selected].item;
+      onOpenFile(path, root as RootId | undefined);
+    }
     else if (palette.mode === "command") onRunCommand(cmdMatches[palette.selected].item);
     else if (palette.mode === "semantic") onOpenFile(semanticHits[palette.selected].path);
-    else onOpenFile(contentHits[palette.selected].path);
+    else {
+      const h = contentHits[palette.selected];
+      onOpenFile(h.path, h.rootId);
+    }
     palette.hide();
   }
 
@@ -262,6 +292,10 @@
     } else if (e.key === "Escape") {
       e.preventDefault();
       palette.hide();
+    } else if (e.key === "Tab" && scopeSwitch) {
+      // The palette is modal: Tab switches where content search looks instead of leaving it.
+      e.preventDefault();
+      palette.setContentScope(palette.contentScope === "all" ? "here" : "all");
     }
   }
 </script>
@@ -286,20 +320,33 @@
         class="input"
         data-testid="palette-input"
         use:focusOnMount
-        placeholder={palette.mode === "command"
-          ? "Run a command…"
-          : palette.mode === "content"
-            ? "Search content…"
-            : palette.mode === "semantic"
-              ? "Semantic search…  (scoped to current folder)"
-              : "Search files…  ('>' = commands, '/' = content, '?' = semantic)"}
+        placeholder="Search files…  ('>' = commands, '/' = content, '?' = semantic)"
         value={palette.query}
         oninput={(e) => palette.setQuery(e.currentTarget.value)}
         onkeydown={onKey}
       />
+      {#if scopeSwitch}
+        <div class="scope" role="radiogroup" aria-label="Search in" data-testid="palette-scope">
+          {#each [["all", "All notes folders"], ["here", "This notes folder"]] as [value, label] (value)}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={palette.contentScope === value}
+              class:on={palette.contentScope === value}
+              tabindex="-1"
+              title={value === "here" ? `Only ${folderName}` : undefined}
+              onmousedown={(e) => {
+                e.preventDefault(); // keep typing in the input
+                palette.setContentScope(value as ContentScope);
+              }}
+            >{label}</button>
+          {/each}
+          <kbd class="kbd" aria-hidden="true">Tab</kbd>
+        </div>
+      {/if}
       <ul class="results" data-testid="palette-results">
         {#if palette.mode === "file"}
-          {#each fileMatches as m, i (m.item.path)}
+          {#each fileMatches as m, i (`${m.item.root ?? ""}:${m.item.path}`)}
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <li
               class="row"
@@ -311,12 +358,12 @@
               }}
             >
               <span class="title">
-                {#if nav.isFavorite(m.item.path)}<span class="fav-mark" aria-hidden="true">★</span
+                {#if (m.item.root === undefined || m.item.root === vaultRoot) && nav?.isFavorite(m.item.path)}<span class="fav-mark" aria-hidden="true">★</span
                   >{/if}{#each highlight(m.item.name, m.ranges) as seg}<span class:hl={seg.on}
                     >{seg.t}</span
                   >{/each}
               </span>
-              <span class="sub">{m.item.path}</span>
+              <span class="sub">{#if m.item.folder}<span class="folder">{m.item.folder}</span> · {/if}{m.item.path}</span>
             </li>
           {/each}
         {:else if palette.mode === "command"}
@@ -341,7 +388,7 @@
             </li>
           {/each}
         {:else if palette.mode === "content"}
-          {#each contentHits as h, i (h.path)}
+          {#each contentHits as h, i (`${h.rootId}:${h.path}`)}
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <li
               class="row"
@@ -357,7 +404,7 @@
                 {#each highlight(h.snippet, h.ranges) as seg}<span class:hl={seg.on}>{seg.t}</span
                   >{/each}
               </span>
-              <span class="sub">{h.path}</span>
+              <span class="sub">{#if h.folder}<span class="folder">{h.folder}</span> · {/if}{h.path}</span>
             </li>
           {/each}
         {:else if palette.mode === "semantic"}
@@ -407,10 +454,12 @@
             {/each}
           {/if}
         {/if}
-        {#if !aiNotReady && listState === "searching"}
-          <li class="status-row" role="status">Searching…</li>
-        {:else if !aiNotReady && listState === "no-results"}
-          <li class="status-row" role="status" data-testid="palette-empty">No matches found</li>
+        {#if !aiNotReady && statusText}
+          <li
+            class="status-row"
+            role="status"
+            data-testid={listState === "no-results" ? "palette-empty" : "palette-status"}
+          >{statusText}</li>
         {/if}
       </ul>
     </div>
@@ -454,6 +503,31 @@
     font-size: 1rem;
     outline: none;
   }
+  /* Where content search looks, with several notes folders: two choices, the chosen one marked. */
+  .scope {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-1);
+    padding: var(--sp-1) var(--sp-2);
+    border-bottom: 1px solid var(--border);
+  }
+  .scope button {
+    padding: 0.1rem 0.5rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-s);
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: var(--font-size-small);
+    cursor: pointer;
+  }
+  .scope button:hover { background: var(--bg-hover); }
+  .scope button.on {
+    border-color: var(--border);
+    background: var(--bg-active);
+    color: var(--text-normal);
+  }
+  .scope .kbd { margin-left: auto; }
   .results {
     margin: 0;
     padding: 0.25rem;
@@ -494,6 +568,7 @@
   .hl { color: var(--accent); font-weight: 600; }
   /* --text-muted: secondary path text */
   .sub { color: var(--text-muted); font-size: 0.8rem; }
+  .sub .folder { color: var(--text-normal); }
   .snippet { color: var(--text-normal); font-size: 0.85rem; }
   /* Non-interactive status row (searching / no matches) — muted, not selectable. */
   .status-row {

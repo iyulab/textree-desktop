@@ -4,6 +4,7 @@ pub(crate) mod cloud_auth;
 pub(crate) mod cloud_publish;
 pub(crate) mod commands;
 pub(crate) mod dev_env;
+pub(crate) mod dialogs;
 pub(crate) mod drafts;
 pub(crate) mod fs_ops;
 #[cfg(test)]
@@ -31,6 +32,7 @@ pub(crate) mod publish_assembly;
 pub(crate) mod publish_scope;
 pub(crate) mod publish_secret;
 pub(crate) mod remote;
+pub(crate) mod remote_commands;
 pub(crate) mod search;
 pub(crate) mod secret_store;
 pub(crate) mod state_dir;
@@ -41,6 +43,7 @@ pub(crate) mod vault;
 pub mod vault_paths;
 pub(crate) mod watcher;
 pub(crate) mod workspace;
+pub(crate) mod workspace_commands;
 pub(crate) mod workspace_file;
 
 use host::HostHandle;
@@ -137,9 +140,16 @@ pub fn run() {
         .manage(Arc::new(HostHandle::default()))
         .invoke_handler(tauri::generate_handler![
             tree_commands::open_vault,
+            tree_commands::close_root,
+            tree_commands::reveal_root,
             tree_commands::register_root,
             tree_commands::workspace_list,
             tree_commands::workspace_add,
+            tree_commands::workspace_remove,
+            tree_commands::workspace_reorder,
+            tree_commands::workspace_relabel,
+            tree_commands::workspace_set_ai,
+            tree_commands::workspace_relocate,
             commands::list_tree,
             commands::read_note,
             commands::write_note,
@@ -186,6 +196,7 @@ pub fn run() {
             tree_commands::disconnect_remote,
             tree_commands::notes_backed_up,
             tree_commands::sync_remote,
+            tree_commands::choose_folder,
             tree_commands::publish_site,
             tree_commands::publish_to_cloud,
             cloud_auth::connect_publish,

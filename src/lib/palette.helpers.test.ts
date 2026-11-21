@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { paletteMode, paletteTerm, paletteListState } from "./palette.helpers";
+import {
+  paletteMode,
+  paletteTerm,
+  paletteListState,
+  paletteStatusText,
+  contentSearchFolders,
+} from "./palette.helpers";
 
 describe("paletteMode", () => {
   it("'>' prefix is command", () => expect(paletteMode(">new note")).toBe("command"));
@@ -77,5 +83,37 @@ describe("paletteMode semantic", () => {
     expect(paletteMode(">cmd")).toBe("command");
     expect(paletteMode("/text")).toBe("content");
     expect(paletteMode("file")).toBe("file");
+  });
+});
+
+describe("paletteStatusText", () => {
+  it("says where content and semantic search look when several folders are shown", () => {
+    expect(paletteStatusText("empty", "content", "Work")).toBe("Searches the notes in Work only");
+    expect(paletteStatusText("searching", "semantic", "Work")).toBe("Searching Work…");
+    expect(paletteStatusText("no-results", "content", "Work")).toBe("No matches in Work");
+    expect(paletteStatusText("results", "content", "Work")).toBeNull();
+  });
+  it("keeps the plain rows with one folder, and for finding by name", () => {
+    expect(paletteStatusText("empty", "content", null)).toBeNull();
+    expect(paletteStatusText("searching", "content", null)).toBe("Searching…");
+    expect(paletteStatusText("no-results", "file", "Work")).toBe("No matches found");
+    expect(paletteStatusText("empty", "file", "Work")).toBeNull();
+  });
+});
+
+describe("content search over several notes folders", () => {
+  it("looking in all of them says so only when searching or when nothing matched", () => {
+    expect(paletteStatusText("empty", "content", "Work", "all")).toBeNull();
+    expect(paletteStatusText("searching", "content", "Work", "all")).toBe("Searching all notes folders…");
+    expect(paletteStatusText("no-results", "content", "Work", "all")).toBe("No matches in any notes folder");
+  });
+  it("semantic search stays in the open folder whatever content search is set to", () => {
+    expect(paletteStatusText("empty", "semantic", "Work", "all")).toBe("Searches the notes in Work only");
+  });
+  it("asks every shown folder in sidebar order, or the open one alone", () => {
+    expect(contentSearchFolders("all", ["a", "b", "c"], "b")).toEqual(["a", "b", "c"]);
+    expect(contentSearchFolders("here", ["a", "b", "c"], "b")).toEqual(["b"]);
+    expect(contentSearchFolders("all", ["a"], "a")).toEqual(["a"]);
+    expect(contentSearchFolders("all", ["a", "b"], null)).toEqual([]);
   });
 });

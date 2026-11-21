@@ -5,8 +5,8 @@
 //! that finishes after another folder was opened still reaches its own folder's index, and two
 //! folders open at once (the sidebar's notes folders) do not share one.
 //!
-//! The window shows one folder at a time until the sidebar lists several, so opening a folder keeps
-//! only that one ([`RootTable::keep_only`]). The table itself does not assume it.
+//! A folder is let go when the window closes it ([`RootTable::remove`]); the table itself does not
+//! assume how many are open.
 
 use crate::search::vault_identity;
 use std::collections::HashMap;
@@ -33,16 +33,9 @@ impl<T> RootTable<T> {
         self.lock().insert(vault_identity(root), value)
     }
 
-    /// Keeps `root` and lets every other folder go; what was let go is returned so the caller drops
-    /// it outside the lock.
-    pub fn keep_only(&self, root: &Path) -> Vec<T> {
-        let keep = vault_identity(root);
-        let mut table = self.lock();
-        let others: Vec<PathBuf> = table.keys().filter(|k| **k != keep).cloned().collect();
-        others
-            .into_iter()
-            .filter_map(|k| table.remove(&k))
-            .collect()
+    /// Lets `root` go; what was held for it is returned so the caller drops it outside the lock.
+    pub fn remove(&self, root: &Path) -> Option<T> {
+        self.lock().remove(&vault_identity(root))
     }
 
     /// How many folders are open.
@@ -56,6 +49,37 @@ impl<T: Clone> RootTable<T> {
     /// What is held for `root`, if it is open.
     pub fn of(&self, root: &Path) -> Option<T> {
         self.lock().get(&vault_identity(root)).cloned()
+    }
+}
+
+/// Which opening of each folder is the latest. Opening runs off the main thread, so a folder that
+/// does not answer holds neither the window nor the opening of any other folder; and when the same
+/// folder is opened again, or closed, before an earlier opening got through, that earlier one
+/// installs nothing.
+#[derive(Default)]
+pub struct Openings(Mutex<HashMap<PathBuf, u64>>);
+
+impl Openings {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<PathBuf, u64>> {
+        self.0.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Starts an opening of `root`; the number it returns is what [`Openings::is_latest`] checks.
+    pub fn begin(&self, root: &Path) -> u64 {
+        let mut table = self.lock();
+        let n = table.entry(vault_identity(root)).or_insert(0);
+        *n += 1;
+        *n
+    }
+
+    /// Whether `ticket` is still the latest opening of `root`.
+    pub fn is_latest(&self, root: &Path, ticket: u64) -> bool {
+        self.lock().get(&vault_identity(root)) == Some(&ticket)
+    }
+
+    /// The folder is closed: an opening of it still under way is overtaken.
+    pub fn end(&self, root: &Path) {
+        self.begin(root);
     }
 }
 
@@ -124,16 +148,38 @@ mod tests {
     }
 
     #[test]
-    fn keeping_one_folder_lets_the_others_go() {
+    fn letting_one_folder_go_keeps_the_others() {
         let a = tempfile::tempdir().unwrap();
         let b = tempfile::tempdir().unwrap();
         let table: RootTable<u8> = RootTable::default();
         table.install(a.path(), 1);
         table.install(b.path(), 2);
-        assert_eq!(table.keep_only(b.path()), vec![1]);
-        assert_eq!(table.of(a.path()), None);
+        assert_eq!(table.remove(a.path()), Some(1));
+        assert_eq!(table.remove(a.path()), None);
         assert_eq!(table.of(b.path()), Some(2));
         // Installing again for the same folder replaces and hands back the old value.
         assert_eq!(table.install(b.path(), 3), Some(2));
+    }
+
+    #[test]
+    fn an_opening_is_overtaken_only_by_a_later_one_of_the_same_folder_or_its_closing() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let openings = Openings::default();
+        let first = openings.begin(a.path());
+        let other = openings.begin(b.path());
+        assert!(
+            openings.is_latest(a.path(), first),
+            "another folder's opening does not overtake"
+        );
+        assert!(openings.is_latest(b.path(), other));
+        let again = openings.begin(&a.path().join("."));
+        assert!(
+            !openings.is_latest(a.path(), first),
+            "the same folder opened again"
+        );
+        assert!(openings.is_latest(a.path(), again));
+        openings.end(b.path());
+        assert!(!openings.is_latest(b.path(), other), "closed while opening");
     }
 }

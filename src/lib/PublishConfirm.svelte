@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { RootId } from "./ipc";
   import { onMount } from "svelte";
-  import { commitNotes, publishPreview, type PublishPreview } from "./ipc";
+  import { commitNotes, publishPreview, setPublishChoice, type PublishPreview } from "./ipc";
   import { friendlyError, type FriendlyError } from "./friendlyError.helpers";
-  import { publishScope } from "./publishScope.svelte";
+  import { folders } from "./folderState.svelte";
   import { versionName } from "./addVersion.helpers";
   import {
     canPublish,
@@ -67,7 +67,10 @@
     choosing = true;
     actionFailure = null;
     try {
-      await publishScope.choose("", true);
+      // Through the folder's state when it is open, so its sidebar learns of the choice too.
+      const scope = folders.get(root)?.publish;
+      if (scope) await scope.choose("", true);
+      else await setPublishChoice(root, "", true);
       load();
     } catch (e) {
       actionFailure = friendlyError(e);

@@ -25,6 +25,12 @@ public sealed class VaultManager : IDisposable
     private ServiceProvider? _provider;
     private IServiceScope? _scope;
     private IVault? _vault;
+    // Cancelled when the active vault is torn down — by a switch to another folder or by Forget — so
+    // work still running for it (a reindex) stops instead of bringing its index back.
+    private CancellationTokenSource _lifetime = new();
+    // Writes into the active vault's index still under way — Forget waits for them before removing files.
+    private Work _work = new();
+    private bool _disposed;
 
     public VaultManager(EmbedderSlot embedder, TextreeHostOptions options)
     {
@@ -38,11 +44,16 @@ public sealed class VaultManager : IDisposable
     /// Ensures the active vault targets <paramref name="vaultPath"/>, (re)building the
     /// FluxIndex provider if the path changed. Returns the resolved vault.
     /// </summary>
-    public IVault EnsureVault(string vaultPath)
+    public IVault EnsureVault(string vaultPath) => EnsureVault(vaultPath, CancellationToken.None);
+
+    // As EnsureVault, refusing once `lifetime` is cancelled: work started for a vault that has since been
+    // torn down must not open (and so recreate) its index again. Checked under the same lock Forget takes.
+    private IVault EnsureVault(string vaultPath, CancellationToken lifetime)
     {
         var fullPath = Path.GetFullPath(vaultPath);
         lock (_gate)
         {
+            lifetime.ThrowIfCancellationRequested();
             if (_vault is not null &&
                 string.Equals(_currentVaultPath, fullPath, StringComparison.OrdinalIgnoreCase))
             {
@@ -53,12 +64,7 @@ public sealed class VaultManager : IDisposable
             // If the DI build below throws, the manager must not be left holding a disposed
             // provider/scope, nor a _currentVaultPath that would early-return a dead vault on
             // a same-path retry. New values are assigned only after a fully successful build.
-            _scope?.Dispose();
-            _provider?.Dispose();
-            _scope = null;
-            _provider = null;
-            _vault = null;
-            _currentVaultPath = null;
+            TearDown();
 
             // VaultHash.For owns path canonicalization (it re-runs Path.GetFullPath + casing/
             // separator normalization internally); fullPath here is already normalized purely
@@ -118,9 +124,31 @@ public sealed class VaultManager : IDisposable
         }
     }
 
-    public async Task MemorizeAsync(string vaultPath, string filePath, CancellationToken ct = default)
+    public Task MemorizeAsync(string vaultPath, string filePath, CancellationToken ct = default)
+        => MemorizeAsync(vaultPath, filePath, CancellationToken.None, ct);
+
+    private async Task MemorizeAsync(string vaultPath, string filePath, CancellationToken lifetime, CancellationToken ct)
     {
-        var vault = EnsureVault(vaultPath);
+        IVault vault;
+        Work work;
+        lock (_gate)
+        {
+            vault = EnsureVault(vaultPath, lifetime);
+            work = _work;
+            work.Enter();
+        }
+        try
+        {
+            await MemorizeIntoAsync(vault, filePath, ct);
+        }
+        finally
+        {
+            work.Exit();
+        }
+    }
+
+    private static async Task MemorizeIntoAsync(IVault vault, string filePath, CancellationToken ct)
+    {
         var fullPath = Path.GetFullPath(filePath);
 
         // Re-memorizing replaces the file's previous chunks (chunk ids derive from the path and
@@ -164,15 +192,98 @@ public sealed class VaultManager : IDisposable
             .ToList();
     }
 
+    /// <summary>
+    /// Indexes every note of the vault. Stops (OperationCanceledException) when the vault stops being
+    /// the active one — another folder was opened, or <see cref="Forget"/> dropped it.
+    /// </summary>
     public async Task ReindexAsync(string vaultPath, CancellationToken ct = default)
     {
         var fullPath = Path.GetFullPath(vaultPath);
         EnsureVault(fullPath);
+        CancellationToken lifetime;
+        lock (_gate) lifetime = _lifetime.Token;
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lifetime);
         foreach (var file in Directory.EnumerateFiles(fullPath, "*.md", SearchOption.AllDirectories))
         {
-            ct.ThrowIfCancellationRequested();
-            await MemorizeAsync(fullPath, file, ct);
+            linked.Token.ThrowIfCancellationRequested();
+            try
+            {
+                await MemorizeAsync(fullPath, file, lifetime, linked.Token);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException && lifetime.IsCancellationRequested)
+            {
+                // The store was closed under the note being indexed: the vault was dropped, not broken.
+                throw new OperationCanceledException("The folder stopped being indexed.", ex, lifetime);
+            }
         }
+    }
+
+    /// <summary>
+    /// Drops what the host keeps for a folder — its vector store and FluxFeed's copies — so a folder the
+    /// person keeps from AI leaves nothing derived from its notes behind. Stops work running for it first.
+    /// Returns whether nothing is left (false: a file could not be removed — it is retried next time).
+    /// </summary>
+    public async Task<bool> ForgetAsync(string vaultPath)
+    {
+        var fullPath = Path.GetFullPath(vaultPath);
+        var hash = VaultHash.For(fullPath);
+
+        // First stop work for it and let a note already being written finish — a write still under
+        // way would otherwise put files back after they were removed.
+        Work? draining = null;
+        lock (_gate)
+        {
+            if (IsCurrent(fullPath))
+            {
+                _lifetime.Cancel();
+                draining = _work;
+            }
+        }
+        if (draining is not null)
+            await Task.WhenAny(draining.Idle, Task.Delay(TimeSpan.FromSeconds(30)));
+
+        lock (_gate)
+        {
+            if (IsCurrent(fullPath))
+                TearDown();
+
+            // Pooled SQLite connections keep the file open (on Windows, undeletable) after the provider is gone.
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+
+            var db = Path.Combine(_options.IndexRoot, $"{hash}.db");
+            var gone = true;
+            foreach (var file in new[] { db, db + "-wal", db + "-shm", db + "-journal" })
+                if (File.Exists(file)) gone &= TryDelete(() => File.Delete(file));
+            var store = Path.Combine(_options.IndexRoot, hash);
+            if (Directory.Exists(store))
+                gone &= TryDelete(() => Directory.Delete(store, recursive: true));
+            return gone;
+        }
+    }
+
+    private static bool TryDelete(Action delete)
+    {
+        try { delete(); return true; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private bool IsCurrent(string fullPath)
+        => string.Equals(_currentVaultPath, fullPath, StringComparison.OrdinalIgnoreCase);
+
+    // Caller holds _gate. Ends the active vault's lifetime and releases it.
+    private void TearDown()
+    {
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+        _lifetime = new CancellationTokenSource();
+        _work = new Work();
+        _scope?.Dispose();
+        _provider?.Dispose();
+        _scope = null;
+        _provider = null;
+        _vault = null;
+        _currentVaultPath = null;
     }
 
     private static string Snippet(string? content)
@@ -189,13 +300,43 @@ public sealed class VaultManager : IDisposable
     {
         lock (_gate)
         {
-            _scope?.Dispose();
-            _provider?.Dispose();
-            _scope = null;
-            _provider = null;
-            _vault = null;
-            _currentVaultPath = null;
+            if (_disposed) return;
+            _disposed = true;
+            TearDown();
+            _lifetime.Dispose();
         }
+    }
+}
+
+// Counts writes in flight; Idle completes when none are.
+internal sealed class Work
+{
+    private readonly Lock _gate = new();
+    private int _count;
+    private TaskCompletionSource _idle = Done();
+
+    public void Enter()
+    {
+        lock (_gate)
+            if (_count++ == 0) _idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    public void Exit()
+    {
+        lock (_gate)
+            if (--_count == 0) _idle.TrySetResult();
+    }
+
+    public Task Idle
+    {
+        get { lock (_gate) return _idle.Task; }
+    }
+
+    private static TaskCompletionSource Done()
+    {
+        var done = new TaskCompletionSource();
+        done.SetResult();
+        return done;
     }
 }
 

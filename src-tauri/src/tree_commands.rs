@@ -45,18 +45,42 @@ async fn folder_resolved(root: &str, rel: &str) -> Result<String, String> {
 }
 
 /// Opening a folder reads all of it; one that does not answer must not hold the window, or keep
-/// the person from opening another instead (the later opening wins — see
-/// [`commands::open_vault`]).
+/// the person from opening another meanwhile (see [`commands::open_vault`]).
 #[tauri::command]
 pub async fn open_vault(
     root_id: String,
     app: AppHandle,
 ) -> Result<Vec<commands::TreeItem>, String> {
-    let ticket = commands::begin_open();
     let root = crate::workspace::path_of(&root_id)?;
+    let ticket = commands::begin_open(&root);
     off_main(move || {
         commands::open_vault(root.clone(), root_id, app, ticket)
             .and_then(|tree| commands::tree_out(&root, tree))
+    })
+    .await
+}
+
+/// Closes a folder the window no longer shows (see [`commands::close_root`]).
+#[tauri::command]
+pub async fn close_root(root_id: String, app: AppHandle) -> Result<(), String> {
+    let root = crate::workspace::path_of(&root_id)?;
+    off_main(move || {
+        commands::close_root(root, app);
+        Ok(())
+    })
+    .await
+}
+
+/// Shows a notes folder in the system's file manager. The path is worked out here — the window
+/// names the folder only by its id.
+#[tauri::command]
+pub async fn reveal_root(root_id: String, app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt as _;
+    let root = crate::workspace::path_of(&root_id)?;
+    off_main(move || {
+        app.opener()
+            .reveal_item_in_dir(&root)
+            .map_err(|e| e.to_string())
     })
     .await
 }
@@ -490,7 +514,7 @@ pub async fn remote_connection(
     root_id: String,
 ) -> Result<Option<crate::remote::Connection>, String> {
     let root = crate::workspace::path_of(&root_id)?;
-    off_main(move || commands::remote_connection(root)).await
+    off_main(move || crate::remote_commands::remote_connection(root)).await
 }
 
 /// Reaching the remote is network: it must not hold the window.
@@ -502,19 +526,19 @@ pub async fn connect_remote(
     secret: String,
 ) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
-    off_main(move || commands::connect_remote(root, url, username, secret)).await
+    off_main(move || crate::remote_commands::connect_remote(root, url, username, secret)).await
 }
 
 #[tauri::command]
 pub async fn notes_backed_up(root_id: String) -> Result<bool, String> {
     let root = crate::workspace::path_of(&root_id)?;
-    off_main(move || commands::notes_backed_up(root)).await
+    off_main(move || crate::remote_commands::notes_backed_up(root)).await
 }
 
 #[tauri::command]
 pub async fn disconnect_remote(root_id: String) -> Result<(), String> {
     let root = crate::workspace::path_of(&root_id)?;
-    off_main(move || commands::disconnect_remote(root)).await
+    off_main(move || crate::remote_commands::disconnect_remote(root)).await
 }
 
 /// Takes the turns of the notes it writes itself (see [`crate::remote::apply`]).
@@ -525,7 +549,7 @@ pub async fn sync_remote(
 ) -> Result<crate::remote::Exchange, String> {
     let root = crate::workspace::path_of(&root_id)?;
     let locks = locks.inner().clone();
-    off_main(move || commands::sync_remote(root, &locks)).await
+    off_main(move || crate::remote_commands::sync_remote(root, &locks)).await
 }
 
 #[tauri::command]
@@ -568,18 +592,92 @@ pub async fn set_aside_sidecar(root_id: String, rel: String) -> Result<String, S
 
 /// The sidebar's notes folders: read from the person's home folder, which may be a network drive.
 #[tauri::command]
-pub async fn workspace_list() -> Result<commands::WorkspaceOut, String> {
-    off_main(commands::workspace_list).await
+pub async fn workspace_list() -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(crate::workspace_commands::workspace_list).await
 }
 
-/// Keeps an opened folder in the list (see [`commands::workspace_add`]).
+/// Keeps an opened folder in the list (see [`crate::workspace_commands::workspace_add`]).
 #[tauri::command]
-pub async fn workspace_add(path: String) -> Result<commands::WorkspaceOut, String> {
-    off_main(move || commands::workspace_add(path)).await
+pub async fn workspace_add(
+    path: String,
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(move || crate::workspace_commands::workspace_add(path)).await
+}
+
+/// Takes a notes folder out of the sidebar (see [`crate::workspace_commands::workspace_remove`]).
+#[tauri::command]
+pub async fn workspace_remove(
+    id: String,
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(move || crate::workspace_commands::workspace_remove(id)).await
+}
+
+/// Puts the sidebar's notes folders in order (see [`crate::workspace_commands::workspace_reorder`]).
+#[tauri::command]
+pub async fn workspace_reorder(
+    ids: Vec<String>,
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(move || crate::workspace_commands::workspace_reorder(ids)).await
+}
+
+/// Points a notes folder of the sidebar at where it now is (see [`crate::workspace_commands::workspace_relocate`]).
+#[tauri::command]
+pub async fn workspace_relocate(
+    id: String,
+    path: String,
+) -> Result<crate::workspace_commands::Relocated, String> {
+    off_main(move || crate::workspace_commands::workspace_relocate(id, path)).await
+}
+
+/// Turns a notes folder's use with AI on or off (see [`crate::workspace_commands::workspace_set_ai`]).
+#[tauri::command]
+pub async fn workspace_set_ai(
+    id: String,
+    ai: bool,
+    app: AppHandle,
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    use tauri::Manager;
+    let host = app.state::<Arc<crate::host::HostHandle>>().inner().clone();
+    off_main(move || {
+        let out = crate::workspace_commands::workspace_set_ai(id.clone(), ai)?;
+        // Kept from AI: what was already indexed from the folder goes too. Used again: the folder
+        // open now is indexed again (another one is, when it is opened).
+        if let Some(root) = out.roots.iter().find(|r| r.id == id) {
+            let vault = host.indexed_name(&root.path);
+            // Not waited on: the menu answers at once, the helper works behind it.
+            tauri::async_runtime::spawn_blocking(move || {
+                if ai {
+                    if host.is_current_vault(&vault) {
+                        crate::host::reindex_vault(&host, &vault);
+                    }
+                } else {
+                    crate::host::forget_vault(&host, &vault);
+                }
+            });
+        }
+        Ok(out)
+    })
+    .await
+}
+
+/// Names a notes folder in the sidebar (see [`crate::workspace_commands::workspace_relabel`]).
+#[tauri::command]
+pub async fn workspace_relabel(
+    id: String,
+    label: String,
+) -> Result<crate::workspace_commands::WorkspaceOut, String> {
+    off_main(move || crate::workspace_commands::workspace_relabel(id, label)).await
 }
 
 /// The first folder is made and seeded in Documents, which may be redirected to a synced drive.
 #[tauri::command]
 pub async fn ensure_default_vault(app: AppHandle) -> Result<DefaultVault, String> {
     off_main(move || commands::ensure_default_vault(app)).await
+}
+
+/// Shows the folder dialog titled `title` and gives the folder picked — `None` when it was closed
+/// without one. Off the main thread: the dialog waits for the person there.
+#[tauri::command]
+pub async fn choose_folder(window: tauri::Window, title: String) -> Result<Option<String>, String> {
+    off_main(move || crate::dialogs::folder(&window, &title)).await
 }

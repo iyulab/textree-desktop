@@ -11,12 +11,15 @@
   import type { TreeNode } from "./ipc";
   import type { FriendlyError } from "./friendlyError.helpers";
   import { tree } from "./tree.svelte";
+  import { tabStop } from "./treeFocus.helpers";
   import Icon from "./Icon.svelte";
-  import { publishScope } from "./publishScope.svelte";
-  import { mergeOrder, nav } from "./nav.svelte";
+  import type { FolderState } from "./folderState.svelte";
+  import { mergeOrder } from "./nav.svelte";
   import Self from "./TreeView.svelte";
+  import { decodePicked, encodePicked, samePicked, type PickedNode } from "./treeDrag.helpers";
 
   let {
+    folder,
     nodes,
     parentPath,
     onselect,
@@ -27,10 +30,13 @@
     onfavorite,
     oncommitrename,
     oncancelrename,
+    onforeign,
     editingPath = null,
     selectedPath = null,
     top = false,
   }: {
+    /** The notes folder these nodes belong to: its order, favorites, publish choices, collapsed folders. */
+    folder: FolderState;
     nodes: TreeNode[];
     /** Parent path of this node list (manual order key). The top level is the vault root. */
     parentPath: string;
@@ -49,6 +55,8 @@
     oncommitrename: (node: TreeNode, name: string) => Promise<FriendlyError | null>;
     /** Cancel the inline rename (Escape). */
     oncancelrename: () => void;
+    /** A node of another notes folder was put down here: nothing moves. */
+    onforeign: () => void;
     /** Path of the node currently being inline-renamed (null = none). */
     editingPath?: string | null;
     /** Currently selected node path (for highlighting). Propagated to all descendants. */
@@ -58,11 +66,11 @@
   } = $props();
 
   /** Derived array of sibling nodes ordered by nav.order[parentPath]. Original order if not registered in order. */
-  let ordered = $derived(mergeOrder(nodes, nav.order[parentPath] ?? [], (n) => n.path));
+  let ordered = $derived(mergeOrder(nodes, folder.nav.order[parentPath] ?? [], (n) => n.path));
 
   function onDragStart(e: DragEvent, node: TreeNode) {
     if (!e.dataTransfer) return;
-    e.dataTransfer.setData(DRAG_MIME, node.path);
+    e.dataTransfer.setData(DRAG_MIME, encodePicked({ root: folder.root, path: node.path }));
     e.dataTransfer.effectAllowed = "move";
   }
 
@@ -83,10 +91,19 @@
     e.preventDefault();
     e.stopPropagation();
     dragOverPath = null;
-    const src = e.dataTransfer?.getData(DRAG_MIME);
-    if (!src) return;
-    if (node.kind === "container") onmove(src, node.path); // move into container directory
-    else onadopt(src, node.path); // leaf → child after promotion
+    putDown(decodePicked(e.dataTransfer?.getData(DRAG_MIME)), node);
+  }
+
+  /** A node picked up (dragged or cut) is put down on `node`: moved into a container, or made a
+   *  child of a leaf. Never into another notes folder. */
+  function putDown(picked: PickedNode | null, node: TreeNode) {
+    if (!picked) return;
+    if (picked.root !== folder.root) {
+      onforeign();
+      return;
+    }
+    if (node.kind === "container") onmove(picked.path, node.path); // move into container directory
+    else onadopt(picked.path, node.path); // leaf → child after promotion
   }
 
   // ── Keyboard navigation (WAI-ARIA tree) ──────────────────────────
@@ -100,7 +117,7 @@
   function focusItem(el: HTMLElement | null | undefined, path?: string) {
     if (!el) return;
     el.focus();
-    if (path) tree.setFocused(path);
+    if (path) tree.setFocused({ root: folder.root, path });
   }
 
   function siblingItem(el: HTMLElement, delta: number) {
@@ -131,22 +148,20 @@
   function onKeydown(e: KeyboardEvent, node: TreeNode) {
     const el = e.currentTarget as HTMLElement;
     const isContainer = node.kind === "container" && node.children.length > 0;
-    const open = isContainer && !tree.isCollapsed(node.path);
+    const open = isContainer && !folder.folds.isCollapsed(node.path);
 
     // Keyboard move: Ctrl+X cut → Ctrl+V at target (container = move, leaf = adopt).
     // Accessibility path equivalent to DnD (WCAG 2.1.1).
     if (e.ctrlKey && (e.key === "x" || e.key === "X")) {
       e.preventDefault();
-      tree.setCut(node.path);
+      tree.setCut({ root: folder.root, path: node.path });
       return;
     }
     if (e.ctrlKey && (e.key === "v" || e.key === "V")) {
       e.preventDefault();
-      const src = tree.cut;
-      if (!src) return;
+      const picked = tree.cut;
       tree.setCut(null);
-      if (node.kind === "container") onmove(src, node.path);
-      else onadopt(src, node.path);
+      putDown(picked, node);
       return;
     }
 
@@ -161,12 +176,12 @@
         break;
       case "ArrowRight":
         e.preventDefault();
-        if (isContainer && !open) tree.expand(node.path);
+        if (isContainer && !open) folder.folds.expand(node.path);
         else if (open) focusItem(firstChildItem(el));
         break;
       case "ArrowLeft":
         e.preventDefault();
-        if (open) tree.collapse(node.path);
+        if (open) folder.folds.collapse(node.path);
         else focusItem(parentItem(el));
         break;
       case "Home":
@@ -203,9 +218,7 @@
 
   /** roving tabindex: only the focused node is 0; if unset, the top-level first item is 0. */
   function tabFor(path: string, index: number): number {
-    if (tree.focused === path) return 0;
-    if (tree.focused === null && top && index === 0) return 0;
-    return -1;
+    return tabStop(tree.focused, folder.root, path, top, index);
   }
 
   // ── Inline rename (T2) ──────────────────────────────────────────
@@ -264,17 +277,17 @@
        Enter) would act on that note instead of the one the person had focused. -->
   {#each ordered as node, i (node.path)}
     {@const hasChildren = node.children.length > 0}
-    {@const open = !tree.isCollapsed(node.path)}
+    {@const open = !folder.folds.isCollapsed(node.path)}
     {@const isContainer = node.kind === "container" && hasChildren}
-    {@const fav = nav.isFavorite(node.path)}
-    {@const published = publishScope.isIncluded(node.path)}
+    {@const fav = folder.nav.isFavorite(node.path)}
+    {@const published = folder.publish.isIncluded(node.path)}
     <li>
       <div
         class="row"
         class:selected={node.path === selectedPath}
         class:drop-over={node.path === dragOverPath}
         class:drop-leaf={node.path === dragOverPath && node.kind === "leaf"}
-        class:cut={node.path === tree.cut}
+        class:cut={samePicked(tree.cut, { root: folder.root, path: node.path })}
       >
         {#if isContainer}
           <button
@@ -282,7 +295,7 @@
             class:open
             onclick={(e) => {
               e.stopPropagation();
-              tree.toggle(node.path);
+              folder.folds.toggle(node.path);
             }}
             aria-label={open ? "Collapse" : "Expand"}
             tabindex="-1"
@@ -314,7 +327,7 @@
             ondragleave={() => onDragLeave(node)}
             ondrop={(e) => onDrop(e, node)}
             onclick={() => onselect(node)}
-            onfocus={() => tree.setFocused(node.path)}
+            onfocus={() => tree.setFocused({ root: folder.root, path: node.path })}
             onkeydown={(e) => onKeydown(e, node)}
           >
             <span class="icon"><Icon name={node.kind === "container" ? "folder" : "file-text"} size={15} /></span>
@@ -351,6 +364,7 @@
       {/if}
       {#if hasChildren && open}
         <Self
+          {folder}
           nodes={node.children}
           parentPath={node.path}
           {onselect}
@@ -361,6 +375,7 @@
           {onfavorite}
           {oncommitrename}
           {oncancelrename}
+          {onforeign}
           {editingPath}
           {selectedPath}
         />

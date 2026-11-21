@@ -234,10 +234,31 @@ pub fn write_out(assembly: &Assembly, dir: &Path) -> std::io::Result<()> {
 
 /// Records what was published as a revision whose only parent is the previous publish — so the
 /// published history never reaches back into the notes' history.
+///
+/// The record is the repository's, as every `refs/textree/*` reference is, and names files by their
+/// path in the repository: a notes folder inside it replaces only its own part, and what another
+/// folder of the same repository published stays recorded.
 pub fn record_published(prepared: &VaultRepo, assembly: &Assembly) -> Result<(), String> {
+    if assembly.files.is_empty() {
+        return Ok(());
+    }
     let repo = prepared.repo();
     let err = |e: git2::Error| e.message().to_string();
-    let mut tree: Option<git2::Oid> = None;
+    let own = prepared.path_in_repo(Path::new(""));
+    let previous = repo
+        .refname_to_id(PUBLISHED_REF)
+        .ok()
+        .and_then(|id| repo.find_commit(id).ok())
+        .and_then(|c| c.tree().ok());
+    // The folder's earlier record goes; the rest of the repository's is carried.
+    let mut tree: Option<git2::Oid> = match &previous {
+        Some(t) if own.components().next().is_some() => Some(if t.get_path(&own).is_ok() {
+            git_engine::tree_with_file(repo, Some(t), &own, None).map_err(err)?
+        } else {
+            t.id()
+        }),
+        _ => None, // the folder is the repository: its record is the whole record
+    };
     for (rel, bytes) in &assembly.files {
         let blob = repo.blob(bytes).map_err(err)?;
         let base = match tree {
@@ -245,8 +266,13 @@ pub fn record_published(prepared: &VaultRepo, assembly: &Assembly) -> Result<(),
             None => None,
         };
         tree = Some(
-            git_engine::tree_with_file(repo, base.as_ref(), Path::new(rel), Some(blob))
-                .map_err(err)?,
+            git_engine::tree_with_file(
+                repo,
+                base.as_ref(),
+                &prepared.path_in_repo(Path::new(rel)),
+                Some(blob),
+            )
+            .map_err(err)?,
         );
     }
     let Some(tree) = tree else { return Ok(()) };
@@ -505,6 +531,50 @@ mod tests {
         let a = assembled(tmp.path());
         assert_eq!(paths(&a), vec!["a.md", "shared/img.png"]);
         assert_eq!(a.withheld, vec!["private/photo.png"]);
+    }
+
+    #[test]
+    fn folders_of_one_repository_keep_each_their_own_published_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        git2::Repository::init(tmp.path()).unwrap();
+        let (here, beside) = (tmp.path().join("here"), tmp.path().join("beside"));
+        record(&here, "a.md", b"# here");
+        record(&beside, "a.md", b"# beside");
+        choose(&here, "", true);
+        choose(&beside, "", true);
+        let published = |root: &Path| {
+            let prepared = crate::git_engine::prepare(root).unwrap();
+            record_published(&prepared, &assembled(root)).unwrap();
+        };
+        published(&here);
+        published(&beside);
+        record(&here, "a.md", b"# here again");
+        published(&here);
+
+        let repo = git2::Repository::open(tmp.path()).unwrap();
+        let tree = repo
+            .find_commit(repo.refname_to_id(PUBLISHED_REF).unwrap())
+            .unwrap()
+            .tree()
+            .unwrap();
+        let text = |p: &str| {
+            let blob = tree
+                .get_path(Path::new(p))
+                .unwrap()
+                .to_object(&repo)
+                .unwrap();
+            String::from_utf8(blob.as_blob().unwrap().content().to_vec()).unwrap()
+        };
+        assert_eq!(text("here/a.md"), "# here again");
+        assert_eq!(
+            text("beside/a.md"),
+            "# beside",
+            "the other folder's record stays"
+        );
+        assert!(
+            tree.get_name("a.md").is_none(),
+            "nothing under a folder-relative name"
+        );
     }
 
     #[test]

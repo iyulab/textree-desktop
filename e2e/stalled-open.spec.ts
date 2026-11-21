@@ -6,6 +6,7 @@ import {
   removeTempVault,
   stallOpening,
   releaseOpening,
+  tauriInvoke,
 } from "./helpers";
 
 // A folder that does not answer when opened — a disconnected network or sync drive. The window must
@@ -51,5 +52,43 @@ test("a folder that does not answer when opened: another one can be opened meanw
     releaseOpening();
     removeTempVault(slow);
     removeTempVault(quick);
+  }
+});
+
+test("a folder of the sidebar that does not answer says it is opening, can be stopped, and the others open", async () => {
+  const main = createTempVault({ "main-note.md": "# main\n" });
+  const slow = createTempVault({ "slow-note.md": "# slow\n" });
+  const after = createTempVault({ "after-note.md": "# after\n" });
+  const name = (p: string) => new RegExp(p.split(/[/\\]/).pop()!);
+  const section = (p: string) => page.getByRole("region", { name: name(p) });
+  const bridge = (n: string) =>
+    page.evaluate((x) => (window as unknown as { __textreeTest: Record<string, () => Promise<void>> }).__textreeTest[x](), n);
+  try {
+    await loadVault(page, main);
+    await tauriInvoke(page, "workspace_add", { path: slow });
+    await tauriInvoke(page, "workspace_add", { path: after });
+    stallOpening(slow);
+    const listing = bridge("openList"); // not awaited: the slow folder holds it until stopped
+
+    await expect(section(slow)).toContainText("Opening…");
+    await section(slow).getByRole("button", { name: "Stop" }).click();
+    await expect(section(slow)).toContainText("Not opened");
+    await listing;
+    await expect(section(after).getByRole("treeitem", { name: /after-note/ })).toBeVisible();
+
+    releaseOpening();
+    await section(slow).getByRole("button", { name: "Open" }).click();
+    await expect(section(slow).getByRole("treeitem", { name: /slow-note/ })).toBeVisible();
+  } finally {
+    releaseOpening();
+    for (const p of [slow, after]) {
+      const ws = await tauriInvoke<{ roots: { id: string; path: string }[] }>(page, "workspace_list");
+      const r = ws.roots.find((x) => x.path === p);
+      if (r) await tauriInvoke(page, "workspace_remove", { id: r.id }).catch(() => {});
+    }
+    await loadVault(page, main);
+    removeTempVault(main);
+    removeTempVault(slow);
+    removeTempVault(after);
   }
 });

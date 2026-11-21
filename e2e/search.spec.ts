@@ -61,3 +61,20 @@ test("body full-text search: '/' mode body match + snippet", async () => {
     removeTempVault(vault);
   }
 });
+
+test("a folder opened again while it is open still finds what its notes say", async () => {
+  const vault = createTempVault({ "memo.md": `# memo\n\nagain ${TOKEN} here.\n` });
+  try {
+    await loadVault(page, vault);
+    await loadVault(page, vault); // the same folder, chosen again
+
+    await page.keyboard.press("Control+p");
+    const input = page.getByTestId("palette-input");
+    await expect(input).toBeVisible();
+    await input.fill(`/${TOKEN}`);
+    await expect(page.getByTestId("palette-item").first()).toContainText(TOKEN, { timeout: 10_000 });
+    await page.keyboard.press("Escape");
+  } finally {
+    removeTempVault(vault);
+  }
+});
