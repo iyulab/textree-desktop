@@ -69,7 +69,7 @@
 
   {#if open}
     <div class="backdrop" role="presentation" onclick={() => (open = false)} onkeydown={() => {}}></div>
-    <div class="menu" role="menu" aria-label={name}>
+    <div class="menu" class:from-start={trigger === "chevron"} role="menu" aria-label={name}>
       {#if onrename}
         {@const rename = onrename}
         <button class="item" role="menuitem" onclick={() => choose(rename)}>Rename in sidebar…</button>
@@ -152,6 +152,11 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-m);
     box-shadow: var(--shadow-m);
+  }
+  /* ▾ sits right after a name near the sidebar's start: the menu opens rightwards from it. */
+  .menu.from-start {
+    left: 0;
+    right: auto;
   }
   .item {
     width: 100%;
