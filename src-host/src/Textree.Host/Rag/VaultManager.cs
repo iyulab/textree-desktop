@@ -247,18 +247,41 @@ public sealed class VaultManager : IDisposable
             if (IsCurrent(fullPath))
                 TearDown();
 
-            // Pooled SQLite connections keep the file open (on Windows, undeletable) after the provider is gone.
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-
             var db = Path.Combine(_options.IndexRoot, $"{hash}.db");
-            var gone = true;
-            foreach (var file in new[] { db, db + "-wal", db + "-shm", db + "-journal" })
-                if (File.Exists(file)) gone &= TryDelete(() => File.Delete(file));
             var store = Path.Combine(_options.IndexRoot, hash);
-            if (Directory.Exists(store))
-                gone &= TryDelete(() => Directory.Delete(store, recursive: true));
-            return gone;
+            // On Windows a file still open cannot be removed, and a handle can outlive the provider by a
+            // moment (a reindex stopped mid-write): pooled SQLite connections, and statements released
+            // only by their finalizers. Each try releases those and removes what it can; about a second in all.
+            for (var attempt = 0; ; attempt++)
+            {
+                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                var gone = true;
+                foreach (var file in new[] { db, db + "-wal", db + "-shm", db + "-journal" })
+                    if (File.Exists(file)) gone &= TryDelete(() => File.Delete(file));
+                if (Directory.Exists(store))
+                    gone &= TryDelete(() => DeleteTree(store));
+                if (gone || attempt == RemoveTries - 1) return gone;
+                Thread.Sleep(RemoveWait);
+            }
         }
+    }
+
+    private const int RemoveTries = 10;
+    private static readonly TimeSpan RemoveWait = TimeSpan.FromMilliseconds(100);
+
+    // The copies keep a git repository, whose object files git makes read-only — on Windows a
+    // read-only file is not removed with its folder, so each is made writable first.
+    private static void DeleteTree(string dir)
+    {
+        foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+        {
+            var attributes = File.GetAttributes(file);
+            if (attributes.HasFlag(FileAttributes.ReadOnly))
+                File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+        }
+        Directory.Delete(dir, recursive: true);
     }
 
     private static bool TryDelete(Action delete)
