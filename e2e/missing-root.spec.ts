@@ -84,7 +84,7 @@ test("a folder that was moved is shown as not found, and Locate… brings it bac
     answerFolderDialog(moved);
     await gone.getByRole("button", { name: "Locate…" }).first().click();
     const back = section(/Field notes/);
-    await expect(back.getByRole("treeitem", { name: /field note/ })).toBeVisible();
+    await expect(back.getByRole("treeitem", { name: /field-note/ })).toBeVisible();
     await expect(back).not.toContainText("Notes folder not found");
     const listed = await tauriInvoke<Listed>(page, "workspace_list");
     expect(listed.roots.some((r) => r.path === away)).toBe(false);
@@ -113,7 +113,7 @@ test("a folder put back is found again, and one taken out of the sidebar is left
 
     await moveFolder(elsewhere, drive); // the drive is connected again
     await bridge("retryMissing");
-    await expect(section(name).getByRole("treeitem", { name: /on drive/ })).toBeVisible();
+    await expect(section(name).getByRole("treeitem", { name: /on-drive/ })).toBeVisible();
 
     await loadVault(page, main);
     await moveFolder(drive, elsewhere);
