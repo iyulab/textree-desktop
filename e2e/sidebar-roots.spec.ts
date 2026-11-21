@@ -152,8 +152,9 @@ test("a notes folder is named and moved in the sidebar, and the folder on disk k
 
     await section(/Home notes/).getByRole("button", { name: /Notes folder menu/ }).click();
     await page.getByRole("menuitem", { name: "Move up" }).click();
-    const names = await page.locator(".root-section").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
-    expect(names[0]).toBe("Home notes");
+    await expect
+      .poll(() => page.locator(".root-section").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label"))))
+      .toEqual(["Home notes", expect.stringMatching(/textree-e2e-/)]);
   } finally {
     await loadVault(page, a);
     removeTempVault(a);
