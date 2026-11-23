@@ -85,6 +85,12 @@ export const E2E_DEFAULT_VAULT_BASE = join(tmpdir(), "textree-e2e-default-vault"
 export const E2E_PERSONAL_BASE = join(tmpdir(), "textree-e2e-personal");
 
 /**
+ * Base directory the launcher forces the note-text search indexes under (`<base>/index/<digest>`).
+ * Keep in sync with SEARCH_INDEX_BASE in scripts/dev-e2e.mjs.
+ */
+export const E2E_SEARCH_INDEX_BASE = join(tmpdir(), "textree-e2e-search-index");
+
+/**
  * How often the app's watcher watchdog probes under `npm run dev:e2e` (production: five minutes).
  * Keep in sync with WATCHDOG_INTERVAL_MS in scripts/dev-e2e.mjs.
  */

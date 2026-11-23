@@ -74,6 +74,14 @@ pub fn vault_identity(vault_root: &Path) -> PathBuf {
     std::fs::canonicalize(vault_root).unwrap_or_else(|_| vault_root.to_path_buf())
 }
 
+/// Where the search indexes are kept: the app's data directory — or, for a development or test run,
+/// the base `TEXTREE_SEARCH_INDEX_BASE` names, so a run does not leave indexes in the person's own.
+pub fn index_base(app_data: PathBuf) -> PathBuf {
+    crate::dev_env::var_os("TEXTREE_SEARCH_INDEX_BASE")
+        .map(PathBuf::from)
+        .unwrap_or(app_data)
+}
+
 /// Vault root (canonical) → index directory under app data.
 pub fn index_dir(app_data: &Path, vault_root: &Path) -> PathBuf {
     let mut hasher = Sha256::new();

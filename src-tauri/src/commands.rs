@@ -844,7 +844,8 @@ pub fn open_vault(
         .clone()
         .unwrap_or_else(|| Arc::new(IndexHandle::default()));
     let host = app.state::<Arc<host::HostHandle>>().inner().clone();
-    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let index_base =
+        crate::search::index_base(app.path().app_data_dir().map_err(|e| e.to_string())?);
     let emitter = app.clone();
     let watched = root.clone();
     let watched_id = root_id.clone();
@@ -893,7 +894,7 @@ pub fn open_vault(
 
     // Install the index (app data directory, per-vault hash). On failure only search is disabled —
     // graceful degradation (editing, tree, and file search remain intact without the index).
-    let dir = crate::search::index_dir(&app_data, &root_path);
+    let dir = crate::search::index_dir(&index_base, &root_path);
     // The index it already has is not waited on: a full build holds it for as long as it runs, and
     // a busy index is one that is there.
     let has_index = open_index.is_some()

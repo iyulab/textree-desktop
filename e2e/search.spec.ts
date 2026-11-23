@@ -1,5 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { connectToApp, loadVault, createTempVault, removeTempVault } from "./helpers";
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { connectToApp, loadVault, createTempVault, removeTempVault, E2E_SEARCH_INDEX_BASE } from "./helpers";
 
 /**
  * P1b — Body full-text search. Opens the palette with Ctrl+P, queries with the '/'
@@ -57,6 +59,10 @@ test("body full-text search: '/' mode body match + snippet", async () => {
     await page.keyboard.press("Enter");
     await expect(page.getByTestId("palette-overlay")).toHaveCount(0);
     await expect(page.locator(".title")).toContainText("memo");
+
+    // The index the search read is the run's own, not one in the application data of whoever ran it.
+    const indexes = join(E2E_SEARCH_INDEX_BASE, "index");
+    expect(existsSync(indexes) && readdirSync(indexes).length > 0, `no search index under ${indexes}`).toBe(true);
   } finally {
     removeTempVault(vault);
   }
