@@ -30,6 +30,8 @@ public sealed class VaultManager : IDisposable
     private CancellationTokenSource _lifetime = new();
     // Writes into the active vault's index still under way — Forget waits for them before removing files.
     private Work _work = new();
+    // Whether the active store has been opened (its table checked) since it was built.
+    private bool _opened;
     private bool _disposed;
 
     public VaultManager(EmbedderSlot embedder, TextreeHostOptions options)
@@ -127,24 +129,68 @@ public sealed class VaultManager : IDisposable
     public Task MemorizeAsync(string vaultPath, string filePath, CancellationToken ct = default)
         => MemorizeAsync(vaultPath, filePath, CancellationToken.None, ct);
 
-    private async Task MemorizeAsync(string vaultPath, string filePath, CancellationToken lifetime, CancellationToken ct)
-    {
-        IVault vault;
-        Work work;
-        lock (_gate)
+    private Task MemorizeAsync(string vaultPath, string filePath, CancellationToken lifetime, CancellationToken ct)
+        => Rebuilding(vaultPath, lifetime, async () =>
         {
-            vault = EnsureVault(vaultPath, lifetime);
-            work = _work;
-            work.Enter();
-        }
+            IVault vault;
+            Work work;
+            lock (_gate)
+            {
+                vault = EnsureVault(vaultPath, lifetime);
+                work = _work;
+                work.Enter();
+            }
+            try
+            {
+                await MemorizeIntoAsync(vault, filePath, ct);
+            }
+            finally
+            {
+                work.Exit();
+            }
+            return true;
+        });
+
+    /// <summary>
+    /// Opens the folder's store, then runs <paramref name="operation"/>. A store made at another vector
+    /// width that holds vectors (<see cref="SQLiteVecDimensionMismatchException"/>, thrown on opening)
+    /// is removed and made again: the index is derived from the notes and rebuilt from them, so dropping
+    /// it loses nothing — while writing into it would fail on every note.
+    /// </summary>
+    private async Task<T> Rebuilding<T>(string vaultPath, CancellationToken lifetime, Func<Task<T>> operation)
+    {
+        var fullPath = Path.GetFullPath(vaultPath);
         try
         {
-            await MemorizeIntoAsync(vault, filePath, ct);
+            await OpenAsync(fullPath, lifetime);
         }
-        finally
+        catch (SQLiteVecDimensionMismatchException)
         {
-            work.Exit();
+            lock (_gate)
+            {
+                lifetime.ThrowIfCancellationRequested();
+                if (!RemoveIndex(fullPath))
+                    throw;
+            }
+            await OpenAsync(fullPath, lifetime);
         }
+        return await operation();
+    }
+
+    // Builds the folder's store if needed and opens it once: the vector store checks its table on first
+    // use, so a mismatch shows here — typed — rather than inside the first note being indexed.
+    private async Task OpenAsync(string fullPath, CancellationToken lifetime)
+    {
+        IVectorStore? fresh;
+        lock (_gate)
+        {
+            EnsureVault(fullPath, lifetime);
+            fresh = _opened ? null : _scope!.ServiceProvider.GetRequiredService<IVectorStore>();
+        }
+        if (fresh is null) return;
+        await fresh.GetDistinctDocumentCountAsync(lifetime);
+        lock (_gate)
+            if (IsCurrent(fullPath)) _opened = true;
     }
 
     private static async Task MemorizeIntoAsync(IVault vault, string filePath, CancellationToken ct)
@@ -165,8 +211,16 @@ public sealed class VaultManager : IDisposable
         }
     }
 
-    public async Task<IReadOnlyList<SearchHit>> SearchAsync(
+    /// <summary>
+    /// Searches the folder's index. A search that fails throws — it never comes back as "nothing
+    /// found", which would tell the person their notes hold nothing on the subject.
+    /// </summary>
+    public Task<IReadOnlyList<SearchHit>> SearchAsync(
         string vaultPath, string query, string scopePath, int limit, CancellationToken ct = default)
+        => Rebuilding(vaultPath, CancellationToken.None, () => SearchOnceAsync(vaultPath, query, scopePath, limit, ct));
+
+    private async Task<IReadOnlyList<SearchHit>> SearchOnceAsync(
+        string vaultPath, string query, string scopePath, int limit, CancellationToken ct)
     {
         var fullVaultPath = Path.GetFullPath(vaultPath);
         var vault = EnsureVault(fullVaultPath);
@@ -199,7 +253,7 @@ public sealed class VaultManager : IDisposable
     public async Task ReindexAsync(string vaultPath, CancellationToken ct = default)
     {
         var fullPath = Path.GetFullPath(vaultPath);
-        EnsureVault(fullPath);
+        await Rebuilding(fullPath, CancellationToken.None, () => Task.FromResult(true));
         CancellationToken lifetime;
         lock (_gate) lifetime = _lifetime.Token;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lifetime);
@@ -226,7 +280,6 @@ public sealed class VaultManager : IDisposable
     public async Task<bool> ForgetAsync(string vaultPath)
     {
         var fullPath = Path.GetFullPath(vaultPath);
-        var hash = VaultHash.For(fullPath);
 
         // First stop work for it and let a note already being written finish — a write still under
         // way would otherwise put files back after they were removed.
@@ -242,29 +295,34 @@ public sealed class VaultManager : IDisposable
         if (draining is not null)
             await Task.WhenAny(draining.Idle, Task.Delay(TimeSpan.FromSeconds(30)));
 
-        lock (_gate)
-        {
-            if (IsCurrent(fullPath))
-                TearDown();
+        lock (_gate) return RemoveIndex(fullPath);
+    }
 
-            var db = Path.Combine(_options.IndexRoot, $"{hash}.db");
-            var store = Path.Combine(_options.IndexRoot, hash);
-            // On Windows a file still open cannot be removed, and a handle can outlive the provider by a
-            // moment (a reindex stopped mid-write): pooled SQLite connections, and statements released
-            // only by their finalizers. Each try releases those and removes what it can; about a second in all.
-            for (var attempt = 0; ; attempt++)
-            {
-                Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                var gone = true;
-                foreach (var file in new[] { db, db + "-wal", db + "-shm", db + "-journal" })
-                    if (File.Exists(file)) gone &= TryDelete(() => File.Delete(file));
-                if (Directory.Exists(store))
-                    gone &= TryDelete(() => DeleteTree(store));
-                if (gone || attempt == RemoveTries - 1) return gone;
-                Thread.Sleep(RemoveWait);
-            }
+    // Caller holds _gate. Releases the folder's store if it is the active one and removes its files —
+    // the vector store and FluxFeed's copies. Returns whether nothing is left.
+    private bool RemoveIndex(string fullPath)
+    {
+        if (IsCurrent(fullPath))
+            TearDown();
+
+        var hash = VaultHash.For(fullPath);
+        var db = Path.Combine(_options.IndexRoot, $"{hash}.db");
+        var store = Path.Combine(_options.IndexRoot, hash);
+        // On Windows a file still open cannot be removed, and a handle can outlive the provider by a
+        // moment (a reindex stopped mid-write): pooled SQLite connections, and statements released
+        // only by their finalizers. Each try releases those and removes what it can; about a second in all.
+        for (var attempt = 0; ; attempt++)
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            var gone = true;
+            foreach (var file in new[] { db, db + "-wal", db + "-shm", db + "-journal" })
+                if (File.Exists(file)) gone &= TryDelete(() => File.Delete(file));
+            if (Directory.Exists(store))
+                gone &= TryDelete(() => DeleteTree(store));
+            if (gone || attempt == RemoveTries - 1) return gone;
+            Thread.Sleep(RemoveWait);
         }
     }
 
@@ -307,6 +365,7 @@ public sealed class VaultManager : IDisposable
         _provider = null;
         _vault = null;
         _currentVaultPath = null;
+        _opened = false;
     }
 
     private static string Snippet(string? content)

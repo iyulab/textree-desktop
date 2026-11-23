@@ -143,6 +143,7 @@ _ = Task.Run(async () =>
 var mgr = app.Services.GetRequiredService<VaultManager>();
 var indexLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Textree.Host.Index");
 var reindexLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Textree.Host.Reindex");
+var searchLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Textree.Host.Search");
 var genLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Textree.Host.Generation");
 
 // ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -283,7 +284,18 @@ app.MapPost("/search", async (SearchRequest req, CancellationToken ct) =>
     if (!mgr.EmbedderReady)
         return Results.Ok(new SearchResponse([], "warming"));
 
-    var hits = await mgr.SearchAsync(req.VaultPath, req.Query, req.ScopePath, req.Limit, ct);
+    IReadOnlyList<SearchHit> hits;
+    try
+    {
+        hits = await mgr.SearchAsync(req.VaultPath, req.Query, req.ScopePath, req.Limit, ct);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        // The index could not be read (its store lost the vector extension, a broken file): say so
+        // rather than answer "nothing found", which would read as the notes holding nothing on it.
+        searchLog.LogError(ex, "Search failed for {Vault}", req.VaultPath);
+        return Results.Json(new SearchResponse([], "error"), statusCode: StatusCodes.Status500InternalServerError);
+    }
     var results = hits
         .Select(h => new SearchHitDto(h.SourcePath, h.Snippet, h.Score))
         .ToList();
