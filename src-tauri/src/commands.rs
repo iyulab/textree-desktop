@@ -933,7 +933,7 @@ pub fn open_vault(
 
     // Background semantic reindex. Runs without asking for the same reason as the per-note
     // index above: it only reads, and changes nothing a person wrote.
-    host.set_current_vault(root.clone());
+    host.add_open_vault(root.clone());
     let vault_str = root.clone();
     tauri::async_runtime::spawn_blocking(move || {
         host::reindex_vault(&host, &vault_str);
@@ -959,6 +959,8 @@ pub fn close_root(root: String, app: AppHandle) {
         )
     };
     drop((index, watcher)); // the watch stops as it drops, outside the lock
+    app.state::<Arc<host::HostHandle>>()
+        .remove_open_vault(&root);
     log::info!("close_root: {root}");
 }
 

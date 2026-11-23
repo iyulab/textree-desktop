@@ -99,7 +99,9 @@ pub struct HostHandle {
     /// (spawn_host increments it); mixing them would cancel in-flight asks on
     /// every host respawn, and a new ask would invalidate the health poller.
     ask_generation: AtomicU64,
-    current_vault: Mutex<Option<String>>,
+    /// The folders open in the window, each by the spelling it was opened under — the name the AI
+    /// helper keeps its index by. The helper keeps a store for each, so any of them is indexed.
+    open_vaults: Mutex<Vec<String>>,
     /// Read-only tracking of the host's generatorReady flag (from /health).
     /// Does NOT gate the Ready transition — embedder_ready controls that.
     generator_ready: Mutex<bool>,
@@ -117,6 +119,12 @@ pub struct HostHandle {
     /// bundled model, or the BYO preset string ("ollama"/"gpustack"/"custom"). Surfaced via
     /// host_status so Settings can show "Running on: ...".
     active_provider: Mutex<String>,
+}
+
+/// Whether two spellings name one folder.
+fn same_folder(a: &str, b: &str) -> bool {
+    use crate::search::vault_identity;
+    vault_identity(Path::new(a)) == vault_identity(Path::new(b))
 }
 
 impl HostHandle {
@@ -158,29 +166,38 @@ impl HostHandle {
             .unwrap_or_else(|e| e.into_inner())
             .clone()
     }
-    pub fn set_current_vault(&self, vault: String) {
-        *self.current_vault.lock().unwrap_or_else(|e| e.into_inner()) = Some(vault);
+    /// Records that `vault` is open in the window (again: the spelling it was first opened under stays).
+    pub fn add_open_vault(&self, vault: String) {
+        let mut open = self.open_vaults.lock().unwrap_or_else(|e| e.into_inner());
+        if !open.iter().any(|o| same_folder(o, &vault)) {
+            open.push(vault);
+        }
     }
-    pub fn current_vault(&self) -> Option<String> {
-        self.current_vault
+    /// Records that `vault` is no longer open in the window.
+    pub fn remove_open_vault(&self, vault: &str) {
+        self.open_vaults
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|o| !same_folder(o, vault));
+    }
+    /// The folders open in the window.
+    pub fn open_vaults(&self) -> Vec<String> {
+        self.open_vaults
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
     }
-    /// The name the AI helper knows `vault` by: the open folder's own spelling when `vault` is that
-    /// folder, else `vault` as given.
+    /// The name the AI helper knows `vault` by: the open folder's own spelling when `vault` is one of
+    /// them, else `vault` as given.
     pub fn indexed_name(&self, vault: &str) -> String {
-        match self.current_vault() {
-            Some(open) if self.is_current_vault(vault) => open,
-            _ => vault.to_string(),
-        }
+        self.open_vaults()
+            .into_iter()
+            .find(|o| same_folder(o, vault))
+            .unwrap_or_else(|| vault.to_string())
     }
-    /// Whether `vault` is the folder open now, however its path is spelled.
-    pub fn is_current_vault(&self, vault: &str) -> bool {
-        use crate::search::vault_identity;
-        self.current_vault().is_some_and(|open| {
-            vault_identity(Path::new(&open)) == vault_identity(Path::new(vault))
-        })
+    /// Whether `vault` is open in the window, however its path is spelled.
+    pub fn is_open_vault(&self, vault: &str) -> bool {
+        self.open_vaults().iter().any(|o| same_folder(o, vault))
     }
     /// Bump the ask-stream generation and return the new value.
     /// Used by `ask` for single-flight cancellation (independent of health-poll `generation`).
@@ -473,9 +490,9 @@ fn poll_health(handle: Arc<HostHandle>, host: Client, my_gen: u64) {
             PollAction::BecomeReady => {
                 ready = true;
                 handle.set_status(HostStatus::Ready);
-                // Re-trigger the reindex the open vault missed while the host was Starting
+                // Re-trigger the reindex the open folders missed while the host was Starting
                 // (lazy spawn means the host is never Ready at the first open_vault).
-                if let Some(vault) = handle.current_vault() {
+                for vault in handle.open_vaults() {
                     reindex_vault(&handle, &vault);
                 }
                 // A folder kept from AI while the helper was not running still has its index.
@@ -1124,15 +1141,13 @@ pub async fn ask(
 /// Fire-and-forget single-note index. Silent on any error (degrade, don't block).
 /// Runs without asking because it only reads: nothing a person wrote is altered.
 ///
-/// Only for a note of the folder open now. A save can finish after the person has opened another
-/// folder; the host keeps one folder's index active at a time, and a request for another folder
-/// makes it switch — dropping the one in use, a reindex of it included. The note reaches its own
-/// folder's index when that folder is opened again and reindexed.
+/// Only for a note of a folder open in the window: a save can finish after its folder was closed,
+/// and the note then reaches the folder's index when it is opened again and reindexed.
 pub fn index_note(handle: &HostHandle, vault: &str, path: &str) {
     if !crate::workspace_commands::used_with_ai(vault) {
         return; // the person keeps this folder from AI
     }
-    if !handle.is_current_vault(vault) {
+    if !handle.is_open_vault(vault) {
         log::debug!("[host] {path} is a note of a folder that is not open; not indexed");
         return;
     }
@@ -1345,7 +1360,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let open = d.path().to_string_lossy().into_owned();
         let handle = HostHandle::default();
-        handle.set_current_vault(open.clone());
+        handle.add_open_vault(open.clone());
 
         let other_spelling = d.path().join(".").to_string_lossy().into_owned();
         assert_eq!(handle.indexed_name(&other_spelling), open);
@@ -1354,31 +1369,36 @@ mod tests {
     }
 
     #[test]
-    fn current_vault_round_trips() {
-        let handle = HostHandle::default();
-        assert!(handle.current_vault().is_none());
-        handle.set_current_vault("D:/vault".into());
-        assert_eq!(handle.current_vault().as_deref(), Some("D:/vault"));
-    }
-
-    #[test]
-    fn only_the_current_vault_is_indexed() {
+    fn every_folder_open_in_the_window_is_indexed_until_it_is_closed() {
         let a = tempfile::TempDir::new().unwrap();
         let b = tempfile::TempDir::new().unwrap();
         let (a_str, b_str) = (a.path().to_string_lossy(), b.path().to_string_lossy());
         let handle = HostHandle::default();
-        assert!(!handle.is_current_vault(&a_str), "no vault is open yet");
+        assert!(!handle.is_open_vault(&a_str), "no folder is open yet");
 
-        handle.set_current_vault(b_str.to_string());
+        handle.add_open_vault(a_str.to_string());
+        handle.add_open_vault(b_str.to_string());
         assert!(
-            !handle.is_current_vault(&a_str),
-            "a note of the folder open before is not indexed"
+            handle.is_open_vault(&a_str),
+            "opening another folder keeps the first one"
         );
-        assert!(handle.is_current_vault(&b_str));
-        // The same folder spelled another way is still the same folder.
-        let detour = b.path().join("sub").join("..");
+        assert!(handle.is_open_vault(&b_str));
+        // The same folder spelled another way is still the same folder, opened once.
         std::fs::create_dir(b.path().join("sub")).unwrap();
-        assert!(handle.is_current_vault(&detour.to_string_lossy()));
+        let detour = b.path().join("sub").join("..");
+        assert!(handle.is_open_vault(&detour.to_string_lossy()));
+        handle.add_open_vault(detour.to_string_lossy().into_owned());
+        assert_eq!(
+            handle.open_vaults(),
+            vec![a_str.to_string(), b_str.to_string()]
+        );
+
+        handle.remove_open_vault(&a_str);
+        assert!(
+            !handle.is_open_vault(&a_str),
+            "a closed folder's notes are not indexed"
+        );
+        assert_eq!(handle.open_vaults(), vec![b_str.to_string()]);
     }
 
     #[test]

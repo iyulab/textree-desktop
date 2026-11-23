@@ -11,27 +11,17 @@ using IEmbeddingService = FluxIndex.Core.Application.Interfaces.IEmbeddingServic
 namespace Textree.Host.Rag;
 
 /// <summary>
-/// Owns the single active vault. The embedder is shared (loaded once); each distinct
-/// vault path gets its own vector store DB (keyed by <see cref="VaultHash"/>) under
-/// <c>IndexRoot/&lt;hash&gt;.db</c>. Switching vaults rebuilds the provider for the new path.
+/// Keeps an index for each notes folder the app works with. The embedder is shared (loaded once);
+/// each folder gets its own vector store DB (keyed by <see cref="VaultHash"/>) under
+/// <c>IndexRoot/&lt;hash&gt;.db</c>, opened the first time the folder is asked about and kept open,
+/// so indexing or searching one folder never closes another's store or stops work running for it.
 /// </summary>
 public sealed class VaultManager : IDisposable
 {
     private readonly EmbedderSlot _embedder;
     private readonly TextreeHostOptions _options;
     private readonly Lock _gate = new();
-
-    private string? _currentVaultPath;
-    private ServiceProvider? _provider;
-    private IServiceScope? _scope;
-    private IVault? _vault;
-    // Cancelled when the active vault is torn down — by a switch to another folder or by Forget — so
-    // work still running for it (a reindex) stops instead of bringing its index back.
-    private CancellationTokenSource _lifetime = new();
-    // Writes into the active vault's index still under way — Forget waits for them before removing files.
-    private Work _work = new();
-    // Whether the active store has been opened (its table checked) since it was built.
-    private bool _opened;
+    private readonly Dictionary<string, FolderStore> _stores = new(StringComparer.OrdinalIgnoreCase);
     private bool _disposed;
 
     public VaultManager(EmbedderSlot embedder, TextreeHostOptions options)
@@ -42,155 +32,237 @@ public sealed class VaultManager : IDisposable
 
     public bool EmbedderReady => _embedder.Ready;
 
-    /// <summary>
-    /// Ensures the active vault targets <paramref name="vaultPath"/>, (re)building the
-    /// FluxIndex provider if the path changed. Returns the resolved vault.
-    /// </summary>
-    public IVault EnsureVault(string vaultPath) => EnsureVault(vaultPath, CancellationToken.None);
+    public Task MemorizeAsync(string vaultPath, string filePath, CancellationToken ct = default)
+        => WriteAsync(Path.GetFullPath(vaultPath), null, async store => await MemorizeIntoAsync(store.Vault, filePath, ct), ct);
 
-    // As EnsureVault, refusing once `lifetime` is cancelled: work started for a vault that has since been
-    // torn down must not open (and so recreate) its index again. Checked under the same lock Forget takes.
-    private IVault EnsureVault(string vaultPath, CancellationToken lifetime)
+    /// <summary>
+    /// Searches the folder's index. A search that fails throws — it never comes back as "nothing
+    /// found", which would tell the person their notes hold nothing on the subject. An index made at
+    /// another vector width is not rebuilt here: a search only reads.
+    /// </summary>
+    public async Task<IReadOnlyList<SearchHit>> SearchAsync(
+        string vaultPath, string query, string scopePath, int limit, CancellationToken ct = default)
+    {
+        var fullVaultPath = Path.GetFullPath(vaultPath);
+        var store = await OpenAsync(fullVaultPath, rebuild: false, ct);
+        var options = new VaultSearchOptions
+        {
+            TopK = limit,
+            MinScore = 0,
+            PathScope = [Path.GetFullPath(scopePath)],
+            IncludeContent = true,
+            IncludeMetadata = true,
+        };
+
+        var result = await store.Vault.SearchAsync(query, options, ct);
+        return result.Items
+            .Select(i => new SearchHit(
+                // Return vault-relative POSIX path (e.g. "notes/x.md") rather than the
+                // absolute Windows path stored in the vector index. The Rust/frontend layers
+                // expect vault-relative POSIX paths: absolute paths break self-exclusion in
+                // the Related notes panel and note navigation from semantic search hits.
+                Path.GetRelativePath(fullVaultPath, i.SourcePath).Replace('\\', '/'),
+                Snippet(i.Content),
+                i.Score))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Indexes every note of the folder. Stops (OperationCanceledException) when the folder's index is
+    /// dropped meanwhile (<see cref="ForgetAsync"/>); work for other folders does not stop it.
+    /// </summary>
+    public async Task ReindexAsync(string vaultPath, CancellationToken ct = default)
     {
         var fullPath = Path.GetFullPath(vaultPath);
-        lock (_gate)
+        var store = await OpenAsync(fullPath, rebuild: true, ct);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, store.Lifetime.Token);
+        foreach (var file in Directory.EnumerateFiles(fullPath, "*.md", SearchOption.AllDirectories))
         {
-            lifetime.ThrowIfCancellationRequested();
-            if (_vault is not null &&
-                string.Equals(_currentVaultPath, fullPath, StringComparison.OrdinalIgnoreCase))
+            linked.Token.ThrowIfCancellationRequested();
+            try
             {
-                return _vault;
+                await WriteAsync(fullPath, store, s => MemorizeIntoAsync(s.Vault, file, linked.Token), linked.Token);
             }
-
-            // Tear down the previous vault and clear the fields BEFORE building the new one.
-            // If the DI build below throws, the manager must not be left holding a disposed
-            // provider/scope, nor a _currentVaultPath that would early-return a dead vault on
-            // a same-path retry. New values are assigned only after a fully successful build.
-            TearDown();
-
-            // VaultHash.For owns path canonicalization (it re-runs Path.GetFullPath + casing/
-            // separator normalization internally); fullPath here is already normalized purely
-            // for the cache-key comparison above. The repeated GetFullPath is harmless.
-            var hash = VaultHash.For(fullPath);
-            Directory.CreateDirectory(_options.IndexRoot);
-            var dbPath = Path.Combine(_options.IndexRoot, $"{hash}.db");
-            // FluxFeed's VaultBasePath is its STORAGE root (extracted/refined .md, per-entry
-            // dirs), NOT the content tree. Keep it under IndexRoot — distinct from the user's
-            // notes — so the store never pollutes the content folder. Memorized files are
-            // referenced by absolute path, so scope filtering still targets the real note paths.
-            var vaultStore = Path.Combine(_options.IndexRoot, hash);
-
-            // Identity binds the vectors to the embedding model. The fingerprint is set on the
-            // SQLite options so the vec table name is deterministic; FluxFeed binds the store to
-            // the embedder's identity itself and refuses a store bound to a different embedder.
-            var embedding = _embedder.Service;
-            var identity = embedding.GetIdentity();
-
-            var services = new ServiceCollection();
-            services.AddLogging();
-
-            // Shared embedder (singleton): determines the vector store dimension.
-            services.TryAddSingleton<IEmbeddingService>(embedding);
-
-            services.AddSQLiteVecVectorStore(o =>
+            catch (Exception ex) when (ex is not OperationCanceledException && store.Lifetime.IsCancellationRequested)
             {
-                o.DatabasePath = dbPath;
-                o.VectorDimension = embedding.GetEmbeddingDimension();
-                o.UseSQLiteVec = true;
-                o.AutoMigrate = true;
-                o.EmbeddingFingerprint = identity.Fingerprint;
-            });
-
-            services.AddFileFlux();
-
-            services.AddFileVaultWithFluxIndex(o =>
-            {
-                o.VaultBasePath = vaultStore;
-                // No Generic Host here (bare ServiceProvider): the memorize pipeline runs inline
-                // inside MemorizeAsync, so there is no background worker that would need starting.
-                o.EnableBackgroundProcessing = false;
-                o.Chunking.Strategy = "Hierarchical";
-                o.Chunking.MaxChunkSize = 1024;
-                o.Chunking.OverlapSize = 128;
-            });
-
-            var provider = services.BuildServiceProvider();
-            var scope = provider.CreateScope();
-            var vault = scope.ServiceProvider.GetRequiredService<IVault>();
-
-            _provider = provider;
-            _scope = scope;
-            _vault = vault;
-            _currentVaultPath = fullPath;
-            return vault;
+                // The store was closed under the note being indexed: the folder was dropped, not broken.
+                throw new OperationCanceledException("The folder stopped being indexed.", ex, store.Lifetime.Token);
+            }
         }
     }
 
-    public Task MemorizeAsync(string vaultPath, string filePath, CancellationToken ct = default)
-        => MemorizeAsync(vaultPath, filePath, CancellationToken.None, ct);
+    /// <summary>
+    /// Drops what the host keeps for a folder — its vector store and FluxFeed's copies — so a folder the
+    /// person keeps from AI leaves nothing derived from its notes behind. Stops work running for it first.
+    /// Returns whether nothing is left (false: a file could not be removed — it is retried next time).
+    /// </summary>
+    public async Task<bool> ForgetAsync(string vaultPath)
+    {
+        var fullPath = Path.GetFullPath(vaultPath);
 
-    private Task MemorizeAsync(string vaultPath, string filePath, CancellationToken lifetime, CancellationToken ct)
-        => Rebuilding(vaultPath, lifetime, async () =>
+        // First stop work for it and let a note already being written finish — a write still under
+        // way would otherwise put files back after they were removed.
+        FolderStore? store;
+        lock (_gate)
         {
-            IVault vault;
-            Work work;
-            lock (_gate)
-            {
-                vault = EnsureVault(vaultPath, lifetime);
-                work = _work;
-                work.Enter();
-            }
+            if (_stores.Remove(fullPath, out store))
+                store.Lifetime.Cancel();
+        }
+        if (store is not null)
+        {
+            await Task.WhenAny(store.Work.Idle, Task.Delay(TimeSpan.FromSeconds(30)));
+            store.Dispose();
+        }
+        return RemoveFiles(fullPath);
+    }
+
+    // Runs one write on the folder's store, counted so ForgetAsync can wait for it. `known` is the store
+    // a reindex opened: its notes go into that store or nowhere — once it is dropped the reindex stops
+    // rather than open the index again.
+    private async Task WriteAsync(string fullPath, FolderStore? known, Func<FolderStore, Task> write, CancellationToken ct)
+    {
+        var store = known ?? await OpenAsync(fullPath, rebuild: true, ct);
+        lock (_gate)
+        {
+            store.Lifetime.Token.ThrowIfCancellationRequested();
+            store.Work.Enter();
+        }
+        try
+        {
+            await write(store);
+        }
+        finally
+        {
+            store.Work.Exit();
+        }
+    }
+
+    /// <summary>
+    /// The folder's store, built and opened once. Opening checks the vector table, so a table of the
+    /// same model at another width that holds vectors shows here, typed
+    /// (<see cref="SQLiteVecDimensionMismatchException"/>). With <paramref name="rebuild"/> (a write),
+    /// that index is removed and made again: it is derived from the notes and rebuilt from them, so
+    /// dropping it loses nothing — while every write into it would fail. Callers on one folder open it
+    /// one at a time, so a store just made again is not removed by a second caller.
+    /// </summary>
+    private async Task<FolderStore> OpenAsync(string fullPath, bool rebuild, CancellationToken ct)
+    {
+        while (true)
+        {
+            var store = StoreFor(fullPath);
+            if (store.Opened) return store;
+            await store.Opening.WaitAsync(ct);
             try
             {
-                await MemorizeIntoAsync(vault, filePath, ct);
+                if (store.Opened) return store;
+                // Made again (or dropped) by a caller before this one: open what is there now.
+                if (!IsCurrent(fullPath, store)) continue;
+                try
+                {
+                    await store.Provider.GetRequiredService<IVectorStore>().GetDistinctDocumentCountAsync(ct);
+                }
+                catch (SQLiteVecDimensionMismatchException) when (rebuild)
+                {
+                    lock (_gate)
+                    {
+                        if (IsCurrent(fullPath, store))
+                            _stores.Remove(fullPath);
+                    }
+                    store.Lifetime.Cancel();
+                    store.Dispose();
+                    if (!RemoveFiles(fullPath))
+                        throw;
+                    rebuild = false; // the store made next is new: a mismatch there is not this one
+                    continue;
+                }
+                store.Opened = true;
+                return store;
             }
             finally
             {
-                work.Exit();
+                store.Opening.Release();
             }
-            return true;
-        });
-
-    /// <summary>
-    /// Opens the folder's store, then runs <paramref name="operation"/>. A store made at another vector
-    /// width that holds vectors (<see cref="SQLiteVecDimensionMismatchException"/>, thrown on opening)
-    /// is removed and made again: the index is derived from the notes and rebuilt from them, so dropping
-    /// it loses nothing — while writing into it would fail on every note.
-    /// </summary>
-    private async Task<T> Rebuilding<T>(string vaultPath, CancellationToken lifetime, Func<Task<T>> operation)
-    {
-        var fullPath = Path.GetFullPath(vaultPath);
-        try
-        {
-            await OpenAsync(fullPath, lifetime);
         }
-        catch (SQLiteVecDimensionMismatchException)
-        {
-            lock (_gate)
-            {
-                lifetime.ThrowIfCancellationRequested();
-                if (!RemoveIndex(fullPath))
-                    throw;
-            }
-            await OpenAsync(fullPath, lifetime);
-        }
-        return await operation();
     }
 
-    // Builds the folder's store if needed and opens it once: the vector store checks its table on first
-    // use, so a mismatch shows here — typed — rather than inside the first note being indexed.
-    private async Task OpenAsync(string fullPath, CancellationToken lifetime)
+    private bool IsCurrent(string fullPath, FolderStore store)
     {
-        IVectorStore? fresh;
+        lock (_gate)
+            return _stores.TryGetValue(fullPath, out var current) && current == store;
+    }
+
+    // The folder's store, built if there is none yet.
+    private FolderStore StoreFor(string fullPath)
+    {
         lock (_gate)
         {
-            EnsureVault(fullPath, lifetime);
-            fresh = _opened ? null : _scope!.ServiceProvider.GetRequiredService<IVectorStore>();
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_stores.TryGetValue(fullPath, out var existing))
+                return existing;
+            var store = Build(fullPath);
+            _stores[fullPath] = store;
+            return store;
         }
-        if (fresh is null) return;
-        await fresh.GetDistinctDocumentCountAsync(lifetime);
-        lock (_gate)
-            if (IsCurrent(fullPath)) _opened = true;
+    }
+
+    private FolderStore Build(string fullPath)
+    {
+        // VaultHash.For owns path canonicalization (it re-runs Path.GetFullPath + casing/
+        // separator normalization internally).
+        var hash = VaultHash.For(fullPath);
+        Directory.CreateDirectory(_options.IndexRoot);
+        var dbPath = Path.Combine(_options.IndexRoot, $"{hash}.db");
+        // FluxFeed's VaultBasePath is its STORAGE root (extracted/refined .md, per-entry
+        // dirs), NOT the content tree. Keep it under IndexRoot — distinct from the user's
+        // notes — so the store never pollutes the content folder. Memorized files are
+        // referenced by absolute path, so scope filtering still targets the real note paths.
+        var vaultStore = Path.Combine(_options.IndexRoot, hash);
+
+        // Identity binds the vectors to the embedding model. The fingerprint is set on the
+        // SQLite options so the vec table name is deterministic; FluxFeed binds the store to
+        // the embedder's identity itself and refuses a store bound to a different embedder.
+        var embedding = _embedder.Service;
+        var identity = embedding.GetIdentity();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        // Shared embedder (singleton): determines the vector store dimension.
+        services.TryAddSingleton<IEmbeddingService>(embedding);
+
+        services.AddSQLiteVecVectorStore(o =>
+        {
+            o.DatabasePath = dbPath;
+            o.VectorDimension = embedding.GetEmbeddingDimension();
+            o.UseSQLiteVec = true;
+            o.AutoMigrate = true;
+            o.EmbeddingFingerprint = identity.Fingerprint;
+        });
+
+        services.AddFileFlux();
+
+        services.AddFileVaultWithFluxIndex(o =>
+        {
+            o.VaultBasePath = vaultStore;
+            // No Generic Host here (bare ServiceProvider): the memorize pipeline runs inline
+            // inside MemorizeAsync, so there is no background worker that would need starting.
+            o.EnableBackgroundProcessing = false;
+            o.Chunking.Strategy = "Hierarchical";
+            o.Chunking.MaxChunkSize = 1024;
+            o.Chunking.OverlapSize = 128;
+        });
+
+        var provider = services.BuildServiceProvider();
+        try
+        {
+            var scope = provider.CreateScope();
+            return new FolderStore(provider, scope, scope.ServiceProvider.GetRequiredService<IVault>());
+        }
+        catch
+        {
+            provider.Dispose();
+            throw;
+        }
     }
 
     private static async Task MemorizeIntoAsync(IVault vault, string filePath, CancellationToken ct)
@@ -211,100 +283,10 @@ public sealed class VaultManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// Searches the folder's index. A search that fails throws — it never comes back as "nothing
-    /// found", which would tell the person their notes hold nothing on the subject.
-    /// </summary>
-    public Task<IReadOnlyList<SearchHit>> SearchAsync(
-        string vaultPath, string query, string scopePath, int limit, CancellationToken ct = default)
-        => Rebuilding(vaultPath, CancellationToken.None, () => SearchOnceAsync(vaultPath, query, scopePath, limit, ct));
-
-    private async Task<IReadOnlyList<SearchHit>> SearchOnceAsync(
-        string vaultPath, string query, string scopePath, int limit, CancellationToken ct)
+    // Removes the folder's index files — the vector store and FluxFeed's copies. Its store must be
+    // closed already. Returns whether nothing is left.
+    private bool RemoveFiles(string fullPath)
     {
-        var fullVaultPath = Path.GetFullPath(vaultPath);
-        var vault = EnsureVault(fullVaultPath);
-        var options = new VaultSearchOptions
-        {
-            TopK = limit,
-            MinScore = 0,
-            PathScope = [Path.GetFullPath(scopePath)],
-            IncludeContent = true,
-            IncludeMetadata = true,
-        };
-
-        var result = await vault.SearchAsync(query, options, ct);
-        return result.Items
-            .Select(i => new SearchHit(
-                // Return vault-relative POSIX path (e.g. "notes/x.md") rather than the
-                // absolute Windows path stored in the vector index. The Rust/frontend layers
-                // expect vault-relative POSIX paths: absolute paths break self-exclusion in
-                // the Related notes panel and note navigation from semantic search hits.
-                Path.GetRelativePath(fullVaultPath, i.SourcePath).Replace('\\', '/'),
-                Snippet(i.Content),
-                i.Score))
-            .ToList();
-    }
-
-    /// <summary>
-    /// Indexes every note of the vault. Stops (OperationCanceledException) when the vault stops being
-    /// the active one — another folder was opened, or <see cref="Forget"/> dropped it.
-    /// </summary>
-    public async Task ReindexAsync(string vaultPath, CancellationToken ct = default)
-    {
-        var fullPath = Path.GetFullPath(vaultPath);
-        await Rebuilding(fullPath, CancellationToken.None, () => Task.FromResult(true));
-        CancellationToken lifetime;
-        lock (_gate) lifetime = _lifetime.Token;
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, lifetime);
-        foreach (var file in Directory.EnumerateFiles(fullPath, "*.md", SearchOption.AllDirectories))
-        {
-            linked.Token.ThrowIfCancellationRequested();
-            try
-            {
-                await MemorizeAsync(fullPath, file, lifetime, linked.Token);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException && lifetime.IsCancellationRequested)
-            {
-                // The store was closed under the note being indexed: the vault was dropped, not broken.
-                throw new OperationCanceledException("The folder stopped being indexed.", ex, lifetime);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Drops what the host keeps for a folder — its vector store and FluxFeed's copies — so a folder the
-    /// person keeps from AI leaves nothing derived from its notes behind. Stops work running for it first.
-    /// Returns whether nothing is left (false: a file could not be removed — it is retried next time).
-    /// </summary>
-    public async Task<bool> ForgetAsync(string vaultPath)
-    {
-        var fullPath = Path.GetFullPath(vaultPath);
-
-        // First stop work for it and let a note already being written finish — a write still under
-        // way would otherwise put files back after they were removed.
-        Work? draining = null;
-        lock (_gate)
-        {
-            if (IsCurrent(fullPath))
-            {
-                _lifetime.Cancel();
-                draining = _work;
-            }
-        }
-        if (draining is not null)
-            await Task.WhenAny(draining.Idle, Task.Delay(TimeSpan.FromSeconds(30)));
-
-        lock (_gate) return RemoveIndex(fullPath);
-    }
-
-    // Caller holds _gate. Releases the folder's store if it is the active one and removes its files —
-    // the vector store and FluxFeed's copies. Returns whether nothing is left.
-    private bool RemoveIndex(string fullPath)
-    {
-        if (IsCurrent(fullPath))
-            TearDown();
-
         var hash = VaultHash.For(fullPath);
         var db = Path.Combine(_options.IndexRoot, $"{hash}.db");
         var store = Path.Combine(_options.IndexRoot, hash);
@@ -349,25 +331,6 @@ public sealed class VaultManager : IDisposable
         catch (UnauthorizedAccessException) { return false; }
     }
 
-    private bool IsCurrent(string fullPath)
-        => string.Equals(_currentVaultPath, fullPath, StringComparison.OrdinalIgnoreCase);
-
-    // Caller holds _gate. Ends the active vault's lifetime and releases it.
-    private void TearDown()
-    {
-        _lifetime.Cancel();
-        _lifetime.Dispose();
-        _lifetime = new CancellationTokenSource();
-        _work = new Work();
-        _scope?.Dispose();
-        _provider?.Dispose();
-        _scope = null;
-        _provider = null;
-        _vault = null;
-        _currentVaultPath = null;
-        _opened = false;
-    }
-
     private static string Snippet(string? content)
     {
         if (string.IsNullOrEmpty(content)) return string.Empty;
@@ -375,17 +338,42 @@ public sealed class VaultManager : IDisposable
     }
 
     /// <summary>
-    /// Disposes the active vault's scope and provider (SQLite connections, file handles).
+    /// Closes every folder's store (SQLite connections, file handles).
     /// The shared embedder is owned by the caller — never disposed here.
     /// </summary>
     public void Dispose()
     {
+        List<FolderStore> stores;
         lock (_gate)
         {
             if (_disposed) return;
             _disposed = true;
-            TearDown();
-            _lifetime.Dispose();
+            stores = [.. _stores.Values];
+            _stores.Clear();
+        }
+        foreach (var store in stores)
+        {
+            store.Lifetime.Cancel();
+            store.Dispose();
+        }
+    }
+
+    // One folder's index: its own provider (vector store, FluxFeed), the writes under way in it, and
+    // its lifetime — cancelled when the index is dropped, which stops work still running for it.
+    private sealed class FolderStore(ServiceProvider provider, IServiceScope scope, IVault vault) : IDisposable
+    {
+        public ServiceProvider Provider { get; } = provider;
+        public IVault Vault { get; } = vault;
+        public CancellationTokenSource Lifetime { get; } = new();
+        public Work Work { get; } = new();
+        public SemaphoreSlim Opening { get; } = new(1, 1);
+        public volatile bool Opened;
+
+        public void Dispose()
+        {
+            scope.Dispose();
+            Provider.Dispose();
+            // Lifetime stays undisposed: work still holding the store reads it to learn it was dropped.
         }
     }
 }
