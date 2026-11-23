@@ -637,36 +637,36 @@ The 72 NuGet packages below put code into the helper (runtime or native assets).
 
 | Component | Version | License | Upstream |
 | --- | --- | --- | --- |
-| `Anthropic` | 13.6.0 | Apache-2.0 | https://www.github.com/anthropics/anthropic-sdk-csharp |
+| `Anthropic` | 13.11.0 | Apache-2.0 | https://www.github.com/anthropics/anthropic-sdk-csharp |
 | `ChildProcessGuard` | 1.5.0 | MIT | https://github.com/iyulab/ChildProcessGuard |
-| `CsvHelper` | 34.0.0 | MS-PL OR Apache-2.0 | https://github.com/JoshClose/CsvHelper |
-| `FileFlux` | 0.69.0 | MIT | https://github.com/iyulab/FileFlux |
-| `FileFlux.Core` | 0.69.0 | MIT | https://github.com/iyulab/FileFlux |
+| `CsvHelper` | 34.1.0 | MS-PL OR Apache-2.0 | https://github.com/JoshClose/CsvHelper |
+| `FileFlux` | 0.71.0 | MIT | https://github.com/iyulab/FileFlux |
+| `FileFlux.Core` | 0.71.0 | MIT | https://github.com/iyulab/FileFlux |
 | `Flux.Abstractions` | 0.27.0 | MIT | https://github.com/iyulab/flux-abstractions |
 | `FluxCurator` | 0.20.0 | MIT | https://github.com/iyulab/FluxCurator |
 | `FluxCurator.Core` | 0.20.0 | MIT | https://github.com/iyulab/FluxCurator |
 | `FluxFeed` | 0.59.1 | MIT | https://github.com/iyulab/FluxFeed |
 | `FluxGuard` | 0.27.0 | MIT | https://github.com/iyulab/FluxGuard |
 | `FluxGuard.Remote` | 0.27.0 | MIT | https://github.com/iyulab/FluxGuard |
-| `FluxImprover` | 0.24.1 | MIT | https://github.com/iyulab/FluxImprover |
-| `FluxIndex.Core` | 0.107.0 | MIT | https://github.com/iyulab/FluxIndex |
-| `FluxIndex.Providers.LMSupply` | 0.107.0 | MIT | https://github.com/iyulab/FluxIndex |
-| `FluxIndex.SDK` | 0.107.0 | MIT | https://github.com/iyulab/FluxIndex |
-| `FluxIndex.Storage.SQLite` | 0.107.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxImprover` | 0.25.0 | MIT | https://github.com/iyulab/FluxImprover |
+| `FluxIndex.Core` | 0.108.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.Providers.LMSupply` | 0.108.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.SDK` | 0.108.0 | MIT | https://github.com/iyulab/FluxIndex |
+| `FluxIndex.Storage.SQLite` | 0.108.0 | MIT | https://github.com/iyulab/FluxIndex |
 | `Google.Apis` | 1.69.0 | Apache-2.0 | https://github.com/googleapis/google-api-dotnet-client |
 | `Google.Apis.Auth` | 1.69.0 | Apache-2.0 | https://github.com/googleapis/google-api-dotnet-client |
 | `Google.Apis.Core` | 1.69.0 | Apache-2.0 | https://github.com/googleapis/google-api-dotnet-client |
-| `Google.GenAI` | 2.0.0 | Apache-2.0 | https://github.com/googleapis/dotnet-genai |
+| `Google.GenAI` | 2.2.0 | Apache-2.0 | https://github.com/googleapis/dotnet-genai |
 | `HtmlAgilityPack` | 1.13.1 | MIT | https://github.com/zzzprojects/html-agility-pack/ |
-| `IronHive.Abstractions` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Extensions.AI` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.Anthropic` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.GoogleAI` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.OpenAI` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronHive.Providers.OpenAI.Compatible` | 0.76.0 | MIT | https://github.com/iyulab/ironhive |
-| `IronProw.Core` | 0.20.0 | MIT | https://github.com/iyulab/iron-prow |
-| `IronProw.IronHive` | 0.20.0 | MIT | https://github.com/iyulab/iron-prow |
-| `IronProw.LMSupply` | 0.20.0 | MIT | https://github.com/iyulab/iron-prow |
+| `IronHive.Abstractions` | 0.79.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Extensions.AI` | 0.79.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.Anthropic` | 0.79.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.GoogleAI` | 0.79.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.OpenAI` | 0.79.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronHive.Providers.OpenAI.Compatible` | 0.79.0 | MIT | https://github.com/iyulab/ironhive |
+| `IronProw.Core` | 0.21.0 | MIT | https://github.com/iyulab/iron-prow |
+| `IronProw.IronHive` | 0.21.0 | MIT | https://github.com/iyulab/iron-prow |
+| `IronProw.LMSupply` | 0.21.0 | MIT | https://github.com/iyulab/iron-prow |
 | `LMSupply.Core` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
 | `LMSupply.Embedder` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
 | `LMSupply.Generator` | 0.143.0 | MIT | https://github.com/iyulab/lm-supply |
@@ -706,9 +706,9 @@ The 72 NuGet packages below put code into the helper (runtime or native assets).
 | `Tiktoken.Core` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |
 | `Tiktoken.Encodings.Abstractions` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |
 | `Tiktoken.Encodings.cl100k` | 3.1.5 | MIT | https://github.com/tryAGI/Tiktoken |
-| `Undoc` | 0.27.3 | MIT | https://github.com/iyulab/undoc |
-| `Unhwp` | 0.23.1 | MIT | https://github.com/iyulab/unhwp |
-| `Unpdf` | 0.54.0 | MIT | https://github.com/iyulab/unpdf |
+| `Undoc` | 0.28.0 | MIT | https://github.com/iyulab/undoc |
+| `Unhwp` | 0.24.0 | MIT | https://github.com/iyulab/unhwp |
+| `Unpdf` | 0.55.0 | MIT | https://github.com/iyulab/unpdf |
 
 The license texts these components carry are reproduced in THIRD-PARTY-LICENSES.txt, next to this
 file. For a component that publishes without one, the text is taken from its source at the same

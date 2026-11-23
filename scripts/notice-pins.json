@@ -5,9 +5,9 @@
       "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
     }
   ],
-  "CsvHelper@34.0.0": [
+  "CsvHelper@34.1.0": [
     {
-      "source": "https://raw.githubusercontent.com/JoshClose/CsvHelper/a314ac89d1b528b13fbd15778372e4675aa5398f/LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/JoshClose/CsvHelper/b4151b6dbafc90de35a3016ba96218ecc4e6f88c/LICENSE.txt",
       "sha256": "58d0d21c221a085b56fc3a5bdcc62a612149413df288d98d536ccbb221f249ac"
     }
   ],
@@ -257,9 +257,9 @@
       "sha256": "5b1ac9960dc46756e316a2962c77fb8cbdee8fa87c9ab1825671235fac6a1f96"
     }
   ],
-  "Google.GenAI@2.0.0": [
+  "Google.GenAI@2.2.0": [
     {
-      "source": "https://raw.githubusercontent.com/googleapis/dotnet-genai/f72b7e6a218363abc383a58dc7b97e60235ca04b/LICENSE",
+      "source": "https://raw.githubusercontent.com/googleapis/dotnet-genai/d388e083a6a4a7a9e4bcfa69a07090e66ed8e3bb/LICENSE",
       "sha256": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
     }
   ]

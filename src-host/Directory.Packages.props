@@ -3,16 +3,16 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="FluxIndex.Core" Version="0.107.0" />
-    <PackageVersion Include="FluxIndex.Storage.SQLite" Version="0.107.0" />
-    <PackageVersion Include="FluxIndex.Providers.LMSupply" Version="0.107.0" />
+    <PackageVersion Include="FluxIndex.Core" Version="0.108.0" />
+    <PackageVersion Include="FluxIndex.Storage.SQLite" Version="0.108.0" />
+    <PackageVersion Include="FluxIndex.Providers.LMSupply" Version="0.108.0" />
     <PackageVersion Include="FluxFeed" Version="0.59.1" />
-    <PackageVersion Include="FileFlux" Version="0.69.0" />
+    <PackageVersion Include="FileFlux" Version="0.71.0" />
     <PackageVersion Include="LMSupply.Embedder" Version="0.143.0" />
     <PackageVersion Include="LMSupply.Generator" Version="0.143.0" />
     <PackageVersion Include="LMSupply.Generator.Onnx" Version="0.143.0" />
-    <PackageVersion Include="IronProw.LMSupply" Version="0.20.0" />
-    <PackageVersion Include="IronProw.IronHive" Version="0.20.0" />
+    <PackageVersion Include="IronProw.LMSupply" Version="0.21.0" />
+    <PackageVersion Include="IronProw.IronHive" Version="0.21.0" />
     <PackageVersion Include="TauriKit.Sidecar.Loopback" Version="0.34.0" />
     <PackageVersion Include="TauriKit.Sidecar.Loopback.AspNetCore" Version="0.34.0" />
     <PackageVersion Include="TauriKit.Diagnostics" Version="0.34.0" />

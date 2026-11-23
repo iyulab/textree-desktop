@@ -17785,7 +17785,7 @@ Upstream: wooorm/zwitch
 Same license text as comma-separated-tokens 2.0.3.
 
 ------------------------------------------------------------------------------
-Anthropic 13.6.0
+Anthropic 13.11.0
 License: Apache-2.0
 Upstream: https://www.github.com/anthropics/anthropic-sdk-csharp
 
@@ -18031,10 +18031,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-CsvHelper 34.0.0
+CsvHelper 34.1.0
 License: MS-PL OR Apache-2.0
 Upstream: https://github.com/JoshClose/CsvHelper
-License text from: https://raw.githubusercontent.com/JoshClose/CsvHelper/a314ac89d1b528b13fbd15778372e4675aa5398f/LICENSE.txt
+License text from: https://raw.githubusercontent.com/JoshClose/CsvHelper/b4151b6dbafc90de35a3016ba96218ecc4e6f88c/LICENSE.txt
 
 Dual licensing under MS-PL and Apache 2.0
 
@@ -18142,14 +18142,14 @@ To apply the Apache License to your work, attach the following boilerplate notic
    limitations under the License.
 
 ------------------------------------------------------------------------------
-FileFlux 0.69.0
+FileFlux 0.71.0
 License: MIT
 Upstream: https://github.com/iyulab/FileFlux
 
 Same license text as ChildProcessGuard 1.5.0.
 
 ------------------------------------------------------------------------------
-FileFlux.Core 0.69.0
+FileFlux.Core 0.71.0
 License: MIT
 Upstream: https://github.com/iyulab/FileFlux
 
@@ -18198,14 +18198,14 @@ Upstream: https://github.com/iyulab/FluxGuard
 Same license text as tauri-kit-credentials 0.34.0.
 
 ------------------------------------------------------------------------------
-FluxImprover 0.24.1
+FluxImprover 0.25.0
 License: MIT
 Upstream: https://github.com/iyulab/FluxImprover
 
 Same license text as ChildProcessGuard 1.5.0.
 
 ------------------------------------------------------------------------------
-FluxIndex.Core 0.107.0
+FluxIndex.Core 0.108.0
 License: MIT
 Upstream: https://github.com/iyulab/FluxIndex
 
@@ -18232,25 +18232,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-FluxIndex.Providers.LMSupply 0.107.0
+FluxIndex.Providers.LMSupply 0.108.0
 License: MIT
 Upstream: https://github.com/iyulab/FluxIndex
 
-Same license text as FluxIndex.Core 0.107.0.
+Same license text as FluxIndex.Core 0.108.0.
 
 ------------------------------------------------------------------------------
-FluxIndex.SDK 0.107.0
+FluxIndex.SDK 0.108.0
 License: MIT
 Upstream: https://github.com/iyulab/FluxIndex
 
-Same license text as FluxIndex.Core 0.107.0.
+Same license text as FluxIndex.Core 0.108.0.
 
 ------------------------------------------------------------------------------
-FluxIndex.Storage.SQLite 0.107.0
+FluxIndex.Storage.SQLite 0.108.0
 License: MIT
 Upstream: https://github.com/iyulab/FluxIndex
 
-Same license text as FluxIndex.Core 0.107.0.
+Same license text as FluxIndex.Core 0.108.0.
 
 ------------------------------------------------------------------------------
 Google.Apis 1.69.0
@@ -18274,10 +18274,10 @@ Upstream: https://github.com/googleapis/google-api-dotnet-client
 Same license text as dirs 7.0.0.
 
 ------------------------------------------------------------------------------
-Google.GenAI 2.0.0
+Google.GenAI 2.2.0
 License: Apache-2.0
 Upstream: https://github.com/googleapis/dotnet-genai
-License text from: https://raw.githubusercontent.com/googleapis/dotnet-genai/f72b7e6a218363abc383a58dc7b97e60235ca04b/LICENSE
+License text from: https://raw.githubusercontent.com/googleapis/dotnet-genai/d388e083a6a4a7a9e4bcfa69a07090e66ed8e3bb/LICENSE
 
 Same license text as rustls-platform-verifier 0.7.1.
 
@@ -18307,63 +18307,63 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-IronHive.Abstractions 0.76.0
+IronHive.Abstractions 0.79.0
 License: MIT
 Upstream: https://github.com/iyulab/ironhive
 
 Same license text as ChildProcessGuard 1.5.0.
 
 ------------------------------------------------------------------------------
-IronHive.Extensions.AI 0.76.0
+IronHive.Extensions.AI 0.79.0
 License: MIT
 Upstream: https://github.com/iyulab/ironhive
 
 Same license text as ChildProcessGuard 1.5.0.
 
 ------------------------------------------------------------------------------
-IronHive.Providers.Anthropic 0.76.0
+IronHive.Providers.Anthropic 0.79.0
 License: MIT
 Upstream: https://github.com/iyulab/ironhive
 
 Same license text as ChildProcessGuard 1.5.0.
 
 ------------------------------------------------------------------------------
-IronHive.Providers.GoogleAI 0.76.0
+IronHive.Providers.GoogleAI 0.79.0
 License: MIT
 Upstream: https://github.com/iyulab/ironhive
 
 Same license text as ChildProcessGuard 1.5.0.
 
 ------------------------------------------------------------------------------
-IronHive.Providers.OpenAI 0.76.0
+IronHive.Providers.OpenAI 0.79.0
 License: MIT
 Upstream: https://github.com/iyulab/ironhive
 
 Same license text as ChildProcessGuard 1.5.0.
 
 ------------------------------------------------------------------------------
-IronHive.Providers.OpenAI.Compatible 0.76.0
+IronHive.Providers.OpenAI.Compatible 0.79.0
 License: MIT
 Upstream: https://github.com/iyulab/ironhive
 
 Same license text as ChildProcessGuard 1.5.0.
 
 ------------------------------------------------------------------------------
-IronProw.Core 0.20.0
+IronProw.Core 0.21.0
 License: MIT
 Upstream: https://github.com/iyulab/iron-prow
 
 Same license text as tauri-kit-credentials 0.34.0.
 
 ------------------------------------------------------------------------------
-IronProw.IronHive 0.20.0
+IronProw.IronHive 0.21.0
 License: MIT
 Upstream: https://github.com/iyulab/iron-prow
 
 Same license text as tauri-kit-credentials 0.34.0.
 
 ------------------------------------------------------------------------------
-IronProw.LMSupply 0.20.0
+IronProw.LMSupply 0.21.0
 License: MIT
 Upstream: https://github.com/iyulab/iron-prow
 
@@ -35919,7 +35919,7 @@ License text from: https://raw.githubusercontent.com/tryAGI/Tiktoken/871d38c16d8
 Same license text as Tiktoken.Core 3.1.5.
 
 ------------------------------------------------------------------------------
-Undoc 0.27.3
+Undoc 0.28.0
 License: MIT
 Upstream: https://github.com/iyulab/undoc
 
@@ -35949,14 +35949,14 @@ internal or external distribution as long as this notice remains
 attached.
 
 ------------------------------------------------------------------------------
-Unhwp 0.23.1
+Unhwp 0.24.0
 License: MIT
 Upstream: https://github.com/iyulab/unhwp
 
 Same license text as ChildProcessGuard 1.5.0.
 
 ------------------------------------------------------------------------------
-Unpdf 0.54.0
+Unpdf 0.55.0
 License: MIT
 Upstream: https://github.com/iyulab/unpdf
 
