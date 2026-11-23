@@ -877,6 +877,9 @@ fn scope_within(vault: &str, scope: Option<String>) -> Result<String, String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
+/// What a semantic search answers when the AI helper could not read the folder's index.
+pub const SEARCH_FAILED: &str = "The AI helper could not search this folder's notes.";
+
 /// What AI requests about a folder kept from AI are answered with.
 pub const KEPT_FROM_AI: &str =
     "This notes folder is not used with AI. Turn on \"Use with AI\" in its menu in the sidebar.";
@@ -915,6 +918,8 @@ pub async fn semantic_search(
             Ok(resp) if resp.is_success() => {
                 Ok(parse_search_response(&resp.body).unwrap_or_default())
             }
+            // The helper could not read the folder's index — said, not shown as "nothing found".
+            Ok(resp) if resp.status == 500 => Err(SEARCH_FAILED.into()),
             Ok(resp) => Err(format!("http status: {}", resp.status)),
             Err(e) => Err(e.to_string()),
         }
