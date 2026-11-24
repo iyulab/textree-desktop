@@ -614,6 +614,8 @@
   // Closings still on their way, by folder: opening the same folder again waits for its closing, or
   // the closing would overtake the new opening (or strip what it installed).
   const closing = new Map<RootId, Promise<void>>();
+  // Openings started, by folder — the latest one decides whether the folder is let go.
+  const attempts = new Map<RootId, number>();
 
   /** Makes an open folder the one the window works in. What was on screen belonged to the folder
    *  left — the open note, the selection, the mode, the chat, the related notes. The folder left
@@ -720,6 +722,13 @@
     say: boolean,
   ): Promise<FolderState | null> {
     const id = await registerRoot(path);
+    // A later opening of the same folder owns it from then on: this one, no longer wanted, does not
+    // let it go — its closing would arrive after the later opening and undo it.
+    const mine = (attempts.get(id) ?? 0) + 1;
+    attempts.set(id, mine);
+    const release = () => {
+      if (!keep() && attempts.get(id) === mine) letGo(id);
+    };
     if (!wanted()) return null;
     await closing.get(id);
     if (!wanted()) return null;
@@ -730,21 +739,21 @@
       opened = await openVault(id);
     } catch (e) {
       if (!wanted()) {
-        if (!keep()) letGo(id); // what it says is about a folder no longer wanted
+        release(); // what it says is about a folder no longer wanted
         return null;
       }
       if (!existing && id !== root) folders.drop(id); // it did not open: nothing of it is kept
       throw e;
     }
     if (!wanted()) {
-      if (!keep()) letGo(id); // opened after all, but not wanted any more
+      release(); // opened after all, but not wanted any more
       return null;
     }
     state.tree = opened;
     // A folder opened again by the person is read again (its settings may have changed on disk).
     if (!existing || say) await prepareFolder(state, wanted, say);
     if (!wanted()) {
-      if (!keep()) letGo(id);
+      release();
       return null;
     }
     return state;
