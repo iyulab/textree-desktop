@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import {
   connectToApp,
@@ -57,7 +59,8 @@ test("a folder that does not answer when opened: another one can be opened meanw
 
 test("a folder of the sidebar that does not answer says it is opening, can be stopped, and the others open", async () => {
   const main = createTempVault({ "main-note.md": "# main\n" });
-  const slow = createTempVault({ "slow-note.md": "# slow\n" });
+  // What an earlier release kept inside the folder: carried out of it once the folder is read.
+  const slow = createTempVault({ "slow-note.md": "# slow\n", ".textree/favorites.json": '["slow-note.md"]' });
   const after = createTempVault({ "after-note.md": "# after\n" });
   const name = (p: string) => new RegExp(p.split(/[/\\]/).pop()!);
   const section = (p: string) => page.getByRole("region", { name: name(p) });
@@ -76,9 +79,13 @@ test("a folder of the sidebar that does not answer says it is opening, can be st
     await listing;
     await expect(section(after).getByRole("treeitem", { name: /after-note/ })).toBeVisible();
 
-    releaseOpening();
+    // Opened again while the stopped opening still hangs: the stopped one answers after the new one
+    // started, and must neither undo it nor leave the folder unread.
     await section(slow).getByRole("button", { name: "Open" }).click();
+    await expect(section(slow)).toContainText("Opening…");
+    releaseOpening();
     await expect(section(slow).getByRole("treeitem", { name: /slow-note/ })).toBeVisible();
+    await expect.poll(() => existsSync(join(slow, ".textree"))).toBe(false);
   } finally {
     releaseOpening();
     for (const p of [slow, after]) {
