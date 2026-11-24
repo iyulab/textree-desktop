@@ -20,6 +20,9 @@ export class FolderState {
   readonly folds: FolderFolds;
   /** The folder's notes and folders as last read. */
   tree = $state<TreeNode[]>([]);
+  /** Whether what the window keeps of the folder has been read since it opened (`prepareFolder`). An
+   *  opening that was stopped or overtaken can leave the state without it. */
+  prepared = false;
 
   /** `path`: where the folder is on disk — what this device remembers of it is kept by it. */
   constructor(

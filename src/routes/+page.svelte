@@ -708,6 +708,7 @@
     }
     // Take in what other devices sent and send what was recorded here — in the background.
     void backupStore.syncIfConnected(id);
+    state.prepared = true;
   }
 
   /**
@@ -722,6 +723,9 @@
     say: boolean,
   ): Promise<FolderState | null> {
     const id = await registerRoot(path);
+    if (!wanted()) return null;
+    await closing.get(id);
+    if (!wanted()) return null;
     // A later opening of the same folder owns it from then on: this one, no longer wanted, does not
     // let it go — its closing would arrive after the later opening and undo it.
     const mine = (attempts.get(id) ?? 0) + 1;
@@ -729,9 +733,6 @@
     const release = () => {
       if (!keep() && attempts.get(id) === mine) letGo(id);
     };
-    if (!wanted()) return null;
-    await closing.get(id);
-    if (!wanted()) return null;
     const existing = folders.get(id);
     const state = existing ?? folders.of(id, () => new FolderState(id, path));
     let opened: TreeNode[];
@@ -751,7 +752,9 @@
     }
     state.tree = opened;
     // A folder opened again by the person is read again (its settings may have changed on disk).
-    if (!existing || say) await prepareFolder(state, wanted, say);
+    // Read again when the person opened it, and whenever it was not read yet — an opening stopped or
+    // overtaken before it got this far leaves the state without it.
+    if (!state.prepared || say) await prepareFolder(state, wanted, say);
     if (!wanted()) {
       release();
       return null;
